@@ -36,11 +36,15 @@ REASON_TEXT = {
 }
 
 
+Stake = tuple[str, str, "int | None"]  # (organização, cargo, vaga) em disputa
+
+
 @dataclass
 class Challenge:
     challenger_id: int
     target_id: int
     expires_at: float
+    stake: Stake | None = None  # duelo valendo cargo (server/orgs.py)
 
 
 @dataclass(eq=False)
@@ -50,6 +54,7 @@ class Duel:
     starts_at: float
     ends_at: float
     announced: bool = False  # já avisou "Valendo!"
+    stake: Stake | None = None  # a_id (quem desafiou) disputa o cargo de b_id
 
     def other(self, player_id: int) -> int:
         return self.b_id if player_id == self.a_id else self.a_id
@@ -89,7 +94,7 @@ class DuelSystem:
 
     # ------------------------------------------------------------ comandos
 
-    def challenge(self, p: Player, target_name: str) -> None:
+    def challenge(self, p: Player, target_name: str, stake: Stake | None = None) -> None:
         w = self.world
         target = next((o for o in w.players.values() if o.name.lower() == target_name.lower()), None)
         if target is None:
@@ -105,9 +110,10 @@ class DuelSystem:
         elif self._distance(p, target) > C.DUEL_CHALLENGE_RANGE:
             w._private(p, f"Chegue mais perto de {target.name} para desafiar.")
         else:
-            self.challenges[target.id] = Challenge(p.id, target.id, w.time + C.DUEL_CHALLENGE_SECONDS)
-            w._private(p, f"Você desafiou {target.name} para um duelo. Aguardando resposta…")
-            w._private(target, f"{p.name} te desafiou para um duelo. Digite /aceitar ou /recusar.")
+            self.challenges[target.id] = Challenge(p.id, target.id, w.time + C.DUEL_CHALLENGE_SECONDS, stake)
+            what = f"pelo seu cargo de {self._stake_name(stake)}" if stake else "para um duelo"
+            w._private(p, f"Você desafiou {target.name} {'pelo cargo' if stake else 'para um duelo'}. Aguardando resposta…")
+            w._private(target, f"{p.name} te desafiou {what}. Digite /aceitar ou /recusar.")
 
     def accept(self, p: Player) -> None:
         w = self.world
@@ -124,10 +130,12 @@ class DuelSystem:
         elif self._distance(p, challenger) > C.DUEL_CHALLENGE_RANGE:
             w._private(p, f"Vocês estão longe demais. Chegue perto de {challenger.name} e peça outro desafio.")
         else:
-            duel = Duel(challenger.id, p.id, w.time + C.DUEL_COUNTDOWN, w.time + C.DUEL_COUNTDOWN + C.DUEL_MAX_SECONDS)
+            duel = Duel(challenger.id, p.id, w.time + C.DUEL_COUNTDOWN,
+                        w.time + C.DUEL_COUNTDOWN + C.DUEL_MAX_SECONDS, stake=challenge.stake)
             self.active[challenger.id] = self.active[p.id] = duel
             self.challenges.pop(challenger.id, None)  # desafio que o outro tinha recebido perde o sentido
-            w._system(f"{challenger.name} e {p.name} vão duelar!")
+            prize = f" pelo cargo de {self._stake_name(duel.stake)}" if duel.stake else ""
+            w._system(f"{challenger.name} e {p.name} vão duelar{prize}!")
             for who in (challenger, p):
                 w._private(who, f"O duelo começa em {C.DUEL_COUNTDOWN:g} segundos. /render para desistir.")
 
@@ -220,6 +228,19 @@ class DuelSystem:
                 "opponent_race": other.race_id if other else None,
                 "opponent_class": other.class_id if other else None,
             })
+
+        if duel.stake and duel.a_id in names and duel.b_id in names:
+            challenger_won = loser is not None and loser.id == duel.b_id
+            w.orgs.resolve_dispute(names[duel.a_id], names[duel.b_id], challenger_won, duel.stake)
+
+    def _stake_name(self, stake: Stake | None) -> str:
+        if not stake:
+            return ""
+        org_id, rank_id, seat = stake
+        org = self.world.content.orgs[org_id]
+        rank = org.rank(rank_id)
+        title = f"{rank.name} {seat}" if rank and rank.numbered and seat else (rank.name if rank else rank_id)
+        return f"{title} de {org.name}"
 
     @staticmethod
     def _distance(a: Player, b: Player) -> float:

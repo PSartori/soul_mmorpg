@@ -58,6 +58,12 @@ lutadores ficam parados, então alcance e esquiva não contam.
 | `/duelo Nome` | desafia alguém por perto para um duelo |
 | `/aceitar`, `/recusar` | responde a um desafio |
 | `/render` | desiste do duelo |
+| `/org [id]` | mostra sua organização (cargos e ocupantes) ou lista as organizações |
+| `/entrar id`, `/sair` | entra / sai de uma organização |
+| `/o texto` | fala só com os membros online da sua organização |
+| `/assumir cargo` | assume um cargo de disputa que esteja vago |
+| `/disputar Nome` | desafia o ocupante de um cargo acima do seu para um duelo valendo o cargo |
+| `/promover Nome cargo`, `/rebaixar Nome`, `/expulsar Nome` | comandos de líder, para quem está abaixo |
 
 ## Conteúdo (data/)
 
@@ -70,6 +76,7 @@ Cada arquivo tem no topo a explicação de todos os campos.
 | `data/effects.yaml` | efeitos de status: modificadores (velocidade, dano...), flags (atordoado, silenciado), dano/cura periódicos |
 | `data/enemies.yaml` | tipos de inimigo: vida, velocidade, alcance de perseguição, skills que a IA usa, letra no mapa, moedas e tabela de saque |
 | `data/items.yaml` | itens: equipamento (slot, bônus, restrição de raça/classe), consumível (cura, energia, efeitos), material |
+| `data/organizations.yaml` | organizações: raças aceitas, nível mínimo, cargos em ordem (vagas, numerados, líder, como se conquista) |
 | `data/races.yaml` | raças: se aparecem na criação, classe inicial, bônus de vida/energia/velocidade |
 | `data/classes.yaml` | classes: raça, skills da barra, multiplicador de treino por atributo |
 | `data/rules.yaml` | regras "quando X, se Y, faça Z": morte, abates, subida de nível (veja abaixo) |
@@ -92,7 +99,9 @@ humano_vira_espectral:
 ```
 
 - **Eventos:** `death` (com quem matou, raça/classe dele, skill, efeito, efeitos
-  ativos, zona), `kill`, `level_up` e `duel_end` (vitória/derrota/empate e motivo).
+  ativos, zona), `kill`, `level_up`, `duel_end` (vitória/derrota/empate e motivo)
+  e `rank_change` (entrou, saiu, promovido, rebaixado, expulso, assumiu, ganhou ou
+  perdeu numa disputa). Todo evento também tem `org` e `rank` de quem disparou.
 - **Ações:** mensagens, perder/ganhar XP, trocar raça ou classe, marcas de
   progressão (`set_flag`), aplicar efeitos, dar itens e dar/tirar moedas.
 - **Condições especiais:** `chance`, `flags` e `not_flags`.
@@ -122,6 +131,7 @@ server/              Python (aiohttp)
   rules.py           vocabulário das regras (eventos, campos, ações) e comparação
   duels.py           desafios e duelos
   inventory.py       inventário: espaços que empilham, equipamento e moedas
+  orgs.py            organizações, cargos e disputas (vínculos na tabela memberships)
   saves.py           versão do formato de save e migrações (sem wipes!)
   entities.py        Player, Enemy, Projectile, efeitos ativos e atributos derivados
   stats.py           atributos treináveis (nível + XP)
@@ -202,6 +212,13 @@ inventário muda), `chat {from, text}`, `sys {text}`.
   que somam bônus e multiplicadores. Se a raça/classe mudar e o item não servir
   mais, ele volta para a bolsa. Consumíveis têm recarga e não são gastos à toa
   (poção de vida com a vida cheia).
+- **Organizações**: uma por personagem. Cargos podem ser ilimitados, ter vagas ou
+  vagas numeradas, e são conquistados de três jeitos: inicial (quem entra),
+  nomeação (um líder promove) ou disputa (vago: `/assumir`; ocupado: vencer o
+  ocupante num duelo valendo o cargo — quem vence fica com o cargo e o outro com o
+  do vencedor; quem perde espera 5 min para disputar de novo). Os vínculos ficam no
+  banco e valem com o ocupante offline. Se a raça mudar para uma que a organização
+  não aceita, o personagem sai.
 - **Morte**: renasce no ponto inicial depois de 3 s.
 - **Salvamento**: ao sair e automaticamente a cada 60 s.
 

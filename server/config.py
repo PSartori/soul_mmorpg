@@ -73,5 +73,8 @@ DUEL_COUNTDOWN = 3.0  # segundos entre aceitar e começar
 DUEL_MAX_SECONDS = 180.0  # depois disso, empate
 DUEL_LEASH = 480.0  # se os dois se afastarem mais que isso, empate (15 tiles)
 
+# --- Organizações (server/orgs.py) ------------------------------------------
+DISPUTE_COOLDOWN_SECONDS = 300.0  # quem perde uma disputa de cargo espera isto para tentar de novo
+
 # --- Chat -------------------------------------------------------------------
 CHAT_MAX_LEN = 200

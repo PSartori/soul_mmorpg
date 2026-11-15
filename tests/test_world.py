@@ -1295,5 +1295,252 @@ class ItemContentTests(ContentTests):
                     "  leash: 1\n  wander_radius: 1\n  respawn: 1\n  gold: [5, 2]\n")
         self.assert_error("teste", "gold")
 
+
+class OrgTests(unittest.TestCase):
+    def setUp(self, rules: str | None = None, db: Database | None = None):
+        self.db = db or Database(":memory:")
+        self.world = make_world(self.db, rules=rules_from(rules) if rules else ())
+        self.world.enemies.clear()
+        self.orgs = self.world.orgs
+
+    def player(self, name: str, race: str = "humano", level: int = 1):
+        p, _ = self.world.login(name, "1234", race)
+        p.stats = {n: Stat(level=level) for n in p.stats}
+        p.x, p.y = tile_center(2, 2)
+        return p
+
+    def say(self, p, text):
+        chat(self.world, p, text)
+
+    def rank_of(self, p):
+        m = self.orgs.of(p)
+        return (m.rank, m.seat) if m else None
+
+    def texts(self, p):
+        return [m["text"] for t, m in self.world.drain_outbox() if m["t"] in ("sys", "chat") and t in (None, p.id)]
+
+    def test_join_and_leave(self):
+        a = self.player("Aaa")
+        self.say(a, "/entrar vigilia")
+        self.assertEqual(self.rank_of(a), ("sentinela", None))
+        self.say(a, "/entrar coro_sombrio")  # já é de uma
+        self.assertEqual(self.orgs.of(a).org, "vigilia")
+        self.say(a, "/sair")
+        self.assertIsNone(self.orgs.of(a))
+
+    def test_join_requirements(self):
+        ghost = self.player("Fantasma", race="humano")
+        self.world._set_class(ghost, CONTENT.classes["assombracao"])  # vira espectral
+        self.say(ghost, "/entrar vigilia")
+        self.assertIsNone(self.orgs.of(ghost))
+        self.say(ghost, "/entrar coro_sombrio")
+        self.assertEqual(self.orgs.of(ghost).org, "coro_sombrio")
+
+    def test_claim_vacant_challenge_rank(self):
+        a, b = self.player("Aaa", level=10), self.player("Bbb", level=10)  # nível total 40
+        for p in (a, b):
+            self.say(p, "/entrar vigilia")
+        self.say(a, "/assumir comandante")
+        self.assertEqual(self.rank_of(a), ("comandante", 1))
+        self.say(b, "/assumir comandante")  # só 1 vaga
+        self.assertEqual(self.rank_of(b), ("sentinela", None))
+
+    def test_claim_needs_level_and_challenge_type(self):
+        a = self.player("Aaa", level=2)  # nível total 8
+        self.say(a, "/entrar vigilia")
+        self.say(a, "/assumir comandante")  # exige 40
+        self.say(a, "/assumir tenente")  # é por nomeação
+        self.assertEqual(self.rank_of(a), ("sentinela", None))
+
+    def test_leader_promotes_demotes_expels(self):
+        boss, mid, low = self.player("Chefe", level=10), self.player("Meio", level=6), self.player("Baixo", level=3)
+        for p in (boss, mid, low):
+            self.say(p, "/entrar vigilia")
+        self.say(boss, "/assumir comandante")
+        self.say(boss, "/promover meio tenente")
+        self.assertEqual(self.rank_of(mid), ("tenente", 1))
+        self.say(mid, "/promover Baixo tenente")  # não pode nomear para o próprio nível
+        self.assertEqual(self.rank_of(low), ("sentinela", None))
+        self.say(mid, "/promover Baixo veterano")
+        self.assertEqual(self.rank_of(low), ("veterano", 1))
+        self.say(low, "/rebaixar Meio")  # não é líder
+        self.assertEqual(self.rank_of(mid), ("tenente", 1))
+        self.say(mid, "/rebaixar Chefe")  # está acima
+        self.assertEqual(self.rank_of(boss), ("comandante", 1))
+        self.say(mid, "/rebaixar Baixo")
+        self.assertEqual(self.rank_of(low), ("sentinela", None))
+        self.say(boss, "/expulsar Meio")
+        self.assertIsNone(self.orgs.of(mid))
+
+    def test_promotion_needs_level(self):
+        boss, weak = self.player("Chefe", level=10), self.player("Fraco", level=1)
+        for p in (boss, weak):
+            self.say(p, "/entrar vigilia")
+        self.say(boss, "/assumir comandante")
+        self.say(boss, "/promover Fraco tenente")  # exige 24
+        self.assertEqual(self.rank_of(weak), ("sentinela", None))
+
+    def test_expel_offline_member(self):
+        boss, gone = self.player("Chefe", level=10), self.player("Sumido")
+        for p in (boss, gone):
+            self.say(p, "/entrar vigilia")
+        self.say(boss, "/assumir comandante")
+        self.world.logout(gone)
+        self.say(boss, "/expulsar Sumido")
+        self.assertIsNone(self.orgs.of("Sumido"))
+
+    def ghosts(self, level=4):
+        a, b = self.player("Aaa", level=level), self.player("Bbb", level=level)
+        for p in (a, b):
+            self.world._set_class(p, CONTENT.classes["assombracao"])
+            self.say(p, "/entrar coro_sombrio")
+        b.x = a.x + 20
+        return a, b
+
+    def test_dispute_won_swaps_ranks(self):
+        a, b = self.ghosts()
+        self.say(a, "/assumir arauto")
+        self.assertEqual(self.rank_of(a), ("arauto", 1))
+        self.say(b, "/disputar Aaa")
+        self.say(a, "/aceitar")
+        self.assertIsNotNone(self.world.duels.duel_of(a).stake)
+        self.say(a, "/render")  # o ocupante desiste: quem desafiou vence
+        self.assertEqual(self.rank_of(b), ("arauto", 1))
+        self.assertEqual(self.rank_of(a), ("sombra", None))
+
+    def test_dispute_by_real_defeat(self):
+        a, b = self.ghosts()
+        self.say(a, "/assumir arauto")
+        self.say(b, "/disputar Aaa")
+        self.say(a, "/aceitar")
+        run(self.world, C.DUEL_COUNTDOWN)
+        a.hp = 1
+        b.cooldowns.clear()
+        use(self.world, b, "golpe", facing="left")  # b está à direita de a
+        self.assertTrue(a.alive)  # duelo não mata
+        self.assertEqual(self.rank_of(b), ("arauto", 1))
+
+    def test_dispute_lost_has_cooldown(self):
+        a, b = self.ghosts()
+        self.say(a, "/assumir arauto")
+        self.say(b, "/disputar Aaa")
+        self.say(a, "/aceitar")
+        self.say(b, "/render")  # quem desafiou desiste: perde
+        self.assertEqual(self.rank_of(a), ("arauto", 1))
+        self.say(b, "/disputar Aaa")
+        self.assertEqual(self.world.duels.challenges, {})  # em espera
+        self.world.time += C.DISPUTE_COOLDOWN_SECONDS
+        self.say(b, "/disputar Aaa")
+        self.assertIn(a.id, self.world.duels.challenges)
+
+    def test_dispute_only_upwards_and_with_level(self):
+        a, b = self.ghosts(level=2)  # nível total 8 < 16 do arauto
+        self.say(b, "/disputar Aaa")  # a é sombra como b: não está acima
+        self.assertEqual(self.world.duels.challenges, {})
+        a.stats = {n: Stat(level=4) for n in a.stats}
+        self.say(a, "/assumir arauto")
+        self.say(b, "/disputar Aaa")  # b não tem nível para arauto
+        self.assertEqual(self.world.duels.challenges, {})
+
+    def test_memberships_survive_restart(self):
+        a = self.player("Aaa", level=10)
+        self.say(a, "/entrar vigilia")
+        self.say(a, "/assumir comandante")
+        self.world.logout(a)
+        world2 = make_world(self.db)
+        self.assertEqual(world2.orgs.of("aaa").rank, "comandante")
+
+    def test_removed_org_is_cleaned_on_load(self):
+        self.db.save_membership("Velho", "organizacao_removida", "chefe", None)
+        world2 = make_world(self.db)
+        self.assertIsNone(world2.orgs.of("Velho"))
+        self.assertEqual(self.db.load_memberships(), [])
+
+    def test_race_change_leaves_org(self):
+        self.setUp(rules="""
+saiu:
+  when: rank_change
+  if: { cause: race, org: vigilia }
+  do: [ { set_flag: saiu_da_vigilia } ]
+""")
+        a = self.player("Aaa")
+        self.say(a, "/entrar vigilia")
+        self.world._set_class(a, CONTENT.classes["assombracao"])
+        self.assertIsNone(self.orgs.of(a))
+        self.assertIn("saiu_da_vigilia", a.flags)
+
+    def test_rules_see_org_and_rank(self):
+        self.setUp(rules="""
+entrou:
+  when: rank_change
+  if: { cause: join }
+  do: [ { give_gold: 5 } ]
+morte_de_sentinela:
+  when: death
+  if: { org: vigilia, rank: sentinela }
+  do: [ { set_flag: sentinela_caido } ]
+""")
+        a = self.player("Aaa")
+        self.say(a, "/entrar vigilia")
+        self.assertEqual(a.inventory.gold, 5)
+        self.world._kill(a, None, None)
+        self.assertIn("sentinela_caido", a.flags)
+
+    def test_org_chat_only_for_members(self):
+        a, b, c = self.player("Aaa"), self.player("Bbb"), self.player("Ccc")
+        for p in (a, b):
+            self.say(p, "/entrar vigilia")
+        self.world.drain_outbox()
+        self.say(a, "/o reunião na praça")
+        out = self.world.drain_outbox()
+        receivers = {t for t, m in out if m["t"] == "chat"}
+        self.assertEqual(receivers, {a.id, b.id})
+        self.assertEqual(next(m for _, m in out if m["t"] == "chat")["ch"], "Vigília")
+
+    def test_snapshot_has_org(self):
+        a = self.player("Aaa", level=10)
+        self.say(a, "/entrar vigilia")
+        self.say(a, "/assumir comandante")
+        self.world.step(DT)
+        snap = [m for t, m in self.world.drain_outbox() if m["t"] == "snap" and t == a.id][-1]
+        ent = next(e for e in snap["ents"] if e["id"] == a.id)
+        self.assertEqual(ent["o"], ["vigilia", "comandante", 1])
+
+    def test_org_info_lists_ranks(self):
+        a = self.player("Aaa", level=10)
+        self.say(a, "/org")  # sem organização: lista todas
+        self.assertTrue(any("Vigília" in t and "/entrar vigilia" in t for t in self.texts(a)))
+        self.say(a, "/entrar vigilia")
+        self.say(a, "/assumir comandante")
+        self.world.drain_outbox()
+        self.say(a, "/org")
+        self.assertTrue(any("Comandante [1/1]: Aaa •" in t for t in self.texts(a)))
+
+
+class OrgContentTests(ContentTests):
+    def test_org_unknown_race(self):
+        self.append("organizations.yaml", "teste:\n  name: T\n  races: [anao]\n  default_rank: r\n"
+                    "  ranks:\n    r: { name: R, promotion: default }\n")
+        self.assert_error("teste", "anao")
+
+    def test_org_default_rank_with_seats(self):
+        self.append("organizations.yaml", "teste:\n  name: T\n  default_rank: r\n"
+                    "  ranks:\n    r: { name: R, promotion: default, seats: 3 }\n")
+        self.assert_error("teste", "inicial")
+
+    def test_org_numbered_needs_seats(self):
+        self.append("organizations.yaml", "teste:\n  name: T\n  default_rank: r\n  ranks:\n"
+                    "    n: { name: N, promotion: challenge, numbered: true }\n    r: { name: R, promotion: default }\n")
+        self.assert_error("teste", "seats")
+
+    def test_org_bad_promotion(self):
+        self.append("organizations.yaml", "teste:\n  name: T\n  default_rank: r\n  ranks:\n"
+                    "    r: { name: R, promotion: sorteio }\n")
+        self.assert_error("teste", "sorteio")
+
+    def test_rule_with_unknown_rank(self):
+        self.append("rules.yaml", "teste:\n  when: death\n  if: { rank: imperador }\n")
+        self.assert_error("teste", "imperador")
+
 if __name__ == "__main__":
     unittest.main()

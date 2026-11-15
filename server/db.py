@@ -42,6 +42,18 @@ class Database:
             )
             """
         )
+        # Vínculo com organizações fica fora do save: cargos são globais e valem com o ocupante offline
+        self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS memberships (
+                character TEXT PRIMARY KEY COLLATE NOCASE,
+                org       TEXT NOT NULL,
+                rank      TEXT NOT NULL,
+                seat      INTEGER,
+                since     REAL NOT NULL
+            )
+            """
+        )
         self.conn.commit()
 
     def load_character(self, name: str) -> CharacterRecord | None:
@@ -77,6 +89,23 @@ class Database:
             "UPDATE characters SET data = ?, updated_at = ? WHERE name = ?",
             (json.dumps(data), time.time(), name),
         )
+        self.conn.commit()
+
+    # ------------------------------------------------------------ organizações
+
+    def load_memberships(self) -> list[tuple[str, str, str, int | None]]:
+        return self.conn.execute("SELECT character, org, rank, seat FROM memberships").fetchall()
+
+    def save_membership(self, name: str, org: str, rank: str, seat: int | None) -> None:
+        self.conn.execute(
+            "INSERT INTO memberships (character, org, rank, seat, since) VALUES (?, ?, ?, ?, ?) "
+            "ON CONFLICT(character) DO UPDATE SET org = excluded.org, rank = excluded.rank, seat = excluded.seat",
+            (name, org, rank, seat, time.time()),
+        )
+        self.conn.commit()
+
+    def delete_membership(self, name: str) -> None:
+        self.conn.execute("DELETE FROM memberships WHERE character = ?", (name,))
         self.conn.commit()
 
     def backup(self, dest_dir: str | Path, keep: int) -> Path:

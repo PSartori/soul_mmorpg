@@ -1,0 +1,74 @@
+# Organizações (facções) e seus cargos.
+#
+#   name, description, color (cor do título no jogo)
+#   races            raças que podem entrar (vazio = qualquer)
+#   min_total_level  soma mínima dos níveis dos 4 atributos para entrar (começa em 4)
+#   default_rank     cargo de quem entra
+#   ranks            cargos, do MAIS ALTO para o mais baixo:
+#     name
+#     seats            vagas (sem campo = ilimitado)
+#     numbered         true: as vagas têm número e aparecem no título (ex.: "Arauto 3")
+#     leader           true: pode promover, rebaixar e expulsar quem está abaixo
+#     promotion        como se chega ao cargo:
+#                        default      só o cargo inicial
+#                        appointment  um líder promove (/promover Nome cargo)
+#                        challenge    vago: /assumir cargo; ocupado: vencer o ocupante
+#                                     num duelo (/disputar Nome)
+#     min_total_level  soma mínima dos níveis para ocupar o cargo
+#
+# Cada personagem participa de no máximo uma organização. Se a raça dele mudar
+# para uma que a organização não aceita, ele sai automaticamente.
+#
+# Nomes, cargos e números provisórios.
+
+vigilia:
+  name: Vigília
+  description: Guardiões que protegem a cidade e os campos.
+  color: "#7cc4ff"
+  races: [humano, desperto]
+  min_total_level: 4
+  default_rank: sentinela
+  ranks:
+    comandante:
+      name: Comandante
+      seats: 1
+      leader: true
+      promotion: challenge
+      min_total_level: 40
+    tenente:
+      name: Tenente
+      seats: 3
+      leader: true
+      promotion: appointment
+      min_total_level: 24
+    veterano:
+      name: Veterano
+      seats: 8
+      promotion: appointment
+      min_total_level: 12
+    sentinela:
+      name: Sentinela
+      promotion: default
+
+coro_sombrio:
+  name: Coro Sombrio
+  description: Os espectrais que não aceitam o próprio fim.
+  color: "#c77dff"
+  races: [espectral]
+  default_rank: sombra
+  ranks:
+    soberano:
+      name: Soberano
+      seats: 1
+      leader: true
+      promotion: challenge
+      min_total_level: 40
+    arauto:
+      name: Arauto
+      seats: 5
+      numbered: true
+      promotion: challenge
+      min_total_level: 16
+    sombra:
+      name: Sombra
+      promotion: default

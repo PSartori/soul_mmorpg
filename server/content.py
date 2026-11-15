@@ -14,7 +14,9 @@ from typing import Any
 
 import yaml
 
-from .rules import ACTIONS, DUEL_END_REASONS, DUEL_RESULTS, EVENT_FIELDS, KILLER_KINDS, VICTIM_KINDS, ZONES, Rule
+from .rules import (
+    ACTIONS, DUEL_END_REASONS, DUEL_RESULTS, EVENT_FIELDS, KILLER_KINDS, RANK_CAUSES, VICTIM_KINDS, ZONES, Rule,
+)
 from .stats import STAT_NAMES
 from .tilemap import RESERVED_MARKS
 
@@ -27,6 +29,7 @@ RACE_BONUSES = ("max_hp", "max_energy", "speed")
 ITEM_TYPES = ("equipment", "consumable", "material")
 EQUIP_SLOTS = ("weapon", "armor", "accessory")
 RARITIES = ("common", "uncommon", "rare", "epic")
+PROMOTIONS = ("default", "appointment", "challenge")
 ID_RE = re.compile(r"[a-z0-9_]+")
 
 _REQUIRED = object()
@@ -153,6 +156,40 @@ class ItemDef:
 
 
 @dataclass(frozen=True)
+class RankDef:
+    id: str
+    name: str
+    seats: int | None  # None = ilimitado
+    numbered: bool
+    leader: bool
+    promotion: str  # default | appointment | challenge
+    min_total_level: int
+
+
+@dataclass(frozen=True)
+class OrgDef:
+    id: str
+    name: str
+    description: str
+    color: str
+    races: tuple[str, ...]
+    min_total_level: int
+    default_rank: str
+    ranks: tuple[RankDef, ...]  # do mais alto para o mais baixo
+
+    def rank(self, rank_id: str) -> RankDef | None:
+        return next((r for r in self.ranks if r.id == rank_id), None)
+
+    def rank_index(self, rank_id: str) -> int:
+        """Posição na hierarquia: 0 = mais alto."""
+        return next(i for i, r in enumerate(self.ranks) if r.id == rank_id)
+
+    def client_info(self) -> dict:
+        return {"name": self.name, "color": self.color,
+                "ranks": {r.id: {"name": r.name, "numbered": r.numbered} for r in self.ranks}}
+
+
+@dataclass(frozen=True)
 class RaceDef:
     id: str
     name: str
@@ -182,6 +219,7 @@ class Content:
     rules: tuple[Rule, ...]
     default_race: str
     items: dict[str, ItemDef] = field(default_factory=dict)
+    orgs: dict[str, OrgDef] = field(default_factory=dict)
 
     @property
     def enemy_by_mark(self) -> dict[str, EnemyDef]:
@@ -206,6 +244,7 @@ class Content:
             "races": {r.id: {"name": r.name} for r in self.races.values()},
             "classes": {c.id: {"name": c.name, "race": c.race} for c in self.classes.values()},
             "items": {i.id: i.client_info() for i in self.items.values()},
+            "orgs": {o.id: o.client_info() for o in self.orgs.values()},
         }
 
     @classmethod
@@ -217,17 +256,19 @@ class Content:
         races = {i: _parse_race(i, raw) for i, raw in _load_yaml(data_dir / "races.yaml").items()}
         classes = {i: _parse_class(i, raw) for i, raw in _load_yaml(data_dir / "classes.yaml").items()}
         items = {i: _parse_item(i, raw) for i, raw in _load_yaml(data_dir / "items.yaml").items()}
+        orgs = {i: _parse_org(i, raw) for i, raw in _load_yaml(data_dir / "organizations.yaml").items()}
 
         player = _Fields("player.yaml", _load_yaml(data_dir / "player.yaml"))
         default_race = player.text("default_race")
         player.done()
 
         # Regras por último: as condições e ações são conferidas contra todo o resto
-        refs = _RuleRefs(effects=effects, skills=skills, enemies=enemies, races=races, classes=classes, items=items)
+        refs = _RuleRefs(effects=effects, skills=skills, enemies=enemies, races=races, classes=classes, items=items,
+                         orgs=orgs)
         rules = tuple(_parse_rule(i, raw, refs) for i, raw in _load_yaml(data_dir / "rules.yaml").items())
 
         content = cls(effects=effects, skills=skills, enemies=enemies, races=races, classes=classes,
-                      rules=rules, default_race=default_race, items=items)
+                      rules=rules, default_race=default_race, items=items, orgs=orgs)
         content.check_references()
         return content
 
@@ -275,6 +316,10 @@ class Content:
                 raise ContentError(f"races.yaml > {r.id}: start_class '{r.start_class}' não existe em classes.yaml")
             if start.race != r.id:
                 raise ContentError(f"races.yaml > {r.id}: start_class '{r.start_class}' é da raça '{start.race}'")
+        for org in self.orgs.values():
+            for race in org.races:
+                if race not in self.races:
+                    raise ContentError(f"organizations.yaml > {org.id}: raça '{race}' não existe em races.yaml")
         if self.default_race not in self.races:
             raise ContentError(f"player.yaml: default_race '{self.default_race}' não existe em races.yaml")
         if not any(r.selectable for r in self.races.values()):
@@ -624,6 +669,10 @@ class _RuleRefs:
     races: dict[str, RaceDef]
     classes: dict[str, ClassDef]
     items: dict[str, ItemDef] = field(default_factory=dict)
+    orgs: dict[str, OrgDef] = field(default_factory=dict)
+
+    def rank_ids(self) -> tuple[str, ...]:
+        return tuple(dict.fromkeys(r.id for o in self.orgs.values() for r in o.ranks))
 
     def allowed(self, field: str) -> tuple[str, ...] | type | None:
         """Valores válidos para um campo de condição (ou o tipo esperado)."""
@@ -635,6 +684,7 @@ class _RuleRefs:
             "skill": self.skills, "effect": self.effects, "effects": self.effects,
             "zone": ZONES, "killer": KILLER_KINDS, "victim": VICTIM_KINDS, "stat": STAT_NAMES,
             "duel": bool, "level": float,
+            "org": self.orgs, "rank": self.rank_ids(), "old_rank": self.rank_ids(), "cause": RANK_CAUSES,
         }
         value = table.get(field)
         return tuple(value) if isinstance(value, (dict, tuple)) else value
@@ -788,5 +838,53 @@ def _parse_rule(rid: str, raw: Any, refs: _RuleRefs) -> Rule:
 def parse_rules(raw: dict, content: Content) -> tuple[Rule, ...]:
     """Valida regras avulsas contra um conteúdo já carregado (usado nos testes)."""
     refs = _RuleRefs(effects=content.effects, skills=content.skills, enemies=content.enemies,
-                     races=content.races, classes=content.classes, items=content.items)
+                     races=content.races, classes=content.classes, items=content.items, orgs=content.orgs)
     return tuple(_parse_rule(i, r, refs) for i, r in raw.items())
+
+
+def _parse_org(oid: str, raw: Any) -> OrgDef:
+    f = _Fields(f"organizations.yaml > {oid}", raw)
+    ranks_raw = f._get("ranks", None)
+    if not isinstance(ranks_raw, dict) or not ranks_raw:
+        raise ContentError(f"{f.where}: 'ranks' deve listar os cargos, do mais alto para o mais baixo")
+    ranks = []
+    for rid, rraw in ranks_raw.items():
+        r = _Fields(f"{f.where}.ranks > {rid}", rraw)
+        if not isinstance(rid, str) or not ID_RE.fullmatch(rid):
+            raise ContentError(f"{r.where}: id de cargo inválido")
+        promotion = r.text("promotion")
+        if promotion not in PROMOTIONS:
+            raise ContentError(f"{r.where}: promotion '{promotion}' inválida (válidas: {', '.join(PROMOTIONS)})")
+        seats = r.int("seats", None, minimum=1) if "seats" in rraw else None
+        rank = RankDef(
+            id=rid,
+            name=r.text("name"),
+            seats=seats,
+            numbered=r.flag("numbered", False),
+            leader=r.flag("leader", False),
+            promotion=promotion,
+            min_total_level=r.int("min_total_level", 0),
+        )
+        r.done()
+        if rank.numbered and rank.seats is None:
+            raise ContentError(f"{r.where}: cargo numerado precisa de 'seats'")
+        if promotion == "default" and seats is not None:
+            raise ContentError(f"{r.where}: o cargo inicial (promotion: default) não pode ter vagas limitadas")
+        ranks.append(rank)
+    org = OrgDef(
+        id=oid,
+        name=f.text("name"),
+        description=f.text("description", ""),
+        color=f.text("color", "#d8dbe2"),
+        races=tuple(f.str_list("races")),
+        min_total_level=f.int("min_total_level", 0),
+        default_rank=f.text("default_rank"),
+        ranks=tuple(ranks),
+    )
+    f.done()
+    default = org.rank(org.default_rank)
+    if default is None or default.promotion != "default":
+        raise ContentError(f"{f.where}: default_rank '{org.default_rank}' precisa ser um cargo com promotion: default")
+    if sum(1 for r in ranks if r.promotion == "default") != 1:
+        raise ContentError(f"{f.where}: precisa de exatamente um cargo com promotion: default")
+    return org

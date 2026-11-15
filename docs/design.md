@@ -156,9 +156,26 @@ achados com o conteúdo de exemplo: o golpe básico domina o dano no começo (as
 skills de energia pesam pouco), e os inimigos atuais deixam de ser desafio a partir
 do nível 10 — faltam inimigos por faixa de nível.
 
-**Próximo passo sugerido:** base 8 (organizações e cargos).
+**Base 8 (concluída):** organizações em `data/organizations.yaml` com cargos por
+nomeação ou disputa (duelo valendo o cargo), chat próprio, título acima do nome e
+evento `rank_change` nas regras. As duas organizações atuais são exemplos.
 
-## 10. Perguntas em aberto
+Ainda a decidir sobre a hierarquia (seção 6): limite de recusas de desafio de
+cargo (hoje pode recusar sempre), cargo vago por inatividade do ocupante, e se
+alguns cargos devem ser por torneio ou pontos de contribuição.
+
+## 10. Pendências de interface
+
+- **Trocar os comandos de chat por interface.** Hoje duelos (`/duelo`, `/aceitar`,
+  `/recusar`, `/render`) e organizações (`/org`, `/entrar`, `/sair`, `/o`,
+  `/assumir`, `/disputar`, `/promover`, `/rebaixar`, `/expulsar`) dependem de digitar
+  comandos — decisão: isso precisa virar interface. Ideias: menu ao clicar num
+  jogador (desafiar, disputar cargo, promover, expulsar), aviso com botões para
+  aceitar/recusar desafios, janela da organização (cargos, ocupantes, entrar/sair,
+  assumir vaga) e aba de chat da organização. Os comandos podem continuar como
+  atalho, mas não como único caminho.
+
+## 11. Perguntas em aberto
 
 - Penalidades de morte: quais existem e quão duras?
 - Transformações por morte: quais caminhos cada raça tem?

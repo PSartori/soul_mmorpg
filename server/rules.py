@@ -22,6 +22,12 @@ EVENT_FIELDS: dict[str, tuple[str, ...]] = {
     "level_up": ("race", "class", "stat", "level"),
     # um duelo do personagem terminou (dispara para os dois)
     "duel_end": ("race", "class", "result", "reason", "opponent_race", "opponent_class"),
+    # o cargo do personagem numa organização mudou (entrou, subiu, caiu, saiu...)
+    "rank_change": ("race", "class", "org", "rank", "old_rank", "cause"),
+}
+# Todo evento também recebe a organização e o cargo atuais de quem disparou
+EVENT_FIELDS = {
+    event: fields + tuple(f for f in ("org", "rank") if f not in fields) for event, fields in EVENT_FIELDS.items()
 }
 
 # Condições que não vêm do contexto do evento
@@ -37,6 +43,10 @@ DUEL_RESULTS = ("win", "lose", "draw")
 # defeat: o perdedor chegou a 1 de vida | forfeit: alguém se rendeu | logout: alguém saiu
 # distance: se afastaram demais | timeout: passou do tempo | death: alguém morreu (ex.: para um inimigo)
 DUEL_END_REASONS = ("defeat", "forfeit", "logout", "distance", "timeout", "death")
+# join: entrou | leave: saiu | expelled: expulso | promotion: promovido por líder | demotion: rebaixado
+# claim: assumiu cargo vago | dispute_won / dispute_lost: ganhou ou perdeu o cargo num duelo de disputa
+# race: saiu porque a raça mudou para uma que a organização não aceita
+RANK_CAUSES = ("join", "leave", "expelled", "promotion", "demotion", "claim", "dispute_won", "dispute_lost", "race")
 
 
 @dataclass(frozen=True)

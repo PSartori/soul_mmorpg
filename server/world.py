@@ -21,6 +21,7 @@ from . import config as C
 from .content import EQUIP_SLOTS, ClassDef, Content, EffectApplication, ItemDef, SkillDef
 from .db import Database
 from .duels import DuelSystem
+from .orgs import OrgSystem
 from .entities import (
     DIRECTIONS, MOVE_KEYS, ActiveEffect, Enemy, Entity, GroundItem, MoveKeys, Player, Projectile,
 )
@@ -88,6 +89,7 @@ class World:
         self._outbox: list[Outgoing] = []
         self._save_timer = C.AUTOSAVE_SECONDS
         self.duels = DuelSystem(self)
+        self.orgs = OrgSystem(self)
 
         by_mark = content.enemy_by_mark
         for mark, x, y in tilemap.enemy_spawns:
@@ -181,6 +183,7 @@ class World:
                 self._give_item(p, item, 1)
                 self._private(p, f"{item.name} não serve para {p.race_def.name}/{cls.name} e foi desequipado.")
         p.inventory.dirty = True
+        self.orgs.on_race_change(p)
         p.hp = min(p.hp, p.max_hp)
         p.energy = min(p.energy, p.max_energy)
 
@@ -267,6 +270,8 @@ class World:
         if text.startswith("/"):
             command, *args = text.split()
             command = command.lower()
+            if self.orgs.handle(player, command, args, text):
+                return
             if command == "/who":
                 names = ", ".join(sorted(p.name for p in self.players.values()))
                 self._private(player, f"Online ({len(self.players)}): {names}")
@@ -282,8 +287,9 @@ class World:
             elif command == "/render":
                 self.duels.forfeit(player)
             else:
-                self._private(player, f"Comando desconhecido: {command}. "
-                                      "Disponíveis: /who, /duelo Nome, /aceitar, /recusar, /render")
+                self._private(player, f"Comando desconhecido: {command}. Disponíveis: /who, /duelo Nome, "
+                                      "/aceitar, /recusar, /render, /org, /entrar, /sair, /o, /assumir, "
+                                      "/disputar, /promover, /rebaixar, /expulsar")
             return
         self._outbox.append((None, {"t": "chat", "from": player.name, "text": text}))
 
@@ -312,6 +318,8 @@ class World:
             snap = e.snapshot()
             if isinstance(e, Player) and (opponent := self.duels.opponent_id(e)) is not None:
                 snap["du"] = opponent  # em duelo com
+            if isinstance(e, Player) and (org := self.orgs.snapshot(e)):
+                snap["o"] = org  # [organização, cargo, vaga]
             ents.append(snap)
         projs = [p.snapshot() for p in self.projectiles.values()]
         drops = [d.snapshot() for d in self.drops.values()]
@@ -447,7 +455,14 @@ class World:
         if depth > C.MAX_RULE_DEPTH:
             log.warning("regras encadeadas demais em '%s' para %s; parando", event, p.name)
             return
-        full = {"race": p.race_id, "class": p.class_id, **ctx}  # raça/classe de ANTES das ações
+        membership = self.orgs.of(p)
+        full = {  # raça/classe/organização de ANTES das ações
+            "race": p.race_id,
+            "class": p.class_id,
+            "org": membership.org if membership else None,
+            "rank": membership.rank if membership else None,
+            **ctx,
+        }
         for rule in self.content.rules_by_event[event]:
             if rule_matches(rule, full, p.flags, self.rng):
                 for name, args in rule.actions:

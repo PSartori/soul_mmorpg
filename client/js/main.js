@@ -3,7 +3,7 @@
 import { Connection, gameSocketUrl } from "./net.js";
 import { SLOT_LABELS, setupInput } from "./input.js";
 import { Physics } from "./physics.js";
-import { Renderer } from "./render.js";
+import { Renderer, rankTitle } from "./render.js";
 import { InventoryUI, RARITY_COLORS } from "./inventory.js";
 
 const $ = (id) => document.getElementById(id);
@@ -19,7 +19,7 @@ const state = {
   trails: [], // dashes
   floaters: [],
   you: null,
-  defs: { skills: {}, effects: {}, enemies: {}, races: {}, classes: {}, items: {} },
+  defs: { skills: {}, effects: {}, enemies: {}, races: {}, classes: {}, items: {}, orgs: {} },
   statLabels: {},
 };
 
@@ -47,7 +47,7 @@ function handleMessage(msg) {
       state.statLabels = msg.stat_labels;
       state.defs = {
         skills: msg.skills, effects: msg.effects, enemies: msg.enemies, races: msg.races, classes: msg.classes,
-        items: msg.items,
+        items: msg.items, orgs: msg.orgs,
       };
       state.ents.clear();
       renderer.setMap(msg.map);
@@ -71,7 +71,7 @@ function handleMessage(msg) {
       applySnapshot(msg);
       break;
     case "chat":
-      addChatLine(msg.text, msg.from);
+      addChatLine(msg.text, msg.from, msg.ch ? { name: msg.ch, color: msg.color } : null);
       break;
     case "sys":
       addChatLine(msg.text);
@@ -211,6 +211,13 @@ function updateHud() {
   const raceName = state.defs.races[you.race]?.name ?? "";
   const className = state.defs.classes[you.cls]?.name ?? "";
   $("me-class").textContent = [raceName, className].filter(Boolean).join(" · ");
+  const orgEl = $("me-org");
+  orgEl.hidden = !me.o;
+  if (me.o) {
+    const org = state.defs.orgs[me.o[0]];
+    orgEl.style.setProperty("--org", org?.color ?? "#fff");
+    orgEl.textContent = `${org?.name ?? me.o[0]} · ${rankTitle(state.defs, me.o)}`;
+  }
 
   const zone = you.zone ?? { t: "pve", n: "" };
   const zoneEl = $("me-zone");
@@ -306,10 +313,17 @@ function updateHotbarCooldowns(now) {
   }
 }
 
-function addChatLine(text, from = null) {
+function addChatLine(text, from = null, channel = null) {
   const log = $("chat-log");
   const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 30;
   const line = document.createElement("div");
+  if (channel) {
+    const tag = document.createElement("span");
+    tag.className = "channel";
+    tag.style.setProperty("--org", channel.color);
+    tag.textContent = `[${channel.name}] `;
+    line.append(tag);
+  }
   if (from) {
     const who = document.createElement("span");
     who.className = "from";

@@ -74,6 +74,15 @@ function drawTile(g, ch, x, y, ts, r) {
   }
 }
 
+// Título do cargo: "Arauto 3", "Comandante"...
+export function rankTitle(defs, o) {
+  if (!o) return "";
+  const [orgId, rankId, seat] = o;
+  const rank = defs.orgs?.[orgId]?.ranks?.[rankId];
+  if (!rank) return "";
+  return rank.numbered && seat ? `${rank.name} ${seat}` : rank.name;
+}
+
 export function nameColor(name) {
   let h = 0;
   for (const c of name) h = (h * 31 + c.charCodeAt(0)) >>> 0;
@@ -246,6 +255,16 @@ export class Renderer {
     ctx.fillText(e.n, x + 1, y - 25);
     ctx.fillStyle = isMe ? "#ffe08a" : e.k === "enemy" ? "#f0c8f5" : "#ffffff";
     ctx.fillText(e.n, x, y - 26);
+
+    // cargo na organização, na cor dela
+    const title = rankTitle(this.defs, e.o);
+    if (title) {
+      ctx.font = "10px system-ui, sans-serif";
+      ctx.fillStyle = "rgba(0,0,0,0.8)";
+      ctx.fillText(title, x + 1, y - 37);
+      ctx.fillStyle = this.defs.orgs?.[e.o[0]]?.color ?? "#d8dbe2";
+      ctx.fillText(title, x, y - 38);
+    }
   }
 
   drawSwing(s, state, now) {
