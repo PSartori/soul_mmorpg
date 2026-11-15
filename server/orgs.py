@@ -350,6 +350,17 @@ class OrgSystem:
 
     # ------------------------------------------------------------ ganchos
 
+    def revalidate(self) -> list[str]:
+        """Depois de recarregar o conteúdo: desfaz vínculos com organização ou cargo que sumiram."""
+        notes = []
+        for m in list(self.members.values()):
+            org = self.content.orgs.get(m.org)
+            if org is None or org.rank(m.rank) is None:
+                self.members.pop(m.name.lower(), None)
+                self.world.db.delete_membership(m.name)
+                notes.append(f"{m.name} saiu de {m.org}/{m.rank} (não existe mais)")
+        return notes
+
     def on_race_change(self, p: Player) -> None:
         """A raça mudou (regras): se a organização não aceita a nova, o personagem sai."""
         m = self.of(p)

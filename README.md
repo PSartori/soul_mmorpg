@@ -28,6 +28,37 @@ backups automáticos em `var/backups/` (um ao ligar o servidor e outro a cada 6 
 guarda os 28 mais recentes). Para restaurar, pare o servidor e copie um backup
 por cima de `var/game.db`.
 
+## Editando conteúdo com o jogo rodando
+
+- **Botão "Recarregar conteúdo"** na janela de administração (permissão `reload`):
+  lê de novo todos os YAML e mapas. Se algo estiver errado, **nada muda** e a
+  janela mostra a mensagem do validador. Se estiver certo, quem está online recebe
+  na hora as skills, itens, classes e mapas novos, sem cair. Inimigos renascem com
+  os valores novos; o que deixou de existir (item, classe, cargo, mapa) é ajustado
+  e listado.
+- **Modo automático, para desenvolvimento:** `./run.sh --watch` recarrega sozinho
+  sempre que um arquivo de `data/` é salvo (erros vão para o log e para a equipe
+  online).
+
+## Mapas no Tiled
+
+Os mapas podem ser editados no [Tiled](https://www.mapeditor.org) (gratuito). Para
+converter um mapa em texto:
+
+```bash
+./mapas.sh para-tiled inicio
+```
+
+Isso cria `data/maps/inicio.tmj` (abre no Tiled), o conjunto de tiles
+`data/maps/terreno.tsj` + `terreno.png`, e move o `.txt`/`.yaml` antigos para
+`data/maps/antigos/`. No Tiled, o mapa tem a camada de tiles **terreno** e as
+camadas de objetos **zonas** (retângulos com propriedade `tipo` = pve/pvp),
+**portais** (retângulos com `destino`, `chegada_x`, `chegada_y`) e **pontos**
+(pontos com `tipo` = nascimento ou inimigo, e `inimigo` = id do inimigo). As
+propriedades do mapa dão o nome e a zona padrão. Salve como JSON (`.tmj`). Detalhes
+em `server/tiled.py`. Mapas em texto continuam funcionando; cada mapa usa um
+formato só. `./mapas.sh verificar` confere todos.
+
 ## Administração
 
 A equipe (moderadores, mestres do jogo e administradores) age pela janela
@@ -155,6 +186,8 @@ server/              Python (aiohttp)
   inventory.py       inventário: espaços que empilham, equipamento e moedas
   orgs.py            organizações, cargos e disputas (vínculos na tabela memberships)
   admin.py           equipe, sanções (ban/silêncio) e registro de ações
+  gamedata.py        carrega conteúdo + mapas (ao ligar e ao recarregar)
+  tiled.py           leitor de mapas do Tiled (.tmj)
   saves.py           versão do formato de save e migrações (sem wipes!)
   entities.py        Player, Enemy, Projectile, efeitos ativos e atributos derivados
   stats.py           atributos treináveis (nível + XP)
@@ -175,6 +208,7 @@ tools/               ferramentas de desenvolvimento
   simulator.py       lutas simuladas no motor do jogo
   balance.py         relatório de balanceamento (./balance.sh)
   admin.py           administração pelo terminal (./admin.sh)
+  maps.py            ferramentas de mapa: converter para o Tiled, verificar (./mapas.sh)
 tests/               testes do servidor e das ferramentas (unittest)
 ```
 

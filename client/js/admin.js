@@ -66,6 +66,7 @@ export class AdminUI {
     const role = defs.roles[this.data.role];
     document.getElementById("admin-title").textContent = `Administração · ${role?.name ?? ""}`;
     const sections = [this.playersSection(defs), this.actionsSection(defs)];
+    if (this.can("reload")) sections.push(this.reloadSection());
     if (this.can("announce")) sections.push(this.announceSection());
     if (this.data.bans) sections.push(this.bansSection());
     if (this.data.log) sections.push(this.logSection());
@@ -168,6 +169,21 @@ export class AdminUI {
       }
       row("Papel", [select, button("Definir", () => this.op("set_role", { target, role: select.value || null }))]);
     }
+    return box;
+  }
+
+  reloadSection() {
+    const box = el("section", "adm-box");
+    box.append(el("h4", "", "Conteúdo"));
+    box.append(el("p", "hint", "Lê de novo os YAML e mapas de data/ sem reiniciar. Se houver erro, nada muda."));
+    const b = el("button", "", "Recarregar conteúdo");
+    b.type = "button";
+    b.addEventListener("click", () => {
+      this.result.textContent = "Recarregando…";
+      this.result.className = "";
+      this.op("reload");
+    });
+    box.append(b);
     return box;
   }
 

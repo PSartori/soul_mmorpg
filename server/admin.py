@@ -94,6 +94,7 @@ class AdminSystem:
             "give_item": ("give", self._give_item),
             "give_gold": ("give", self._give_gold),
             "set_role": ("set_role", self._set_role),
+            "reload": ("reload", self._reload),
         }
         if op not in ops:
             return
@@ -306,6 +307,15 @@ class AdminSystem:
             self.world._private(target, f"Você recebeu {amount} moedas da equipe.")
             self._record(p, "deu moedas a", target.name, str(amount))
             self._reply(p, True, f"{amount} moedas para {target.name}.")
+
+    def _reload(self, p: Player, data: dict) -> None:
+        ok, text = self.world.reload_from_disk()
+        self._record(p, "recarregou o conteúdo" if ok else "tentou recarregar o conteúdo", "", text[:300])
+        if ok:
+            self.world._system("O conteúdo do jogo foi atualizado pela equipe.")
+            self._reply(p, True, "Conteúdo recarregado: " + text)
+        else:
+            self._reply(p, False, "Nada mudou. Erro no conteúdo: " + text)
 
     def _set_role(self, p: Player, data: dict) -> None:
         found = self._target(p, data, online=False)

@@ -13,6 +13,7 @@
 #                  give      dar itens e moedas
 #                  set_role  dar e tirar papéis da equipe (só abaixo do próprio nível)
 #                  log       ver o registro de ações da equipe
+#                  reload    recarregar o conteúdo (YAML e mapas) com o jogo rodando
 #
 # Quem tem papel aparece com a janela "Administração" no jogo.
 # Para dar o primeiro papel (o seu): ./admin.sh role SeuPersonagem admin
@@ -36,4 +37,4 @@ admin:
   tag: ADM
   color: "#ff7a7a"
   level: 3
-  permissions: [kick, mute, ban, announce, teleport, give, set_role, log]
+  permissions: [kick, mute, ban, announce, teleport, give, set_role, log, reload]

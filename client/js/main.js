@@ -73,6 +73,9 @@ function handleMessage(msg) {
     case "map":
       changeMap(msg);
       break;
+    case "content":
+      applyContent(msg);
+      break;
     case "admin_data":
       adminUI.update(msg);
       break;
@@ -98,6 +101,19 @@ function handleMessage(msg) {
       addChatLine(msg.text);
       break;
   }
+}
+
+// A equipe recarregou o conteúdo: definições novas (skills, itens, classes...) sem cair
+function applyContent(msg) {
+  state.defs = {
+    skills: msg.skills, effects: msg.effects, enemies: msg.enemies, races: msg.races, classes: msg.classes,
+    items: msg.items, orgs: msg.orgs, roles: msg.roles,
+  };
+  renderer.defs = state.defs;
+  lastHotbarKey = "";
+  lastStatsKey = "";
+  inventoryUI.lastKey = "";
+  if (inventoryUI.isOpen) inventoryUI.render();
 }
 
 // Atravessou um portal: troca o mapa desenhado e a física, e recomeça a previsão

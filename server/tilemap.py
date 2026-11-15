@@ -300,10 +300,29 @@ def _parse_zones(raw: Any, where: str, width: int, height: int) -> tuple[Zone, l
     return default, zones
 
 
-def load_maps(maps_dir: str | Path, spawn_marks: Iterable[str] = (), tile_size: int = C.TILE_SIZE) -> dict[str, TileMap]:
-    """Carrega todos os mapas (*.txt) da pasta e confere se os portais levam a lugares válidos."""
-    marks = tuple(spawn_marks)
-    maps = {path.stem: load_map(path, marks, tile_size) for path in sorted(Path(maps_dir).glob("*.txt"))}
+def load_maps(
+    maps_dir: str | Path,
+    spawn_marks: Iterable[str] = (),
+    tile_size: int = C.TILE_SIZE,
+    enemy_ids: Iterable[str] = (),
+) -> dict[str, TileMap]:
+    """Carrega todos os mapas da pasta e confere se os portais levam a lugares válidos.
+
+    Cada mapa é um .txt (+ .yaml) ou um .tmj do Tiled (server/tiled.py) — nunca os dois.
+    """
+    from .tiled import parse_tmj  # import aqui: tiled.py importa este módulo
+
+    maps_dir = Path(maps_dir)
+    marks, ids = tuple(spawn_marks), tuple(enemy_ids)
+    texts = {path.stem: path for path in maps_dir.glob("*.txt")}
+    tiled = {path.stem: path for path in maps_dir.glob("*.tmj")}
+    both = sorted(set(texts) & set(tiled))
+    if both:
+        raise ValueError(f"Mapa(s) {', '.join(both)} existem como .txt e como .tmj; deixe só um formato "
+                         "(./mapas.sh para-tiled move o .txt para data/maps/antigos/)")
+    maps = {name: load_map(path, marks, tile_size) for name, path in texts.items()}
+    maps.update({name: parse_tmj(path, ids, tile_size) for name, path in tiled.items()})
+    maps = dict(sorted(maps.items()))
     check_portals(maps)
     return maps
 

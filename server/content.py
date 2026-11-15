@@ -30,7 +30,7 @@ ITEM_TYPES = ("equipment", "consumable", "material")
 EQUIP_SLOTS = ("weapon", "armor", "accessory")
 RARITIES = ("common", "uncommon", "rare", "epic")
 PROMOTIONS = ("default", "appointment", "challenge")
-PERMISSIONS = ("kick", "mute", "ban", "announce", "teleport", "give", "set_role", "log")
+PERMISSIONS = ("kick", "mute", "ban", "announce", "teleport", "give", "set_role", "log", "reload")
 ID_RE = re.compile(r"[a-z0-9_]+")
 
 _REQUIRED = object()

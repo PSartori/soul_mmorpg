@@ -16,9 +16,8 @@ from pathlib import Path
 from aiohttp import WSMsgType, web
 
 from . import config as C
-from .content import Content
 from .db import Database
-from .tilemap import load_maps
+from .gamedata import load_game_data, watched_files_state
 from .world import World
 
 log = logging.getLogger("server")
@@ -28,6 +27,7 @@ WORLD = web.AppKey("world", World)
 SESSIONS = web.AppKey("sessions", dict)  # id do jogador -> WebSocketResponse
 LOOP_TASK = web.AppKey("loop_task", asyncio.Task)
 BACKUP_TASK = web.AppKey("backup_task", asyncio.Task)
+WATCH_TASK = web.AppKey("watch_task", asyncio.Task)
 
 
 def dumps(obj: dict) -> str:
@@ -141,12 +141,34 @@ async def backup_loop(app: web.Application) -> None:
         await asyncio.sleep(C.BACKUP_INTERVAL_HOURS * 3600)
 
 
-def create_app(db_path: str | Path = C.DB_PATH, maps_dir: str | Path = C.MAPS_DIR) -> web.Application:
-    content = Content.load(C.DATA_DIR)  # erro no YAML derruba aqui, com a mensagem do campo
+async def watch_loop(app: web.Application) -> None:
+    """Modo --watch: recarrega sozinho quando algum arquivo de conteúdo muda."""
+    world = app[WORLD]
+    state = watched_files_state()
+    while True:
+        await asyncio.sleep(1.5)
+        current = watched_files_state()
+        if current == state:
+            continue
+        state = current
+        ok, text = world.reload_from_disk()
+        if ok:
+            log.info("conteúdo recarregado: %s", text)
+            world._system("O conteúdo do jogo foi atualizado.")
+        else:
+            log.error("conteúdo com erro (nada mudou): %s", text)
+        for p in world.players.values():  # a equipe online fica sabendo, inclusive dos erros
+            if p.staff_role:
+                world._private(p, ("Conteúdo recarregado: " if ok else "Erro no conteúdo (nada mudou): ") + text)
+
+
+def create_app(db_path: str | Path = C.DB_PATH, maps_dir: str | Path = C.MAPS_DIR,
+               watch: bool = False) -> web.Application:
+    content, maps = load_game_data(C.DATA_DIR, maps_dir)  # erro no YAML ou mapa derruba aqui, com a mensagem
     app = web.Application()
     app[DB] = Database(db_path)
-    maps = load_maps(maps_dir, content.enemy_by_mark)  # erro num mapa ou portal também derruba aqui
     app[WORLD] = World(maps, app[DB], content, start_map=C.START_MAP)
+    app[WORLD].reload_source = lambda: load_game_data(C.DATA_DIR, maps_dir)
     app[SESSIONS] = {}
 
     app.router.add_get("/", index)
@@ -159,6 +181,9 @@ def create_app(db_path: str | Path = C.DB_PATH, maps_dir: str | Path = C.MAPS_DI
         app[LOOP_TASK] = asyncio.create_task(game_loop(app))
         if str(db_path) != ":memory:":
             app[BACKUP_TASK] = asyncio.create_task(backup_loop(app))
+        if watch:
+            app[WATCH_TASK] = asyncio.create_task(watch_loop(app))
+            log.info("modo --watch: recarrego o conteúdo sempre que um arquivo de data/ mudar")
 
     async def on_shutdown(app: web.Application) -> None:
         # Fechar as conexões faz cada ws_handler deslogar (e salvar) seu jogador
@@ -166,7 +191,7 @@ def create_app(db_path: str | Path = C.DB_PATH, maps_dir: str | Path = C.MAPS_DI
             await ws.close()
 
     async def on_cleanup(app: web.Application) -> None:
-        for key in (LOOP_TASK, BACKUP_TASK):
+        for key in (LOOP_TASK, BACKUP_TASK, WATCH_TASK):
             task = app.get(key)
             if task is not None:
                 task.cancel()
@@ -182,10 +207,16 @@ def create_app(db_path: str | Path = C.DB_PATH, maps_dir: str | Path = C.MAPS_DI
 
 
 def main() -> None:
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Servidor do jogo.")
+    parser.add_argument("--watch", action="store_true",
+                        help="recarrega o conteúdo sozinho quando um arquivo de data/ muda (para desenvolvimento)")
+    args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     host = os.environ.get("HOST", "127.0.0.1")
     port = int(os.environ.get("PORT", "8080"))
-    web.run_app(create_app(), host=host, port=port)
+    web.run_app(create_app(watch=args.watch), host=host, port=port)
 
 
 if __name__ == "__main__":

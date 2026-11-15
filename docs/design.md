@@ -174,6 +174,16 @@ todas as ações; `./admin.sh` para o primeiro administrador e emergências.
 Ficou para depois: ban por IP/conta (hoje é por personagem, e ainda não existe
 "conta" separada de personagem) e eventos iniciados pela equipe (ex.: invasão).
 
+**Base 11 (concluída):** recarregar conteúdo e mapas com o jogo rodando (botão na
+janela de administração e `./run.sh --watch`), sem derrubar ninguém e sem aplicar
+conteúdo inválido; mapas editáveis no Tiled (`.tmj`), com conversão exata dos mapas
+em texto (`./mapas.sh para-tiled`).
+
+**Roteiro original concluído (bases 1–11).** Próximos passos naturais, fora do
+roteiro: liberações (estágios 1 e 2), NPCs com diálogo/lojas/missões, trocar os
+comandos de chat restantes por interface (seção 10), inimigos para níveis altos,
+contas separadas de personagens, hospedagem na VPS (HTTPS) e arte/som.
+
 Ainda a decidir sobre a hierarquia (seção 6): limite de recusas de desafio de
 cargo (hoje pode recusar sempre), cargo vago por inatividade do ocupante, e se
 alguns cargos devem ser por torneio ou pontos de contribuição.

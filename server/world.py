@@ -20,7 +20,7 @@ from itertools import chain
 from typing import Any, Iterator
 
 from . import config as C
-from .content import EQUIP_SLOTS, ClassDef, Content, EffectApplication, ItemDef, SkillDef
+from .content import EQUIP_SLOTS, ClassDef, Content, ContentError, EffectApplication, ItemDef, SkillDef
 from .admin import AdminSystem
 from .db import Database
 from .duels import DuelSystem
@@ -94,6 +94,8 @@ class World:
         self.db = db
         self.content = content
         self.clock = clock or time.time  # horário real (bans e silêncios); nos testes dá para trocar
+        # de onde vem o conteúdo numa recarga (main.py aponta para data/; os testes trocam)
+        self.reload_source: Callable[[], tuple[Content, dict[str, TileMap]]] | None = None
         self.rng = rng or random.Random()
         self.time = 0.0
         self._next_id = 1
@@ -108,16 +110,88 @@ class World:
         self.orgs = OrgSystem(self)
         self.admin = AdminSystem(self)
 
-        by_mark = content.enemy_by_mark
-        for map_id, tilemap in maps.items():
-            for mark, x, y in tilemap.enemy_spawns:
-                if mark not in by_mark:
-                    raise ValueError(f"Mapa {tilemap.name!r}: nenhum inimigo com mark {mark!r} em enemies.yaml")
-                defn = by_mark[mark]
+        self._spawn_enemies()
+
+    def _spawn_enemies(self) -> None:
+        """Cria os inimigos de todos os mapas, com vida cheia, nos pontos de nascimento."""
+        self.enemies.clear()
+        by_mark = self.content.enemy_by_mark
+        for map_id, tilemap in self.maps.items():
+            # mapas em texto marcam com a letra do inimigo; mapas do Tiled, com o id
+            for ref, x, y in tilemap.enemy_spawns:
+                defn = by_mark.get(ref) or self.content.enemies.get(ref)
+                if defn is None:
+                    raise ValueError(f"Mapa {tilemap.name!r}: nenhum inimigo {ref!r} em enemies.yaml")
                 enemy = Enemy(id=self._new_id(), name=defn.name, x=x, y=y, defn=defn, home_x=x, home_y=y,
                               map_id=map_id)
                 enemy.hp = enemy.max_hp
                 self.enemies[enemy.id] = enemy
+
+    # ================================================================ recarga de conteúdo
+
+    def reload_from_disk(self) -> tuple[bool, str]:
+        """Lê de novo conteúdo e mapas. Com erro, nada muda e devolve a mensagem do validador."""
+        if self.reload_source is None:
+            return False, "Este servidor não sabe de onde recarregar."
+        try:
+            content, maps = self.reload_source()
+        except (ContentError, ValueError, OSError) as exc:
+            return False, str(exc)
+        notes = self.reload(content, maps)
+        summary = (f"{len(content.skills)} skills, {len(content.items)} itens, {len(content.enemies)} inimigos, "
+                   f"{len(content.classes)} classes, {len(maps)} mapas.")
+        return True, summary + (" Ajustes: " + "; ".join(notes) if notes else "")
+
+    def reload(self, content: Content, maps: dict[str, TileMap]) -> list[str]:
+        """Troca conteúdo e mapas com o jogo rodando. Devolve os ajustes que precisou fazer.
+
+        Inimigos renascem com os valores novos e projéteis em voo somem. Para quem
+        está online: classe/skills, inventário, efeitos e recargas são relidos; o que
+        não existe mais é descartado; quem ficou num mapa removido ou dentro de uma
+        parede vai para o ponto de nascimento.
+        """
+        notes: list[str] = []
+        self.content = content
+        self.maps = maps
+        if self.start_map_id not in maps:
+            self.start_map_id = next(m for m in (C.START_MAP, next(iter(maps))) if m in maps)
+        self.orgs.content = content
+        self.admin.roles = content.roles
+        self._spawn_enemies()
+        self.projectiles.clear()
+        for drop in list(self.drops.values()):
+            if drop.map_id not in maps or (drop.item and drop.item.id not in content.items):
+                del self.drops[drop.id]
+            elif drop.item:
+                drop.item = content.items[drop.item.id]
+        notes += self.orgs.revalidate()
+
+        # primeiro as definições novas, depois os mapas (o cliente redesenha com elas)
+        self._outbox.append((None, {"t": "content", **content.client_payload()}))
+        for p in list(self.players.values()):
+            p.staff_role = content.roles.get(p.staff_role.id) if p.staff_role else None
+            p.inventory = Inventory.from_dict(p.inventory.to_dict(), content.items)
+            old_class = p.class_id
+            self._set_class(p, self._resolve_class({"race": p.race_id, "class": p.class_id}))
+            if p.class_id != old_class:
+                notes.append(f"{p.name}: classe {old_class} não existe mais, foi para {p.class_id}")
+            for effect_id, active in list(p.effects.items()):
+                if effect_id in content.effects:
+                    active.defn = content.effects[effect_id]
+                else:
+                    del p.effects[effect_id]
+            p.cooldowns = {k: v for k, v in p.cooldowns.items() if k in content.skills}
+            p.item_cooldowns = {k: v for k, v in p.item_cooldowns.items() if k in content.items}
+            p.actions = [a for a in p.actions if a[0] != "skill" or a[1] in p.skills]
+            tilemap = maps.get(p.map_id)
+            map_id, x, y = p.map_id, p.x, p.y
+            if tilemap is None:
+                notes.append(f"{p.name}: o mapa {p.map_id} não existe mais")
+                map_id, (x, y) = self.start_map_id, self.map.spawn
+            elif tilemap.box_blocked(x, y, p.half, _player_blocks):
+                x, y = tilemap.spawn
+            self.teleport(p, map_id, x, y)  # manda o mapa (talvez alterado) para o cliente
+        return notes
 
     @property
     def map(self) -> TileMap:
