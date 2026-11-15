@@ -14,7 +14,7 @@ from typing import Any
 
 import yaml
 
-from .rules import ACTIONS, EVENT_FIELDS, KILLER_KINDS, VICTIM_KINDS, ZONES, Rule
+from .rules import ACTIONS, DUEL_END_REASONS, DUEL_RESULTS, EVENT_FIELDS, KILLER_KINDS, VICTIM_KINDS, ZONES, Rule
 from .stats import STAT_NAMES
 from .tilemap import RESERVED_MARKS
 
@@ -480,8 +480,9 @@ class _RuleRefs:
     def allowed(self, field: str) -> tuple[str, ...] | type | None:
         """Valores válidos para um campo de condição (ou o tipo esperado)."""
         table: dict[str, Any] = {
-            "race": self.races, "killer_race": self.races, "victim_race": self.races,
+            "race": self.races, "killer_race": self.races, "victim_race": self.races, "opponent_race": self.races,
             "class": self.classes, "killer_class": self.classes, "victim_class": self.classes,
+            "opponent_class": self.classes, "result": DUEL_RESULTS, "reason": DUEL_END_REASONS,
             "killer_enemy": self.enemies, "victim_enemy": self.enemies,
             "skill": self.skills, "effect": self.effects, "effects": self.effects,
             "zone": ZONES, "killer": KILLER_KINDS, "victim": VICTIM_KINDS, "stat": STAT_NAMES,

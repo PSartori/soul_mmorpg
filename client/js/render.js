@@ -97,6 +97,25 @@ export class Renderer {
     map.rows.forEach((row, ty) => {
       [...row].forEach((ch, tx) => drawTile(g, ch, tx * ts, ty * ts, ts, tileNoise(tx, ty)));
     });
+    // Áreas PvP: tom avermelhado, borda tracejada e o nome no canto
+    for (const zone of map.zones ?? []) {
+      if (zone.type !== "pvp") continue;
+      const [x0, y0, x1, y1] = zone.area;
+      const x = x0 * ts, y = y0 * ts, w = (x1 - x0 + 1) * ts, h = (y1 - y0 + 1) * ts;
+      g.fillStyle = "rgba(200, 50, 50, 0.13)";
+      g.fillRect(x, y, w, h);
+      g.strokeStyle = "rgba(255, 110, 110, 0.75)";
+      g.lineWidth = 2;
+      g.setLineDash([8, 6]);
+      g.strokeRect(x + 1, y + 1, w - 2, h - 2);
+      g.setLineDash([]);
+      g.font = "bold 12px system-ui, sans-serif";
+      g.textAlign = "left";
+      g.fillStyle = "rgba(0,0,0,0.6)";
+      g.fillText(`PvP · ${zone.name}`, x + 7, y + 17);
+      g.fillStyle = "#ffb0b0";
+      g.fillText(`PvP · ${zone.name}`, x + 6, y + 16);
+    }
     this.mapLayer = layer;
   }
 
@@ -159,6 +178,13 @@ export class Renderer {
       ctx.strokeStyle = "rgba(130,200,255,0.85)";
       ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(x, y, 17 + Math.sin(now / 180) * 3, 0, TAU); ctx.stroke();
+    }
+
+    // em duelo: anel vermelho
+    if (e.du) {
+      ctx.strokeStyle = "rgba(255, 80, 80, 0.9)";
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(x, y, 20, 0, TAU); ctx.stroke();
     }
 
     // efeitos de status: um anel tracejado girando por efeito, na cor dele

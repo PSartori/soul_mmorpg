@@ -37,6 +37,9 @@ por cima de `var/game.db`.
 | M | meditar (treina Espírito, gera cansaço) |
 | R | descansar (recupera cansaço e vida) |
 | Enter | chat (`/who` lista quem está online) |
+| `/duelo Nome` | desafia alguém por perto para um duelo |
+| `/aceitar`, `/recusar` | responde a um desafio |
+| `/render` | desiste do duelo |
 
 ## Conteúdo (data/)
 
@@ -53,6 +56,7 @@ Cada arquivo tem no topo a explicação de todos os campos.
 | `data/rules.yaml` | regras "quando X, se Y, faça Z": morte, abates, subida de nível (veja abaixo) |
 | `data/player.yaml` | raça padrão para personagens antigos |
 | `data/maps/inicio.txt` | mapa em texto (legenda no topo do arquivo) |
+| `data/maps/inicio.yaml` | zonas do mapa: zona padrão e áreas PvE/PvP |
 
 ### Regras (data/rules.yaml)
 
@@ -69,7 +73,7 @@ humano_vira_espectral:
 ```
 
 - **Eventos:** `death` (com quem matou, raça/classe dele, skill, efeito, efeitos
-  ativos, zona), `kill` e `level_up`.
+  ativos, zona), `kill`, `level_up` e `duel_end` (vitória/derrota/empate e motivo).
 - **Ações:** mensagens, perder/ganhar XP, trocar raça ou classe, marcas de
   progressão (`set_flag`) e aplicar efeitos.
 - **Condições especiais:** `chance`, `flags` e `not_flags`.
@@ -97,10 +101,11 @@ server/              Python (aiohttp)
   world.py           simulação: login, movimento, skills, efeitos, IA, execução das regras
   content.py         carrega e valida data/*.yaml
   rules.py           vocabulário das regras (eventos, campos, ações) e comparação
+  duels.py           desafios e duelos
   saves.py           versão do formato de save e migrações (sem wipes!)
   entities.py        Player, Enemy, Projectile, efeitos ativos e atributos derivados
   stats.py           atributos treináveis (nível + XP)
-  tilemap.py         mapa ASCII e colisão de caixas com tiles
+  tilemap.py         mapa ASCII, zonas e colisão de caixas com tiles
   db.py              SQLite: personagens e senhas (PBKDF2)
   config.py          números de regra do motor (o resto está em data/)
 client/              JavaScript puro, sem build
@@ -154,14 +159,21 @@ Servidor → cliente: `welcome {id, map, skills, effects, enemies, stat_labels, 
   (não é pathfinding: labirintos ainda os prendem).
 - **Meditação** gera cansaço; ao chegar a 100 para sozinha, e só volta com cansaço
   abaixo de 75, o que obriga a descansar.
-- **Zona segura** (piso de pedra): sem PvP e inimigos não entram.
+- **Zonas** (`data/maps/<mapa>.yaml`):
+  - **segura** (piso de pedra `:`): ninguém fere jogadores e inimigos não entram;
+  - **PvE** (padrão): inimigos atacam; jogadores não se atacam;
+  - **PvP** (áreas marcadas, com borda vermelha no mapa): vale tudo entre jogadores.
+- **Duelos**: combinados com `/duelo` e `/aceitar`, valem em qualquer zona (inclusive
+  na segura) depois de 3 s de contagem. Só os dois se ferem e ninguém de fora
+  interfere. **Não matam**: o perdedor fica com 1 de vida. Também terminam por
+  desistência, saída do jogo, distância (15 tiles) ou tempo (3 min, empate). Ao
+  fim, os efeitos dos dois são limpos e o evento `duel_end` das regras dispara.
 - **Morte**: renasce no ponto inicial depois de 3 s.
 - **Salvamento**: ao sair e automaticamente a cada 60 s.
 
 ## Pendências conhecidas
 
 - Ainda não há como trocar de raça/classe por escolha (NPC, item); hoje só por regras.
-- Zonas de PvP e duelos ainda não existem: fora da zona segura vale PvP, e `duel` é sempre falso.
 - Outros jogadores são desenhados com suavização simples, não interpolação com atraso fixo.
 - Login sem HTTPS: na VPS, colocar atrás de um proxy com TLS (ex.: Caddy) antes de abrir ao público.
 - O hash de senha roda no loop do servidor (~0,1 s por login); ok para poucos jogadores.

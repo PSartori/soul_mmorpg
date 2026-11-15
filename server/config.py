@@ -57,5 +57,12 @@ VITALITY_XP_PER_DAMAGE = 0.25
 ENEMY_HP_REGEN = 2.0  # por segundo, quando sem alvo
 ENEMY_DETOUR_SECONDS = 0.5  # tempo contornando um obstáculo antes de tentar ir reto de novo
 
+# --- Duelos (server/duels.py) -------------------------------------------------
+DUEL_CHALLENGE_RANGE = 256.0  # distância máxima para desafiar/aceitar (8 tiles)
+DUEL_CHALLENGE_SECONDS = 30.0  # o desafio expira
+DUEL_COUNTDOWN = 3.0  # segundos entre aceitar e começar
+DUEL_MAX_SECONDS = 180.0  # depois disso, empate
+DUEL_LEASH = 480.0  # se os dois se afastarem mais que isso, empate (15 tiles)
+
 # --- Chat -------------------------------------------------------------------
 CHAT_MAX_LEN = 200

@@ -20,6 +20,8 @@ EVENT_FIELDS: dict[str, tuple[str, ...]] = {
     "kill": ("race", "class", "victim", "victim_enemy", "victim_race", "victim_class", "skill", "zone"),
     # um atributo do personagem subiu de nível
     "level_up": ("race", "class", "stat", "level"),
+    # um duelo do personagem terminou (dispara para os dois)
+    "duel_end": ("race", "class", "result", "reason", "opponent_race", "opponent_class"),
 }
 
 # Condições que não vêm do contexto do evento
@@ -30,7 +32,11 @@ ACTIONS = ("message", "broadcast", "lose_xp", "gain_xp", "set_class", "set_race"
 
 KILLER_KINDS = ("player", "enemy", "none")  # "none": morreu sem autor (ex.: veneno de quem já saiu)
 VICTIM_KINDS = ("player", "enemy")
-ZONES = ("safe", "open")
+ZONES = ("safe", "pve", "pvp")
+DUEL_RESULTS = ("win", "lose", "draw")
+# defeat: o perdedor chegou a 1 de vida | forfeit: alguém se rendeu | logout: alguém saiu
+# distance: se afastaram demais | timeout: passou do tempo | death: alguém morreu (ex.: para um inimigo)
+DUEL_END_REASONS = ("defeat", "forfeit", "logout", "distance", "timeout", "death")
 
 
 @dataclass(frozen=True)

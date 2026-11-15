@@ -1,0 +1,22 @@
+# Zonas do mapa inicio.txt.
+#
+# Tipos:
+#   safe  zona segura: ninguém ataca jogadores e inimigos não entram.
+#         Vem dos tiles ':' do mapa (não dá para declarar aqui).
+#   pve   inimigos atacam jogadores; jogadores não se atacam (só em duelo).
+#   pvp   vale tudo: jogadores podem se atacar livremente.
+#
+#   default_zone  zona de todo lugar que não é ':' nem está numa área abaixo
+#   zones         áreas retangulares, em tiles: area: [x0, y0, x1, y1] (cantos inclusive;
+#                 coluna x, linha y, contando do 0 no canto superior esquerdo do .txt,
+#                 sem contar as linhas de comentário). A primeira área que contém o ponto vence.
+#
+# Duelos (/duelo Nome) valem em qualquer zona, inclusive na segura.
+
+default_zone: { type: pve, name: Campos }
+
+zones:
+  arena:
+    name: Ermo do Sudeste
+    type: pvp
+    area: [25, 17, 38, 28]

@@ -189,7 +189,8 @@ function setBar(id, value, max, label) {
 
 let lastStatsKey = "";
 let lastHotbarKey = "";
-const STATE_LABELS = { idle: "", walk: "", meditate: " · meditando", rest: " · descansando", dead: " · derrotado" };
+const ZONE_LABELS = { safe: "Zona segura", pve: "Zona PvE", pvp: "Zona PvP" };
+const STATE_LABELS ={ idle: "", walk: "", meditate: " · meditando", rest: " · descansando", dead: " · derrotado" };
 
 function updateHud() {
   const you = state.you;
@@ -199,6 +200,21 @@ function updateHud() {
   const raceName = state.defs.races[you.race]?.name ?? "";
   const className = state.defs.classes[you.cls]?.name ?? "";
   $("me-class").textContent = [raceName, className].filter(Boolean).join(" · ");
+
+  const zone = you.zone ?? { t: "pve", n: "" };
+  const zoneEl = $("me-zone");
+  zoneEl.className = zone.t;
+  zoneEl.textContent = `${ZONE_LABELS[zone.t] ?? zone.t}${zone.n ? ` — ${zone.n}` : ""}`;
+
+  const duelEl = $("me-duel");
+  duelEl.hidden = !you.duel;
+  if (you.duel) {
+    const { with: rival, starts_in: startsIn, left } = you.duel;
+    const clock = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`;
+    duelEl.textContent = startsIn > 0
+      ? `Duelo contra ${rival} começa em ${Math.ceil(startsIn)}…`
+      : `Duelo contra ${rival} · ${clock}`;
+  }
   setBar("bar-hp", you.hp, you.mhp, "Vida");
   setBar("bar-energy", you.en, you.men, "Energia");
   setBar("bar-fatigue", you.fat, you.mfat, "Cansaço");

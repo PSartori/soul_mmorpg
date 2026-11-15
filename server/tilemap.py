@@ -1,11 +1,18 @@
-"""Mapa de tiles carregado de um arquivo de texto (ASCII) e colisão com caixas."""
+"""Mapa de tiles carregado de um arquivo de texto (ASCII), zonas e colisão com caixas.
+
+Cada mapa é um par de arquivos:
+  data/maps/<nome>.txt   o terreno (legenda no topo do arquivo)
+  data/maps/<nome>.yaml  as zonas (opcional): zona padrão e áreas PvE/PvP
+"""
 from __future__ import annotations
 
 import math
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
+
+import yaml
 
 from . import config as C
 
@@ -26,7 +33,30 @@ SHOT_BLOCKERS = frozenset({WALL, TREE})  # projéteis passam por cima da água
 
 EPS = 1e-3
 
+# Tipos de zona. "safe" vem dos tiles ':' do mapa (é o que impede inimigos de entrar);
+# as áreas do arquivo .yaml só podem ser pve ou pvp.
+ZONE_TYPES = ("safe", "pve", "pvp")
+AREA_ZONE_TYPES = ("pve", "pvp")
+
 Blocker = Callable[[str], bool]  # recebe o caractere do tile e diz se bloqueia
+
+
+@dataclass(frozen=True)
+class Zone:
+    id: str
+    name: str
+    type: str  # safe | pve | pvp
+    area: tuple[int, int, int, int] = (0, 0, -1, -1)  # x0, y0, x1, y1 em tiles (inclusive)
+
+    def contains_tile(self, tx: int, ty: int) -> bool:
+        x0, y0, x1, y1 = self.area
+        return x0 <= tx <= x1 and y0 <= ty <= y1
+
+    def client_info(self) -> dict:
+        return {"id": self.id, "name": self.name, "type": self.type, "area": list(self.area)}
+
+
+SAFE_TILE_ZONE = Zone(id="segura", name="", type="safe")
 
 
 @dataclass
@@ -36,6 +66,8 @@ class TileMap:
     tile_size: int
     spawn: tuple[float, float]
     enemy_spawns: list[tuple[str, float, float]] = field(default_factory=list)  # (mark, x, y)
+    zones: list[Zone] = field(default_factory=list)  # áreas do .yaml; a primeira que contém vence
+    default_zone: Zone = Zone(id="", name="", type="pve")  # onde não há tile ':' nem área
 
     @property
     def width(self) -> int:
@@ -54,6 +86,17 @@ class TileMap:
     def tile_at_px(self, x: float, y: float) -> str:
         ts = self.tile_size
         return self.tile_at(math.floor(x / ts), math.floor(y / ts))
+
+    def zone_at(self, x: float, y: float) -> Zone:
+        """Zona num ponto: tile ':' é sempre segura; senão a primeira área que contém; senão a padrão."""
+        ts = self.tile_size
+        tx, ty = math.floor(x / ts), math.floor(y / ts)
+        if self.tile_at(tx, ty) == SAFE:
+            return SAFE_TILE_ZONE
+        for zone in self.zones:
+            if zone.contains_tile(tx, ty):
+                return zone
+        return self.default_zone
 
     def is_safe(self, x: float, y: float) -> bool:
         return self.tile_at_px(x, y) == SAFE
@@ -110,10 +153,17 @@ class TileMap:
         return new
 
 
-def parse_map(text: str, name: str, spawn_marks: Iterable[str] = (), tile_size: int = C.TILE_SIZE) -> TileMap:
+def parse_map(
+    text: str,
+    name: str,
+    spawn_marks: Iterable[str] = (),
+    tile_size: int = C.TILE_SIZE,
+    zones: dict | None = None,
+) -> TileMap:
     """Converte o texto do mapa. Linhas vazias e linhas começando com ';' são ignoradas.
 
     spawn_marks: caracteres que marcam nascimento de inimigos (vêm de data/enemies.yaml).
+    zones: conteúdo do arquivo de zonas (.yaml), já lido; None = tudo PvE.
     """
     marks = set(spawn_marks)
     lines = [line.rstrip("\r\n") for line in text.splitlines()]
@@ -142,9 +192,62 @@ def parse_map(text: str, name: str, spawn_marks: Iterable[str] = (), tile_size: 
 
     if spawn is None:
         raise ValueError(f"Mapa {name!r} não tem ponto de nascimento ({SPAWN_MARK}).")
-    return TileMap(name=name, rows=rows, tile_size=tile_size, spawn=spawn, enemy_spawns=enemy_spawns)
+    tilemap = TileMap(name=name, rows=rows, tile_size=tile_size, spawn=spawn, enemy_spawns=enemy_spawns)
+    if zones:
+        tilemap.default_zone, tilemap.zones = _parse_zones(zones, f"{name}.yaml", tilemap.width, tilemap.height)
+    return tilemap
+
+
+def _parse_zones(raw: Any, where: str, width: int, height: int) -> tuple[Zone, list[Zone]]:
+    """Valida o arquivo de zonas. Formato no topo de data/maps/inicio.yaml."""
+
+    def zone_type(value: Any, allowed: tuple[str, ...], at: str) -> str:
+        if value not in allowed:
+            raise ValueError(f"{at}: type {value!r} inválido (válidos: {', '.join(allowed)})")
+        return value
+
+    if not isinstance(raw, dict):
+        raise ValueError(f"{where}: o arquivo deve ser um mapa com default_zone e zones")
+    unknown = set(raw) - {"default_zone", "zones"}
+    if unknown:
+        raise ValueError(f"{where}: campo(s) desconhecido(s): {', '.join(sorted(map(str, unknown)))}")
+
+    default_raw = raw.get("default_zone") or {}
+    if not isinstance(default_raw, dict) or set(default_raw) - {"type", "name"}:
+        raise ValueError(f"{where} > default_zone: use {{ type: pve|pvp, name: texto }}")
+    default = Zone(
+        id="",
+        name=str(default_raw.get("name", "")),
+        type=zone_type(default_raw.get("type", "pve"), AREA_ZONE_TYPES, f"{where} > default_zone"),
+    )
+
+    zones = []
+    for zid, zraw in (raw.get("zones") or {}).items():
+        at = f"{where} > zones > {zid}"
+        if not isinstance(zraw, dict) or set(zraw) - {"name", "type", "area"} or "area" not in zraw:
+            raise ValueError(f"{at}: use {{ name: texto, type: pve|pvp, area: [x0, y0, x1, y1] }}")
+        area = zraw["area"]
+        if (
+            not isinstance(area, list)
+            or len(area) != 4
+            or not all(isinstance(v, int) and not isinstance(v, bool) for v in area)
+        ):
+            raise ValueError(f"{at}: area deve ser [x0, y0, x1, y1] em tiles (números inteiros)")
+        x0, y0, x1, y1 = area
+        if not (0 <= x0 <= x1 < width and 0 <= y0 <= y1 < height):
+            raise ValueError(f"{at}: area {area} fora do mapa ({width}×{height} tiles) ou invertida")
+        zones.append(Zone(
+            id=str(zid),
+            name=str(zraw.get("name", zid)),
+            type=zone_type(zraw.get("type"), AREA_ZONE_TYPES, at),
+            area=(x0, y0, x1, y1),
+        ))
+    return default, zones
 
 
 def load_map(path: str | Path, spawn_marks: Iterable[str] = (), tile_size: int = C.TILE_SIZE) -> TileMap:
+    """Lê <nome>.txt e, se existir, <nome>.yaml com as zonas."""
     path = Path(path)
-    return parse_map(path.read_text(encoding="utf-8"), path.stem, spawn_marks, tile_size)
+    zones_path = path.with_suffix(".yaml")
+    zones = yaml.safe_load(zones_path.read_text(encoding="utf-8")) if zones_path.exists() else None
+    return parse_map(path.read_text(encoding="utf-8"), path.stem, spawn_marks, tile_size, zones)

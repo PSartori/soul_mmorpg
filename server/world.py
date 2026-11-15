@@ -20,6 +20,7 @@ from typing import Any, Iterator
 from . import config as C
 from .content import ClassDef, Content, EffectApplication, SkillDef
 from .db import Database
+from .duels import DuelSystem
 from .entities import DIRECTIONS, MOVE_KEYS, ActiveEffect, Enemy, Entity, MoveKeys, Player, Projectile
 from .rules import rule_matches
 from .saves import SaveVersionError, migrate
@@ -82,6 +83,7 @@ class World:
         self._fx: list[dict] = []  # efeitos visuais deste tick (dano, golpes, level up...)
         self._outbox: list[Outgoing] = []
         self._save_timer = C.AUTOSAVE_SECONDS
+        self.duels = DuelSystem(self)
 
         by_mark = content.enemy_by_mark
         for mark, x, y in tilemap.enemy_spawns:
@@ -171,8 +173,10 @@ class World:
         p.energy = min(p.energy, p.max_energy)
 
     def logout(self, player: Player) -> None:
-        if self.players.pop(player.id, None) is None:
+        if player.id not in self.players:
             return
+        self.duels.on_logout(player)  # antes de sair da lista: o duelo termina com ele presente
+        self.players.pop(player.id, None)
         self._save(player)
         self._system(f"{player.name} saiu do jogo.")
 
@@ -182,7 +186,12 @@ class World:
             "id": player.id,
             "tick_rate": C.TICK_RATE,
             "half": player.half,
-            "map": {"name": self.map.name, "tile_size": self.map.tile_size, "rows": self.map.rows},
+            "map": {
+                "name": self.map.name,
+                "tile_size": self.map.tile_size,
+                "rows": self.map.rows,
+                "zones": [z.client_info() for z in self.map.zones],
+            },
             "stat_labels": STAT_LABELS,
             **self.content.client_payload(),
         }
@@ -236,12 +245,25 @@ class World:
 
     def _chat(self, player: Player, text: str) -> None:
         if text.startswith("/"):
-            command = text.split()[0].lower()
+            command, *args = text.split()
+            command = command.lower()
             if command == "/who":
                 names = ", ".join(sorted(p.name for p in self.players.values()))
                 self._private(player, f"Online ({len(self.players)}): {names}")
+            elif command == "/duelo":
+                if args:
+                    self.duels.challenge(player, args[0])
+                else:
+                    self._private(player, "Use: /duelo Nome")
+            elif command == "/aceitar":
+                self.duels.accept(player)
+            elif command == "/recusar":
+                self.duels.decline(player)
+            elif command == "/render":
+                self.duels.forfeit(player)
             else:
-                self._private(player, f"Comando desconhecido: {command}. Disponível: /who")
+                self._private(player, f"Comando desconhecido: {command}. "
+                                      "Disponíveis: /who, /duelo Nome, /aceitar, /recusar, /render")
             return
         self._outbox.append((None, {"t": "chat", "from": player.name, "text": text}))
 
@@ -251,6 +273,7 @@ class World:
         self.time += dt
         for player in list(self.players.values()):
             self._update_player(player, dt)
+        self.duels.update()
         for enemy in list(self.enemies.values()):
             self._update_enemy(enemy, dt)
         self._update_projectiles(dt)
@@ -263,13 +286,20 @@ class World:
         self._emit_snapshots()
 
     def _emit_snapshots(self) -> None:
-        ents = [e.snapshot() for e in chain(self.players.values(), self.enemies.values())]
+        ents = []
+        for e in chain(self.players.values(), self.enemies.values()):
+            snap = e.snapshot()
+            if isinstance(e, Player) and (opponent := self.duels.opponent_id(e)) is not None:
+                snap["du"] = opponent  # em duelo com
+            ents.append(snap)
         projs = [p.snapshot() for p in self.projectiles.values()]
         fx, self._fx = self._fx, []
         for player in self.players.values():
-            self._outbox.append(
-                (player.id, {"t": "snap", "ents": ents, "projs": projs, "fx": fx, "you": player.private_snapshot()})
-            )
+            you = player.private_snapshot()
+            zone = self.map.zone_at(player.x, player.y)
+            you["zone"] = {"t": zone.type, "n": zone.name}
+            you["duel"] = self.duels.client_info(player)
+            self._outbox.append((player.id, {"t": "snap", "ents": ents, "projs": projs, "fx": fx, "you": you}))
 
     # ================================================================ jogadores
 
@@ -496,15 +526,26 @@ class World:
                 yield e
 
     def _can_hit(self, attacker: Entity, target: Entity) -> bool:
+        """Quem pode ferir quem.
+
+        - jogador × jogador: em duelo, só entre os dois (em qualquer zona); fora de
+          duelo, só se os dois estiverem numa zona PvP;
+        - inimigo × jogador: em qualquer lugar menos na zona segura;
+        - jogador × inimigo: sempre; inimigo × inimigo: nunca.
+        """
         if not target.alive or attacker is target:
             return False
         if isinstance(attacker, Enemy) and isinstance(target, Enemy):
             return False
+        if isinstance(attacker, Player) and isinstance(target, Player):
+            if self.duels.opponent_id(attacker) == target.id:
+                return self.duels.fighting(attacker, target)  # não vale durante a contagem
+            if self.duels.duel_of(attacker) or self.duels.duel_of(target):
+                return False  # ninguém de fora entra (nem sai) de um duelo
+            return (self.map.zone_at(attacker.x, attacker.y).type == "pvp"
+                    and self.map.zone_at(target.x, target.y).type == "pvp")
         if isinstance(target, Player):
-            if self.map.is_safe(target.x, target.y):
-                return False
-            if isinstance(attacker, Player) and self.map.is_safe(attacker.x, attacker.y):
-                return False
+            return not self.map.is_safe(target.x, target.y)
         return True
 
     def _cast_melee(self, caster: Entity, skill: SkillDef) -> None:
@@ -601,8 +642,18 @@ class World:
         effect_id: str | None = None,
     ) -> None:
         amount = max(1, round(amount * target.modifier("damage_taken")))
+        duel_defeat = (
+            isinstance(target, Player)
+            and isinstance(source, Player)
+            and self.duels.fighting(target, source)
+            and target.hp - amount < 1
+        )
+        if duel_defeat:  # duelo não mata: fica com 1 de vida e perde
+            amount = max(0, math.ceil(target.hp) - 1)
         lost = min(amount, max(0.0, target.hp))  # vida que realmente saiu (golpe exagerado não treina mais)
         target.hp -= amount
+        if duel_defeat:
+            target.hp = max(1.0, target.hp)
         self._fx.append({"k": "dmg", "id": target.id, "x": round(target.x), "y": round(target.y), "v": amount})
         if isinstance(target, Player):
             if target.state in ("meditate", "rest"):
@@ -610,14 +661,17 @@ class World:
             self._train(target, "vitality", lost * C.VITALITY_XP_PER_DAMAGE)
         elif isinstance(target, Enemy) and isinstance(source, Player):
             target.target_id = source.id
-        if target.hp <= 0:
+        if duel_defeat:
+            self.duels.finish(self.duels.duel_of(target), loser=target, reason="defeat")  # type: ignore[arg-type]
+        elif target.hp <= 0:
             self._kill(target, source, skill, effect_id)
 
     def _kill(
         self, target: Entity, killer: Entity | None, skill: SkillDef | None, effect_id: str | None = None
     ) -> None:
-        zone = "safe" if self.map.is_safe(target.x, target.y) else "open"
+        zone = self.map.zone_at(target.x, target.y).type
         effects_at_death = sorted(target.effects)
+        was_dueling = isinstance(target, Player) and self.duels.on_death(target)
         target.hp = 0
         target.state = "dead"
         target.effects.clear()
@@ -641,7 +695,7 @@ class World:
                 "effect": effect_id,
                 "effects": effects_at_death,
                 "zone": zone,
-                "duel": False,  # duelos ainda não existem
+                "duel": was_dueling,  # estava num duelo (que a morte encerrou)
             })
         elif isinstance(target, Enemy):
             target.dead_timer = target.defn.respawn
@@ -688,9 +742,15 @@ class World:
                         e.hp += healed
                         if healed > 0:
                             self._fx.append({"k": "heal", "id": e.id, "x": round(e.x), "y": round(e.y), "v": round(healed)})
-                    # Na zona segura, efeitos não causam dano em jogadores
-                    if d.tick_damage and not (isinstance(e, Player) and self.map.is_safe(e.x, e.y)):
-                        self._damage(e, d.tick_damage, self._entity(active.source_id), effect_id=d.id)
+                    # Na zona segura, efeitos não ferem jogadores (a não ser vindos do oponente de duelo)
+                    source = self._entity(active.source_id)
+                    protected = (
+                        isinstance(e, Player)
+                        and self.map.is_safe(e.x, e.y)
+                        and not (isinstance(source, Player) and self.duels.fighting(e, source))
+                    )
+                    if d.tick_damage and not protected:
+                        self._damage(e, d.tick_damage, source, effect_id=d.id)
                         if not e.alive:
                             return
             if active.remaining <= 1e-9:

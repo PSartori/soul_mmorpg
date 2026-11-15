@@ -34,10 +34,15 @@ TEST_MAP = """
 #....E...#
 ##########
 """
+# Colunas 6–8, linhas 1–4 são PvP; o resto fora de ':' é PvE.
+TEST_ZONES = {
+    "default_zone": {"type": "pve", "name": "Campo"},
+    "zones": {"arena": {"name": "Arena", "type": "pvp", "area": [6, 1, 8, 4]}},
+}
 
 
 def make_world(db: Database | None = None, text: str = TEST_MAP, rules: tuple = ()) -> World:
-    tilemap = parse_map(text, "teste", CONTENT.enemy_by_mark)
+    tilemap = parse_map(text, "teste", CONTENT.enemy_by_mark, zones=TEST_ZONES)
     content = dataclasses.replace(CONTENT, rules=rules)
     return World(tilemap, db or Database(":memory:"), content, rng=random.Random(1))
 
@@ -659,7 +664,7 @@ de_novo:
         self.assertNotIn("nao_deveria", self.player.flags)
 
     def test_lose_xp_highest_never_loses_level(self):
-        self.world_with("p:\n  when: death\n  if: { zone: open, killer: enemy }\n  do: [ { lose_xp: { percent: 50, stat: highest } } ]\n")
+        self.world_with("p:\n  when: death\n  if: { zone: [pve, pvp], killer: enemy }\n  do: [ { lose_xp: { percent: 50, stat: highest } } ]\n")
         p = self.player
         p.stats["strength"] = Stat(level=5, xp=10)
         p.stats["spirit"] = Stat(level=3, xp=20)
@@ -707,7 +712,7 @@ veneno:
         self.world_with("""
 agressor:
   when: kill
-  if: { victim: player, zone: open, not_flags: [agressor] }
+  if: { victim: player, zone: pvp, not_flags: [agressor] }
   do:
     - set_flag: agressor
     - message: "Você derrotou {target}."
@@ -785,6 +790,238 @@ bonus:
         world._damage(p, 10_000, enemy, CONTENT.skills["garra"])
         self.assertEqual(p.race_id, "espectral")
 
+
+
+def chat(world: World, player, text: str) -> None:
+    world.handle_message(player, {"t": "chat", "text": text})
+
+
+class ZoneTests(unittest.TestCase):
+    def setUp(self):
+        self.world = make_world()
+        self.a, _ = self.world.login("Aaa", "1234", "humano")
+        self.b, _ = self.world.login("Bbb", "1234", "humano")
+        self.world.enemies.clear()
+
+    def place(self, tile_a, tile_b):
+        self.a.x, self.a.y = tile_center(*tile_a)
+        self.b.x, self.b.y = tile_center(*tile_b)
+
+    def test_zone_at(self):
+        m = self.world.map
+        self.assertEqual(m.zone_at(*tile_center(2, 2)).type, "safe")  # tile ':'
+        self.assertEqual(m.zone_at(*tile_center(7, 3)).type, "pvp")
+        self.assertEqual(m.zone_at(*tile_center(7, 3)).name, "Arena")
+        self.assertEqual(m.zone_at(*tile_center(3, 3)).type, "pve")
+        self.assertEqual(m.zone_at(*tile_center(3, 3)).name, "Campo")
+
+    def test_default_map_has_pvp_area(self):
+        m = load_map(C.DEFAULT_MAP, CONTENT.enemy_by_mark)
+        self.assertTrue(any(z.type == "pvp" for z in m.zones))
+        self.assertEqual(m.zone_at(*m.spawn).type, "safe")
+
+    def test_invalid_zone_files(self):
+        bad = [
+            {"zones": {"x": {"type": "safe", "area": [1, 1, 2, 2]}}},  # safe só por tile
+            {"zones": {"x": {"type": "pvp", "area": [1, 1, 20, 2]}}},  # fora do mapa
+            {"zones": {"x": {"type": "pvp", "area": [3, 1, 2, 2]}}},  # invertida
+            {"zones": {"x": {"type": "pvp"}}},  # sem área
+            {"zonas": {}},  # campo errado
+        ]
+        for zones in bad:
+            with self.assertRaises(ValueError, msg=str(zones)):
+                parse_map(TEST_MAP, "teste", {"E"}, zones=zones)
+
+    def hit(self, attacker, target):
+        attacker.cooldowns.clear()
+        attacker.facing = "right" if target.x > attacker.x else "left"
+        hp = target.hp
+        use(self.world, attacker, "golpe", facing=attacker.facing)
+        return target.hp < hp
+
+    def test_no_pvp_in_pve(self):
+        self.place((2, 3), (3, 3))
+        self.assertFalse(self.hit(self.a, self.b))
+
+    def test_pvp_in_pvp(self):
+        self.place((6, 3), (7, 3))
+        self.assertTrue(self.hit(self.a, self.b))
+
+    def test_both_must_be_in_pvp(self):
+        self.place((5, 3), (6, 3))  # a em PvE, b na arena
+        self.a.x += 12  # encosta na borda para alcançar
+        self.assertFalse(self.hit(self.a, self.b))
+
+    def test_enemy_hits_in_pve(self):
+        world = make_world()
+        p, _ = world.login("Teste", "1234", "humano")
+        enemy = next(iter(world.enemies.values()))
+        p.x, p.y = enemy.x - 20, enemy.y  # (4,4): PvE
+        run(world, 1.5)
+        self.assertLess(p.hp, p.max_hp)
+
+    def test_snapshot_has_zone(self):
+        self.place((7, 3), (2, 2))
+        self.world.step(DT)
+        snaps = {t: m for t, m in self.world.drain_outbox() if m["t"] == "snap"}
+        self.assertEqual(snaps[self.a.id]["you"]["zone"], {"t": "pvp", "n": "Arena"})
+        self.assertEqual(snaps[self.b.id]["you"]["zone"]["t"], "safe")
+
+
+class DuelTests(unittest.TestCase):
+    def setUp(self, rules: str | None = None):
+        self.world = make_world(rules=rules_from(rules) if rules else ())
+        self.world.enemies.clear()
+        self.a, _ = self.world.login("Aaa", "1234", "humano")
+        self.b, _ = self.world.login("Bbb", "1234", "humano")
+        # na cidade (zona segura), lado a lado
+        self.a.x, self.a.y = tile_center(2, 2)
+        self.b.x, self.b.y = self.a.x + 20, self.a.y
+
+    def texts(self, player=None):
+        out = self.world.drain_outbox()
+        return [m["text"] for t, m in out if m["t"] == "sys" and (player is None or t in (None, player.id))]
+
+    def start_duel(self):
+        chat(self.world, self.a, "/duelo bbb")  # nome sem diferenciar maiúsculas
+        chat(self.world, self.b, "/aceitar")
+        self.assertIsNotNone(self.world.duels.duel_of(self.a))
+
+    def strike(self, attacker, target, times=1):
+        for _ in range(times):
+            attacker.cooldowns.clear()
+            use(self.world, attacker, "golpe", facing="right" if target.x > attacker.x else "left")
+
+    def test_duel_in_safe_zone_after_countdown(self):
+        self.start_duel()
+        self.strike(self.a, self.b)
+        self.assertEqual(self.b.hp, self.b.max_hp)  # contagem: ainda não vale
+        run(self.world, C.DUEL_COUNTDOWN)
+        self.strike(self.a, self.b)
+        self.assertLess(self.b.hp, self.b.max_hp)  # vale mesmo na zona segura
+        self.assertIn("Valendo!", self.texts(self.a))
+
+    def test_duel_is_not_lethal_and_fires_rule(self):
+        self.setUp(rules="""
+venceu:
+  when: duel_end
+  if: { result: win, reason: defeat, opponent_race: humano }
+  do: [ { set_flag: venceu } ]
+perdeu:
+  when: duel_end
+  if: { result: lose }
+  do: [ { set_flag: perdeu } ]
+""")
+        self.start_duel()
+        run(self.world, C.DUEL_COUNTDOWN)
+        self.world._apply_effect(self.b, EffectApplication("lento", 30), self.a)
+        self.b.hp = 3
+        self.strike(self.a, self.b)
+        self.assertTrue(self.b.alive)
+        self.assertAlmostEqual(self.b.hp, 1, delta=0.1)  # 1 de vida (+ a regeneração de um tick)
+        self.assertIsNone(self.world.duels.duel_of(self.a))
+        self.assertIn("venceu", self.a.flags)
+        self.assertIn("perdeu", self.b.flags)
+        self.assertEqual(self.b.effects, {})  # efeitos limpos ao fim
+        self.assertIn("Aaa venceu o duelo contra Bbb.", self.texts())
+        hp = self.b.hp
+        self.strike(self.a, self.b)  # acabou: na zona segura não vale mais
+        self.assertGreaterEqual(self.b.hp, hp)
+
+    def test_outsiders_cannot_interfere(self):
+        c, _ = self.world.login("Ccc", "1234", "humano")
+        for p in (self.a, self.b, c):  # todos na arena
+            p.y = tile_center(7, 3)[1]
+        self.a.x, self.b.x, c.x = tile_center(6, 3)[0], tile_center(7, 3)[0], tile_center(8, 3)[0]
+        self.start_duel()
+        run(self.world, C.DUEL_COUNTDOWN)
+        self.strike(c, self.b)  # C fere B? não
+        self.assertEqual(self.b.hp, self.b.max_hp)
+        self.strike(self.b, c)  # B fere C? não
+        self.assertEqual(c.hp, c.max_hp)
+
+    def test_challenge_needs_proximity(self):
+        self.b.x = self.a.x + C.DUEL_CHALLENGE_RANGE + 50
+        chat(self.world, self.a, "/duelo Bbb")
+        chat(self.world, self.b, "/aceitar")
+        self.assertIsNone(self.world.duels.duel_of(self.a))
+
+    def test_challenge_unknown_and_self(self):
+        chat(self.world, self.a, "/duelo Ninguem")
+        chat(self.world, self.a, "/duelo Aaa")
+        self.assertEqual(self.world.duels.challenges, {})
+
+    def test_decline(self):
+        chat(self.world, self.a, "/duelo Bbb")
+        chat(self.world, self.b, "/recusar")
+        self.assertIn("Bbb recusou o duelo.", self.texts(self.a))
+        chat(self.world, self.b, "/aceitar")
+        self.assertIsNone(self.world.duels.duel_of(self.a))
+
+    def test_challenge_expires(self):
+        chat(self.world, self.a, "/duelo Bbb")
+        run(self.world, C.DUEL_CHALLENGE_SECONDS + 0.1)
+        chat(self.world, self.b, "/aceitar")
+        self.assertIsNone(self.world.duels.duel_of(self.a))
+
+    def test_forfeit(self):
+        self.setUp(rules="d:\n  when: duel_end\n  if: { result: win, reason: forfeit }\n  do: [ { set_flag: w } ]\n")
+        self.start_duel()
+        chat(self.world, self.b, "/render")
+        self.assertIsNone(self.world.duels.duel_of(self.a))
+        self.assertIn("w", self.a.flags)
+
+    def test_logout_gives_victory(self):
+        self.setUp(rules="d:\n  when: duel_end\n  if: { result: win, reason: logout }\n  do: [ { set_flag: w } ]\n")
+        self.start_duel()
+        self.world.logout(self.b)
+        self.assertIn("w", self.a.flags)
+        self.assertIsNone(self.world.duels.duel_of(self.a))
+
+    def test_distance_and_timeout_are_draws(self):
+        self.start_duel()
+        self.b.x = self.a.x + C.DUEL_LEASH + 10
+        self.world.step(DT)
+        self.assertIsNone(self.world.duels.duel_of(self.a))
+        self.b.x = self.a.x + 20
+        self.start_duel()
+        run(self.world, C.DUEL_COUNTDOWN + C.DUEL_MAX_SECONDS + 0.1)
+        self.assertIsNone(self.world.duels.duel_of(self.a))
+        self.assertTrue(any("empatado" in t for t in self.texts()))
+
+    def test_death_by_enemy_during_duel(self):
+        self.setUp(rules="m:\n  when: death\n  if: { duel: true }\n  do: [ { set_flag: morreu_em_duelo } ]\n")
+        self.start_duel()
+        self.b.hp = 1
+        self.world._damage(self.b, 5, None)  # sem autor (ex.: veneno de quem saiu)
+        self.assertFalse(self.b.alive)
+        self.assertIn("morreu_em_duelo", self.b.flags)
+        self.assertIsNone(self.world.duels.duel_of(self.a))
+
+    def test_opponent_poison_ticks_in_safe_zone(self):
+        self.start_duel()
+        run(self.world, C.DUEL_COUNTDOWN)
+        hp = self.b.hp
+        self.world._apply_effect(self.b, EffectApplication("veneno", 3), self.a)
+        run(self.world, 1.1)
+        self.assertLess(self.b.hp, hp)
+
+    def test_one_duel_at_a_time(self):
+        c, _ = self.world.login("Ccc", "1234", "humano")
+        c.x, c.y = self.a.x - 20, self.a.y
+        self.start_duel()
+        chat(self.world, c, "/duelo Aaa")
+        self.assertEqual(self.world.duels.challenges, {})
+
+    def test_snapshot_shows_duel(self):
+        self.start_duel()
+        self.world.drain_outbox()
+        self.world.step(DT)
+        snaps = {t: m for t, m in self.world.drain_outbox() if m["t"] == "snap"}
+        you = snaps[self.a.id]["you"]
+        self.assertEqual(you["duel"]["with"], "Bbb")
+        ents = {e["id"]: e for e in snaps[self.a.id]["ents"]}
+        self.assertEqual(ents[self.a.id]["du"], self.b.id)
 
 if __name__ == "__main__":
     unittest.main()

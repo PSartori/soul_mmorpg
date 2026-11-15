@@ -141,8 +141,11 @@ automático, regras em `data/rules.yaml`, raças e classes em `data/races.yaml` 
 personagem escolhendo raça, morrer de jeitos diferentes e ver consequências
 diferentes. As raças, classes e regras atuais são **exemplos provisórios**.
 
-**Próximo passo sugerido:** base 5 (zonas de regras + duelos), que destrava o
-`duel` nas regras e a disputa de cargos.
+**Base 5 (concluída):** zonas segura/PvE/PvP por mapa (`data/maps/<mapa>.yaml`)
+e duelos combinados (`/duelo`), que não matam e disparam o evento `duel_end` —
+base para a disputa de cargos (seção 6).
+
+**Próximo passo sugerido:** base 6 (itens, inventário e saque).
 
 ## 10. Perguntas em aberto
 

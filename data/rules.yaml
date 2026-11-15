@@ -19,13 +19,18 @@
 #             skill              skill do golpe final (skills.yaml)
 #             effect             efeito que deu o dano final, se foi um efeito (ex.: veneno)
 #             effects            efeitos ativos no momento da morte (basta conter um)
-#             zone               safe | open
-#             duel               true | false (duelos ainda não existem: sempre false)
+#             zone               safe | pve | pvp (data/maps/<mapa>.yaml)
+#             duel               true se morreu no meio de um duelo (ex.: para um inimigo).
+#                                Duelos não matam: o perdedor fica com 1 de vida (veja duel_end).
 #   kill      o personagem matou alguém
 #             race, class, victim (player | enemy), victim_enemy, victim_race,
 #             victim_class, skill, zone
 #   level_up  um atributo subiu de nível
 #             race, class, stat (strength | spirit | agility | vitality), level
+#   duel_end  um duelo terminou (dispara para os dois)
+#             race, class, result (win | lose | draw),
+#             reason (defeat | forfeit | logout | distance | timeout | death),
+#             opponent_race, opponent_class
 #
 # ---------------------------------------------------------------- valores nas condições
 #   campo: valor           igual a
@@ -54,11 +59,6 @@
 
 # ================================================================ morte
 
-duelo_sem_consequencias:
-  when: death
-  if: { duel: true }
-  stop: true
-
 humano_vira_espectral:
   when: death
   if: { race: humano, killer_enemy: espectro }
@@ -78,14 +78,14 @@ espectral_purificado:
 
 penalidade_inimigo:
   when: death
-  if: { zone: open, killer: enemy }
+  if: { zone: [pve, pvp], killer: enemy }
   do:
     - lose_xp: { percent: 10, stat: highest }
     - message: "A derrota custou parte do seu treino."
 
 penalidade_jogador:
   when: death
-  if: { zone: open, killer: player }
+  if: { zone: pvp, killer: player }
   do:
     - lose_xp: { percent: 5, stat: all }
     - message: "Ser derrotado por {killer} custou parte do seu treino."
@@ -94,7 +94,7 @@ penalidade_jogador:
 
 marca_de_agressor:
   when: kill
-  if: { victim: player, zone: open, not_flags: [agressor] }
+  if: { victim: player, zone: pvp, not_flags: [agressor] }
   do:
     - set_flag: agressor
     - message: "Você agora carrega a marca de agressor."
@@ -108,3 +108,12 @@ despertar:
     - set_flag: despertou
     - set_race: desperto
     - broadcast: "{name} despertou!"
+
+# ================================================================ duelos
+
+vitoria_em_duelo:
+  when: duel_end
+  if: { result: win, reason: [defeat, forfeit] }
+  do:
+    - gain_xp: { stat: strength, amount: 5 }
+    - message: "A vitória fortalece você."
