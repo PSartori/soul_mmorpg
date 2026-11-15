@@ -79,5 +79,19 @@ class Database:
         )
         self.conn.commit()
 
+    def backup(self, dest_dir: str | Path, keep: int) -> Path:
+        """Copia o banco (com o servidor rodando) e apaga as cópias mais antigas além de `keep`."""
+        dest_dir = Path(dest_dir)
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        path = dest_dir / f"game-{time.strftime('%Y%m%d-%H%M%S')}.db"
+        target = sqlite3.connect(str(path))
+        try:
+            self.conn.backup(target)
+        finally:
+            target.close()
+        for old in sorted(dest_dir.glob("game-*.db"))[:-keep]:
+            old.unlink()
+        return path
+
     def close(self) -> None:
         self.conn.close()

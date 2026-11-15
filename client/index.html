@@ -16,6 +16,7 @@
     <aside id="side">
       <section id="status">
         <h2 id="me-name">—</h2>
+        <p id="me-class"></p>
         <div class="bar hp" id="bar-hp"><span class="fill"></span><span class="label"></span></div>
         <div class="bar energy" id="bar-energy"><span class="fill"></span><span class="label"></span></div>
         <div class="bar fatigue" id="bar-fatigue"><span class="fill"></span><span class="label"></span></div>
@@ -44,8 +45,12 @@
       <p class="sub">Protótipo</p>
       <input id="login-name" placeholder="Nome do personagem" maxlength="16" autocomplete="username" required>
       <input id="login-password" type="password" placeholder="Senha" autocomplete="current-password" required>
+      <fieldset id="race-picker">
+        <legend>Raça <span class="hint">(só para personagem novo)</span></legend>
+        <div id="race-options"></div>
+      </fieldset>
       <button type="submit">Entrar</button>
-      <p class="hint">Se o nome ainda não existir, o personagem é criado.</p>
+      <p class="hint">Se o nome ainda não existir, o personagem é criado com a raça escolhida.</p>
       <p id="login-error" class="error"></p>
     </form>
   </div>

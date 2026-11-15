@@ -135,9 +135,14 @@ dele. Dá para construir essa base agora e decidir o formato depois.
 | 10 | **Administração** | Papéis, comandos, registro de ações |
 | 11 | **Ferramentas de conteúdo** | Recarregar YAML sem reiniciar, mapas no Tiled |
 
-**Fase 2 proposta:** bases 1 a 4 — saves versionados, gatilhos, raças/classes e
-morte contextual. Ao final, já dá para criar personagem escolhendo raça, morrer de
-jeitos diferentes e ver consequências diferentes.
+**Fase 2 (concluída):** bases 1 a 4 — saves versionados com migração e backup
+automático, regras em `data/rules.yaml`, raças e classes em `data/races.yaml` e
+`data/classes.yaml`, e morte com contexto disparando as regras. Já dá para criar
+personagem escolhendo raça, morrer de jeitos diferentes e ver consequências
+diferentes. As raças, classes e regras atuais são **exemplos provisórios**.
+
+**Próximo passo sugerido:** base 5 (zonas de regras + duelos), que destrava o
+`duel` nas regras e a disputa de cargos.
 
 ## 10. Perguntas em aberto
 

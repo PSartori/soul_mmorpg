@@ -1,0 +1,77 @@
+"""Regras de gatilho: "quando <evento>, se <condições>, faça <ações>".
+
+As regras ficam em data/rules.yaml e são validadas em content.py. Este módulo
+define o vocabulário (eventos, campos de contexto, ações) e como uma regra é
+comparada com o contexto de um evento. Quem executa as ações é o World.
+"""
+from __future__ import annotations
+
+import math
+import random
+from dataclasses import dataclass
+
+# Campos de contexto de cada evento: são os nomes que podem aparecer em "if".
+# Toda regra também recebe "race" e "class" de quem disparou o evento.
+EVENT_FIELDS: dict[str, tuple[str, ...]] = {
+    # o personagem morreu
+    "death": ("race", "class", "killer", "killer_enemy", "killer_race", "killer_class",
+              "skill", "effect", "effects", "zone", "duel"),
+    # o personagem matou alguém (jogador ou inimigo)
+    "kill": ("race", "class", "victim", "victim_enemy", "victim_race", "victim_class", "skill", "zone"),
+    # um atributo do personagem subiu de nível
+    "level_up": ("race", "class", "stat", "level"),
+}
+
+# Condições que não vêm do contexto do evento
+SPECIAL_CONDITIONS = ("chance", "flags", "not_flags")
+
+ACTIONS = ("message", "broadcast", "lose_xp", "gain_xp", "set_class", "set_race",
+           "set_flag", "clear_flag", "add_effect")
+
+KILLER_KINDS = ("player", "enemy", "none")  # "none": morreu sem autor (ex.: veneno de quem já saiu)
+VICTIM_KINDS = ("player", "enemy")
+ZONES = ("safe", "open")
+
+
+@dataclass(frozen=True)
+class Rule:
+    id: str
+    when: str
+    conditions: tuple[tuple[str, object], ...]  # (campo, valor esperado); "chance" sempre por último
+    actions: tuple[tuple[str, object], ...]  # (ação, argumentos já validados)
+    stop: bool = False
+
+
+def condition_matches(expected: object, actual: object) -> bool:
+    """Compara uma condição com o valor do contexto.
+
+    - mapa {min, max}: faixa numérica;
+    - lista: qualquer um dos valores serve;
+    - se o contexto for uma lista (ex.: efeitos ativos), basta conter um dos valores.
+    """
+    if isinstance(expected, dict):
+        if isinstance(actual, bool) or not isinstance(actual, (int, float)):
+            return False
+        return expected.get("min", -math.inf) <= actual <= expected.get("max", math.inf)
+    options = expected if isinstance(expected, list) else [expected]
+    if isinstance(actual, (list, tuple, set, frozenset)):
+        return any(option in actual for option in options)
+    if isinstance(actual, bool) or any(isinstance(o, bool) for o in options):
+        return any(type(o) is type(actual) and o == actual for o in options)  # evita True == 1
+    return actual in options
+
+
+def rule_matches(rule: Rule, ctx: dict, flags: set[str], rng: random.Random) -> bool:
+    for key, expected in rule.conditions:
+        if key == "chance":
+            if rng.random() >= expected:  # type: ignore[operator]
+                return False
+        elif key == "flags":
+            if not set(expected) <= flags:  # type: ignore[arg-type]
+                return False
+        elif key == "not_flags":
+            if set(expected) & flags:  # type: ignore[arg-type]
+                return False
+        elif not condition_matches(expected, ctx.get(key)):
+            return False
+    return True

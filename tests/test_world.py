@@ -1,19 +1,29 @@
 """Testes das regras do servidor. Rode com:  uv run python -m unittest -v"""
+import dataclasses
 import random
 import shutil
 import tempfile
 import unittest
 from pathlib import Path
 
+import yaml
+
 from server import config as C
-from server.content import Content, ContentError, EffectApplication
+from server.content import Content, ContentError, EffectApplication, parse_rules
 from server.db import Database
+from server.saves import SAVE_VERSION, SaveVersionError, migrate
 from server.stats import Stat
 from server.tilemap import load_map, parse_map
 from server.world import World, _player_blocks
 
 DT = 1.0 / C.TICK_RATE
-CONTENT = Content.load(C.DATA_DIR)
+# Os testes de jogabilidade rodam SEM as regras de data/rules.yaml (que são exemplos
+# e vão mudar); os testes de regras montam as próprias com rules_from().
+CONTENT = dataclasses.replace(Content.load(C.DATA_DIR), rules=())
+
+
+def rules_from(text: str):
+    return parse_rules(yaml.safe_load(text), CONTENT)
 
 #            0123456789
 TEST_MAP = """
@@ -26,9 +36,10 @@ TEST_MAP = """
 """
 
 
-def make_world(db: Database | None = None, text: str = TEST_MAP) -> World:
+def make_world(db: Database | None = None, text: str = TEST_MAP, rules: tuple = ()) -> World:
     tilemap = parse_map(text, "teste", CONTENT.enemy_by_mark)
-    return World(tilemap, db or Database(":memory:"), CONTENT, rng=random.Random(1))
+    content = dataclasses.replace(CONTENT, rules=rules)
+    return World(tilemap, db or Database(":memory:"), content, rng=random.Random(1))
 
 
 def tile_center(tx: int, ty: int) -> tuple[float, float]:
@@ -90,8 +101,8 @@ class TileMapTests(unittest.TestCase):
 class ContentTests(unittest.TestCase):
     def setUp(self):
         self.dir = Path(tempfile.mkdtemp())
-        for name in ("effects.yaml", "skills.yaml", "enemies.yaml", "player.yaml"):
-            shutil.copy(C.DATA_DIR / name, self.dir / name)
+        for path in C.DATA_DIR.glob("*.yaml"):
+            shutil.copy(path, self.dir / path.name)
 
     def tearDown(self):
         shutil.rmtree(self.dir)
@@ -107,8 +118,42 @@ class ContentTests(unittest.TestCase):
             self.assertIn(fragment, str(ctx.exception))
 
     def test_real_content_loads(self):
-        self.assertIn("golpe", CONTENT.skills)
-        self.assertEqual(len(CONTENT.starting_skills), 8)
+        content = Content.load(self.dir)  # com as regras de exemplo
+        self.assertIn("golpe", content.skills)
+        self.assertTrue(content.rules)
+        self.assertTrue(content.selectable_races())
+
+    def test_class_of_unknown_race(self):
+        self.append("classes.yaml", "teste:\n  name: T\n  race: anao\n  skills: [golpe]\n")
+        self.assert_error("teste", "anao")
+
+    def test_start_class_of_other_race(self):
+        self.append("races.yaml", "teste:\n  name: T\n  start_class: aprendiz\n")
+        self.assert_error("teste", "aprendiz")
+
+    def test_rule_unknown_event(self):
+        self.append("rules.yaml", "teste:\n  when: morreu\n")
+        self.assert_error("teste", "morreu")
+
+    def test_rule_field_not_in_event(self):
+        self.append("rules.yaml", "teste:\n  when: level_up\n  if: { killer: enemy }\n")
+        self.assert_error("teste", "killer", "level_up")
+
+    def test_rule_invalid_value(self):
+        self.append("rules.yaml", "teste:\n  when: death\n  if: { killer_enemy: dragao }\n")
+        self.assert_error("teste", "dragao")
+
+    def test_rule_unknown_action(self):
+        self.append("rules.yaml", "teste:\n  when: death\n  do: [ { teleportar: x } ]\n")
+        self.assert_error("teste", "teleportar")
+
+    def test_rule_add_effect_on_death(self):
+        self.append("rules.yaml", "teste:\n  when: death\n  do: [ { add_effect: { id: lento, duration: 2 } } ]\n")
+        self.assert_error("teste", "add_effect")
+
+    def test_rule_set_race_with_class_of_other_race(self):
+        self.append("rules.yaml", "teste:\n  when: death\n  do: [ { set_race: { race: humano, class: iniciado } } ]\n")
+        self.assert_error("teste", "iniciado")
 
     def test_unknown_field(self):
         self.append("skills.yaml", "teste:\n  name: T\n  type: melee\n  cooldown: 1\n  reach: 10\n  size: 5\n  velocidade: 3\n")
@@ -147,20 +192,21 @@ class StatTests(unittest.TestCase):
 class LoginTests(unittest.TestCase):
     def test_create_and_relogin(self):
         world = make_world()
-        p, err = world.login("Teste", "1234")
+        p, err = world.login("Teste", "1234", "humano")
         self.assertIsNone(err)
-        self.assertEqual(p.skills, list(CONTENT.starting_skills))
+        self.assertEqual(p.class_id, CONTENT.races["humano"].start_class)
+        self.assertEqual(p.skills, list(CONTENT.classes[p.class_id].skills))
         world.logout(p)
         _, err = world.login("teste", "errada")
         self.assertEqual(err, "Senha incorreta.")
-        p, err = world.login("teste", "1234")
+        p, err = world.login("teste", "1234", "humano")
         self.assertIsNone(err)
         self.assertEqual(p.name, "Teste")  # mantém a grafia original
 
     def test_duplicate_online(self):
         world = make_world()
-        world.login("Teste", "1234")
-        _, err = world.login("TESTE", "1234")
+        world.login("Teste", "1234", "humano")
+        _, err = world.login("TESTE", "1234", "humano")
         self.assertIsNotNone(err)
 
     def test_invalid_name(self):
@@ -172,19 +218,115 @@ class LoginTests(unittest.TestCase):
     def test_progress_is_saved(self):
         db = Database(":memory:")
         world = make_world(db)
-        p, _ = world.login("Teste", "1234")
+        p, _ = world.login("Teste", "1234", "humano")
         p.stats["spirit"] = Stat(level=7, xp=12.5)
         p.x, p.y = tile_center(6, 3)
         world.logout(p)
-        p, _ = make_world(db).login("Teste", "1234")
+        p, _ = make_world(db).login("Teste", "1234", "humano")
         self.assertEqual(p.stats["spirit"].level, 7)
         self.assertEqual((p.x, p.y), tile_center(6, 3))
+
+    def test_new_character_needs_selectable_race(self):
+        world = make_world()
+        self.assertIsNotNone(world.login("Teste", "1234")[1])  # sem raça
+        self.assertIsNotNone(world.login("Teste", "1234", "espectral")[1])  # não selecionável
+        self.assertIsNotNone(world.login("Teste", "1234", "anao")[1])  # não existe
+        self.assertIsNone(world.db.load_character("Teste"))  # nada foi criado
+
+    def test_race_is_ignored_for_existing_character(self):
+        world = make_world()
+        p, _ = world.login("Teste", "1234", "desperto")
+        world.logout(p)
+        p, err = world.login("Teste", "1234", "humano")
+        self.assertIsNone(err)
+        self.assertEqual(p.race_id, "desperto")
+
+    def test_race_bonus(self):
+        world = make_world()
+        human, _ = world.login("Humano1", "1234", "humano")
+        awake, _ = world.login("Desperto1", "1234", "desperto")
+        self.assertEqual(human.max_hp - awake.max_hp, 30)  # +20 contra -10
+        self.assertEqual(awake.max_energy - human.max_energy, 25)
+        self.assertEqual(human.hp, human.max_hp)  # personagem novo nasce cheio
+
+    def test_class_and_flags_are_saved(self):
+        db = Database(":memory:")
+        world = make_world(db)
+        p, _ = world.login("Teste", "1234", "humano")
+        world._set_class(p, CONTENT.classes["assombracao"])
+        p.flags.add("marcado")
+        world.logout(p)
+        p, _ = make_world(db).login("Teste", "1234")
+        self.assertEqual((p.race_id, p.class_id), ("espectral", "assombracao"))
+        self.assertEqual(p.flags, {"marcado"})
+        self.assertEqual(db.load_character("Teste").data["v"], SAVE_VERSION)
+
+    def test_old_save_gets_default_race(self):
+        db = Database(":memory:")
+        db.create_character("Antigo", "1234")
+        db.save_character("Antigo", {"x": 100.0, "y": 80.0, "hp": 50, "stats": {"spirit": {"level": 4, "xp": 1}}})
+        p, err = make_world(db).login("Antigo", "1234")
+        self.assertIsNone(err)
+        self.assertEqual(p.race_id, CONTENT.default_race)
+        self.assertEqual(p.class_id, CONTENT.races[CONTENT.default_race].start_class)
+        self.assertEqual(p.stats["spirit"].level, 4)
+
+    def test_removed_class_falls_back_to_race_start(self):
+        db = Database(":memory:")
+        db.create_character("Teste", "1234")
+        db.save_character("Teste", {"v": 2, "race": "desperto", "class": "classe_removida", "flags": []})
+        p, _ = make_world(db).login("Teste", "1234")
+        self.assertEqual(p.class_id, "iniciado")
+
+    def test_save_from_newer_server_is_refused(self):
+        db = Database(":memory:")
+        db.create_character("Futuro", "1234")
+        db.save_character("Futuro", {"v": SAVE_VERSION + 1})
+        _, err = make_world(db).login("Futuro", "1234")
+        self.assertIsNotNone(err)
+
+
+class SaveTests(unittest.TestCase):
+    def test_migrate_v1(self):
+        data = migrate({"x": 1.0})
+        self.assertEqual(data["v"], SAVE_VERSION)
+        self.assertIsNone(data["race"])
+        self.assertEqual(data["flags"], [])
+        self.assertEqual(data["x"], 1.0)
+
+    def test_migrate_does_not_change_input(self):
+        original = {"x": 1.0}
+        migrate(original)
+        self.assertEqual(original, {"x": 1.0})
+
+    def test_invalid_version(self):
+        for v in (0, "2", SAVE_VERSION + 1):
+            with self.assertRaises(SaveVersionError):
+                migrate({"v": v})
+
+    def test_backup_keeps_last_copies(self):
+        tmp = Path(tempfile.mkdtemp())
+        try:
+            db = Database(tmp / "game.db")
+            db.create_character("Teste", "1234")
+            backups = tmp / "backups"
+            for i in range(3):
+                (backups / f"game-2000010{i}-000000.db").parent.mkdir(exist_ok=True)
+                (backups / f"game-2000010{i}-000000.db").write_bytes(b"")
+            path = db.backup(backups, keep=2)
+            self.assertEqual(len(list(backups.glob("game-*.db"))), 2)
+            self.assertTrue(path.exists())
+            self.assertIsNotNone(Database(path).load_character("Teste"))  # a cópia funciona
+        finally:
+            shutil.rmtree(tmp)
 
 
 class GameplayBase(unittest.TestCase):
     def setUp(self):
         self.world = make_world()
-        self.player, _ = self.world.login("Teste", "1234")
+        self.player, _ = self.world.login("Teste", "1234", "humano")
+        # Os testes de skills usam qualquer skill, independente da classe
+        self.player.skills = [sid for sid in CONTENT.skills]
         self.enemy = next(iter(self.world.enemies.values()))
 
     def place_next_to_enemy(self, gap: float = 20):
@@ -265,6 +407,7 @@ class SkillTests(GameplayBase):
         self.assertEqual(len(self.world.projectiles), 0)
 
     def test_unknown_skill_is_ignored(self):
+        self.player.skills = list(CONTENT.classes["aprendiz"].skills)
         self.world.handle_message(self.player, {"t": "skill", "id": "garra"})  # skill de inimigo
         self.assertEqual(self.player.actions, [])
 
@@ -314,7 +457,7 @@ class SkillTests(GameplayBase):
 #........#
 ##########
 """)
-        p, _ = world.login("Teste", "1234")
+        p, _ = world.login("Teste", "1234", "humano")
         enemy = next(iter(world.enemies.values()))
         p.x, p.y = tile_center(5, 5)  # árvore exatamente entre os dois
         run(world, 6)
@@ -338,7 +481,7 @@ class SkillTests(GameplayBase):
         self.assertEqual(p.state, "meditate")
 
     def test_no_pvp_in_safe_zone(self):
-        a, b = self.player, self.world.login("Outro", "1234")[0]
+        a, b = self.player, self.world.login("Outro", "1234", "humano")[0]
         a.x, a.y = tile_center(2, 2)
         b.x, b.y = a.x + 20, a.y
         use(self.world, a, "golpe", facing="right")
@@ -445,6 +588,202 @@ class EffectTests(GameplayBase):
         self.apply(p, "lento", 30)
         self.world._kill(p, None, None)
         self.assertEqual(p.effects, {})
+
+
+class RuleTests(unittest.TestCase):
+    """Motor de regras e morte com contexto, com regras montadas em cada teste."""
+
+    def world_with(self, text: str, race: str = "humano") -> World:
+        self.world = make_world(rules=rules_from(text))
+        self.player, _ = self.world.login("Teste", "1234", race)
+        self.player.x, self.player.y = tile_center(7, 3)  # fora da zona segura
+        self.enemy = next(iter(self.world.enemies.values()))
+        return self.world
+
+    def messages(self) -> list[str]:
+        return [msg["text"] for _, msg in self.world.drain_outbox() if msg["t"] == "sys"]
+
+    def kill_player(self, killer=None, skill_id: str | None = "garra", effect_id: str | None = None):
+        killer = self.enemy if killer is None else killer
+        skill = CONTENT.skills[skill_id] if skill_id else None
+        self.player.hp = 1  # golpe de 1: não mexe no XP de Vitalidade além do mínimo
+        self.world._damage(self.player, 1, killer, skill, effect_id)
+
+    def test_death_by_enemy_type_changes_race(self):
+        self.world_with("""
+virar:
+  when: death
+  if: { race: humano, killer_enemy: espectro }
+  do:
+    - set_race: espectral
+    - message: "Você renasce como {class}."
+""")
+        self.kill_player()
+        p = self.player
+        self.assertEqual((p.race_id, p.class_id), ("espectral", "assombracao"))
+        self.assertEqual(p.skills, list(CONTENT.classes["assombracao"].skills))
+        self.assertIn("Você renasce como Assombração.", self.messages())
+        run(self.world, C.RESPAWN_SECONDS + 0.1)
+        self.assertEqual(p.hp, p.max_hp)  # renasce com a vida da raça nova
+
+    def test_condition_not_met(self):
+        self.world_with("virar:\n  when: death\n  if: { killer_enemy: bruto }\n  do: [ { set_race: espectral } ]\n")
+        self.kill_player()
+        self.assertEqual(self.player.race_id, "humano")
+
+    def test_stop_skips_following_rules(self):
+        self.world_with("""
+primeira:
+  when: death
+  do: [ { set_flag: a } ]
+  stop: true
+segunda:
+  when: death
+  do: [ { set_flag: b } ]
+""")
+        self.kill_player()
+        self.assertEqual(self.player.flags, {"a"})
+
+    def test_rules_see_race_from_before_actions(self):
+        self.world_with("""
+virar:
+  when: death
+  if: { race: humano }
+  do: [ { set_race: espectral } ]
+de_novo:
+  when: death
+  if: { race: espectral }
+  do: [ { set_flag: nao_deveria } ]
+""")
+        self.kill_player()
+        self.assertNotIn("nao_deveria", self.player.flags)
+
+    def test_lose_xp_highest_never_loses_level(self):
+        self.world_with("p:\n  when: death\n  if: { zone: open, killer: enemy }\n  do: [ { lose_xp: { percent: 50, stat: highest } } ]\n")
+        p = self.player
+        p.stats["strength"] = Stat(level=5, xp=10)
+        p.stats["spirit"] = Stat(level=3, xp=20)
+        self.kill_player()
+        self.assertEqual((p.stats["strength"].level, p.stats["strength"].xp), (5, 0.0))
+        self.assertEqual(p.stats["spirit"].xp, 20)  # só o maior
+
+    def test_lose_xp_all(self):
+        self.world_with("p:\n  when: death\n  do: [ { lose_xp: { percent: 10, stat: all } } ]\n")
+        p = self.player
+        for s in p.stats.values():
+            s.xp = 25.0
+        self.kill_player()
+        for s in p.stats.values():  # tolerância: o golpe final de 1 dá um pouco de XP de Vitalidade
+            self.assertAlmostEqual(s.xp, 25.0 - s.xp_to_next() * 0.1, delta=0.5)
+
+    def test_safe_zone_context(self):
+        self.world_with("p:\n  when: death\n  if: { zone: safe }\n  do: [ { set_flag: seguro } ]\n")
+        self.player.x, self.player.y = tile_center(2, 2)
+        self.kill_player(killer=None, skill_id=None)
+        self.assertIn("seguro", self.player.flags)
+
+    def test_death_by_poison_context(self):
+        self.world_with("""
+veneno:
+  when: death
+  if: { effect: veneno, killer: player, killer_race: desperto }
+  do: [ { set_flag: envenenado } ]
+""")
+        self.world.enemies.clear()  # senão o Espectro do mapa mata antes do veneno
+        other, _ = self.world.login("Outro", "1234", "desperto")
+        self.player.hp = 2
+        self.world._apply_effect(self.player, EffectApplication("veneno", 5), other)
+        run(self.world, 1.1)
+        self.assertFalse(self.player.alive)
+        self.assertIn("envenenado", self.player.flags)
+
+    def test_active_effects_in_context(self):
+        self.world_with("p:\n  when: death\n  if: { effects: [lento, foco] }\n  do: [ { set_flag: estava_lento } ]\n")
+        self.world._apply_effect(self.player, EffectApplication("lento", 5), None)
+        self.kill_player()
+        self.assertIn("estava_lento", self.player.flags)
+
+    def test_kill_event_for_killer(self):
+        self.world_with("""
+agressor:
+  when: kill
+  if: { victim: player, zone: open, not_flags: [agressor] }
+  do:
+    - set_flag: agressor
+    - message: "Você derrotou {target}."
+""")
+        killer, _ = self.world.login("Outro", "1234", "humano")
+        killer.x, killer.y = tile_center(8, 3)
+        self.world.drain_outbox()
+        self.world._damage(self.player, 10_000, killer, CONTENT.skills["golpe"])
+        self.assertIn("agressor", killer.flags)
+        self.assertNotIn("agressor", self.player.flags)
+        texts = [(target, msg.get("text")) for target, msg in self.world.drain_outbox() if msg["t"] == "sys"]
+        self.assertIn((killer.id, "Você derrotou Teste."), texts)
+
+    def test_kill_enemy_event(self):
+        self.world_with("c:\n  when: kill\n  if: { victim_enemy: espectro }\n  do: [ { gain_xp: { stat: vitality, amount: 7 } } ]\n")
+        self.world._damage(self.enemy, 10_000, self.player, CONTENT.skills["golpe"])
+        self.assertEqual(self.player.stats["vitality"].xp, 7)
+
+    def test_level_up_with_chance(self):
+        self.world_with("""
+despertar:
+  when: level_up
+  if: { race: humano, stat: spirit, level: { min: 3 }, not_flags: [despertou], chance: 0.5 }
+  do: [ { set_flag: despertou }, { set_race: desperto } ]
+""")
+        p = self.player
+        for _ in range(40):  # a chance é sorteada a cada nível a partir do 3
+            if p.race_id == "desperto":
+                break
+            self.world._train(p, "spirit", p.stats["spirit"].xp_to_next() + 1, use_rate=False)
+        self.assertEqual(p.race_id, "desperto")
+        self.assertIn("despertou", p.flags)
+
+    def test_level_up_below_min_does_nothing(self):
+        self.world_with("d:\n  when: level_up\n  if: { stat: spirit, level: { min: 50 } }\n  do: [ { set_flag: x } ]\n")
+        self.world._train(self.player, "spirit", 1_000, use_rate=False)
+        self.assertNotIn("x", self.player.flags)
+
+    def test_chain_is_limited(self):
+        self.world_with("""
+loop:
+  when: level_up
+  do: [ { gain_xp: { stat: spirit, amount: 100000 } } ]
+""")
+        self.world._train(self.player, "spirit", 100, use_rate=False)  # não pode travar
+        self.assertGreater(self.player.stats["spirit"].level, 1)
+
+    def test_add_effect_and_broadcast(self):
+        self.world_with("""
+bonus:
+  when: level_up
+  if: { stat: strength }
+  do:
+    - add_effect: { id: foco, duration: 5 }
+    - broadcast: "{name} chegou ao nível {level} de {stat}."
+""")
+        self.world._train(self.player, "strength", self.player.stats["strength"].xp_to_next(), use_rate=False)
+        self.assertIn("foco", self.player.effects)
+        self.assertIn("Teste chegou ao nível 2 de Força.", self.messages())
+
+    def test_train_rate_from_class(self):
+        world = make_world()
+        human, _ = world.login("Humano1", "1234", "humano")  # aprendiz: strength 1.25, spirit 0.8
+        world._train(human, "strength", 10)
+        world._train(human, "spirit", 10)
+        self.assertAlmostEqual(human.stats["strength"].xp, 12.5)
+        self.assertAlmostEqual(human.stats["spirit"].xp, 8.0)
+
+    def test_example_rules_file_works_in_game(self):
+        """As regras de exemplo de data/rules.yaml carregam e rodam sem erro."""
+        world = make_world(rules=Content.load(C.DATA_DIR).rules)
+        p, _ = world.login("Teste", "1234", "humano")
+        p.x, p.y = tile_center(7, 3)
+        enemy = next(iter(world.enemies.values()))
+        world._damage(p, 10_000, enemy, CONTENT.skills["garra"])
+        self.assertEqual(p.race_id, "espectral")
 
 
 if __name__ == "__main__":

@@ -27,6 +27,7 @@ DB = web.AppKey("db", Database)
 WORLD = web.AppKey("world", World)
 SESSIONS = web.AppKey("sessions", dict)  # id do jogador -> WebSocketResponse
 LOOP_TASK = web.AppKey("loop_task", asyncio.Task)
+BACKUP_TASK = web.AppKey("backup_task", asyncio.Task)
 
 
 def dumps(obj: dict) -> str:
@@ -35,6 +36,11 @@ def dumps(obj: dict) -> str:
 
 async def index(request: web.Request) -> web.FileResponse:
     return web.FileResponse(C.CLIENT_DIR / "index.html")
+
+
+async def races_handler(request: web.Request) -> web.Response:
+    """Raças que aparecem na criação de personagem (antes do login)."""
+    return web.json_response(request.app[WORLD].content.selectable_races())
 
 
 async def ws_handler(request: web.Request) -> web.WebSocketResponse:
@@ -59,7 +65,8 @@ async def ws_handler(request: web.Request) -> web.WebSocketResponse:
                 # Antes do login, a única mensagem aceita é "login"
                 if data.get("t") != "login":
                     continue
-                player, error = world.login(str(data.get("name", "")), str(data.get("password", "")))
+                race = data.get("race") if isinstance(data.get("race"), str) else None
+                player, error = world.login(str(data.get("name", "")), str(data.get("password", "")), race)
                 if error:
                     await ws.send_str(dumps({"t": "error", "msg": error}))
                     continue
@@ -110,6 +117,18 @@ async def game_loop(app: web.Application) -> None:
         await asyncio.sleep(max(0.0, delay))
 
 
+async def backup_loop(app: web.Application) -> None:
+    """Um backup ao ligar e outro a cada BACKUP_INTERVAL_HOURS (salvando os online antes)."""
+    while True:
+        try:
+            app[WORLD].save_all()
+            path = app[DB].backup(C.BACKUP_DIR, C.BACKUP_KEEP)
+            log.info("backup: %s", path.name)
+        except Exception:
+            log.exception("Erro no backup")
+        await asyncio.sleep(C.BACKUP_INTERVAL_HOURS * 3600)
+
+
 def create_app(db_path: str | Path = C.DB_PATH, map_path: str | Path = C.DEFAULT_MAP) -> web.Application:
     content = Content.load(C.DATA_DIR)  # erro no YAML derruba aqui, com a mensagem do campo
     app = web.Application()
@@ -119,10 +138,13 @@ def create_app(db_path: str | Path = C.DB_PATH, map_path: str | Path = C.DEFAULT
 
     app.router.add_get("/", index)
     app.router.add_get("/ws", ws_handler)
+    app.router.add_get("/api/races", races_handler)
     app.router.add_static("/static/", C.CLIENT_DIR)
 
     async def on_startup(app: web.Application) -> None:
         app[LOOP_TASK] = asyncio.create_task(game_loop(app))
+        if str(db_path) != ":memory:":
+            app[BACKUP_TASK] = asyncio.create_task(backup_loop(app))
 
     async def on_shutdown(app: web.Application) -> None:
         # Fechar as conexões faz cada ws_handler deslogar (e salvar) seu jogador
@@ -130,9 +152,12 @@ def create_app(db_path: str | Path = C.DB_PATH, map_path: str | Path = C.DEFAULT
             await ws.close()
 
     async def on_cleanup(app: web.Application) -> None:
-        app[LOOP_TASK].cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await app[LOOP_TASK]
+        for key in (LOOP_TASK, BACKUP_TASK):
+            task = app.get(key)
+            if task is not None:
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
         app[WORLD].save_all()
         app[DB].close()
 

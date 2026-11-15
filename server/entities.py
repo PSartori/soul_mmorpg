@@ -6,7 +6,8 @@ from dataclasses import dataclass, field
 from typing import ClassVar
 
 from . import config as C
-from .content import EffectDef, EnemyDef
+from .content import ClassDef, EffectDef, EnemyDef, RaceDef
+from .saves import SAVE_VERSION
 from .stats import STAT_NAMES, Stat
 
 DIRECTIONS = {"up": (0, -1), "down": (0, 1), "left": (-1, 0), "right": (1, 0)}
@@ -92,7 +93,10 @@ class Player(Entity):
     energy: float = 0.0
     fatigue: float = 0.0
     stats: dict[str, Stat] = field(default_factory=lambda: {n: Stat() for n in STAT_NAMES})
-    skills: list[str] = field(default_factory=list)  # ordem da barra de atalhos
+    race_def: RaceDef | None = None
+    class_def: ClassDef | None = None
+    flags: set[str] = field(default_factory=set)  # marcas de progressão (data/rules.yaml)
+    skills: list[str] = field(default_factory=list)  # vem da classe; ordem da barra de atalhos
     actions: list[tuple] = field(default_factory=list)  # ações pedidas, executadas no próximo tick
     # Movimento: o cliente manda um comando numerado por tick; o servidor executa um por tick
     # e devolve o número do último executado ("ack") para o cliente corrigir a previsão.
@@ -105,18 +109,30 @@ class Player(Entity):
     def stat_level(self, stat: str) -> int:
         return self.stats[stat].level
 
-    # --- Valores derivados dos atributos ---
+    @property
+    def race_id(self) -> str | None:
+        return self.race_def.id if self.race_def else None
+
+    @property
+    def class_id(self) -> str | None:
+        return self.class_def.id if self.class_def else None
+
+    def _race_bonus(self, key: str) -> float:
+        return self.race_def.bonus.get(key, 0.0) if self.race_def else 0.0
+
+    # --- Valores derivados dos atributos e da raça ---
     @property
     def max_hp(self) -> float:
-        return 80 + 20 * self.stat_level("vitality")
+        return max(10.0, 80 + 20 * self.stat_level("vitality") + self._race_bonus("max_hp"))
 
     @property
     def max_energy(self) -> float:
-        return 40 + 15 * self.stat_level("spirit")
+        return max(10.0, 40 + 15 * self.stat_level("spirit") + self._race_bonus("max_energy"))
 
     @property
     def base_speed(self) -> float:
-        return min(C.MAX_SPEED, C.BASE_SPEED + C.SPEED_PER_AGILITY * self.stat_level("agility"))
+        speed = C.BASE_SPEED + C.SPEED_PER_AGILITY * self.stat_level("agility") + self._race_bonus("speed")
+        return max(30.0, min(C.MAX_SPEED, speed))
 
     def private_snapshot(self) -> dict:
         """O que só o próprio jogador vê (HUD e previsão de movimento)."""
@@ -128,6 +144,8 @@ class Player(Entity):
             "fat": round(self.fatigue),
             "mfat": round(C.MAX_FATIGUE),
             "s": self.state,
+            "race": self.race_id,
+            "cls": self.class_id,
             "x": self.x,
             "y": self.y,
             "spd": self.speed,
@@ -143,6 +161,10 @@ class Player(Entity):
     # --- Persistência ---
     def to_dict(self) -> dict:
         return {
+            "v": SAVE_VERSION,
+            "race": self.race_id,
+            "class": self.class_id,
+            "flags": sorted(self.flags),
             "x": self.x,
             "y": self.y,
             "hp": self.hp,
@@ -153,7 +175,14 @@ class Player(Entity):
         }
 
     def load_dict(self, data: dict) -> None:
-        """Carrega o que for válido e ignora o resto (dados antigos ou corrompidos)."""
+        """Carrega o que for válido e ignora o resto (dados corrompidos).
+
+        Espera um save já migrado (saves.migrate). Raça e classe são resolvidas
+        pelo World antes, porque dependem do conteúdo carregado.
+        """
+        flags = data.get("flags")
+        if isinstance(flags, list):
+            self.flags = {f for f in flags if isinstance(f, str)}
         for key in ("x", "y", "hp", "energy", "fatigue"):
             value = data.get(key)
             if isinstance(value, (int, float)):

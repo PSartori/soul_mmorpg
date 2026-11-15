@@ -12,8 +12,9 @@ Requer [uv](https://docs.astral.sh/uv/) (já instalado nesta máquina).
 ./run.sh
 ```
 
-Abra http://127.0.0.1:8080, escolha um nome e uma senha (o personagem é criado
-na primeira vez). Para testar multiplayer, abra outra aba e entre com outro nome.
+Abra http://127.0.0.1:8080, escolha um nome, uma senha e uma raça (o personagem é
+criado na primeira vez; para personagens existentes a raça é ignorada). Para testar
+multiplayer, abra outra aba e entre com outro nome.
 
 Testes do servidor:
 
@@ -22,7 +23,10 @@ UV_PROJECT_ENVIRONMENT=~/.venvs/rpg-online uv run python -m unittest -v
 ```
 
 O ambiente virtual fica em `~/.venvs/rpg-online` (fora do Google Drive, para não
-sincronizar milhares de arquivos). O banco de dados fica em `var/game.db`.
+sincronizar milhares de arquivos). O banco de dados fica em `var/game.db`, com
+backups automáticos em `var/backups/` (um ao ligar o servidor e outro a cada 6 h;
+guarda os 28 mais recentes). Para restaurar, pare o servidor e copie um backup
+por cima de `var/game.db`.
 
 ## Controles
 
@@ -36,16 +40,43 @@ sincronizar milhares de arquivos). O banco de dados fica em `var/game.db`.
 
 ## Conteúdo (data/)
 
-Skills, efeitos e inimigos são **dados**, não código. Cada arquivo tem no topo a
-explicação de todos os campos.
+Skills, efeitos, inimigos, raças, classes e regras são **dados**, não código.
+Cada arquivo tem no topo a explicação de todos os campos.
 
 | Arquivo | O que define |
 |---|---|
 | `data/skills.yaml` | técnicas: tipo (melee, projectile, area, dash, self), custo, recarga, dano, efeitos, treino |
 | `data/effects.yaml` | efeitos de status: modificadores (velocidade, dano...), flags (atordoado, silenciado), dano/cura periódicos |
 | `data/enemies.yaml` | tipos de inimigo: vida, velocidade, alcance de perseguição, skills que a IA usa, letra no mapa |
-| `data/player.yaml` | skills iniciais (ordem da barra) |
+| `data/races.yaml` | raças: se aparecem na criação, classe inicial, bônus de vida/energia/velocidade |
+| `data/classes.yaml` | classes: raça, skills da barra, multiplicador de treino por atributo |
+| `data/rules.yaml` | regras "quando X, se Y, faça Z": morte, abates, subida de nível (veja abaixo) |
+| `data/player.yaml` | raça padrão para personagens antigos |
 | `data/maps/inicio.txt` | mapa em texto (legenda no topo do arquivo) |
+
+### Regras (data/rules.yaml)
+
+Cada regra diz **quando** (evento), **se** (condições) e **o que fazer** (ações):
+
+```yaml
+humano_vira_espectral:
+  when: death
+  if: { race: humano, killer_enemy: espectro }
+  do:
+    - set_race: espectral
+    - message: "Algo frio toma conta de você. Você renasce como {class}."
+  stop: true
+```
+
+- **Eventos:** `death` (com quem matou, raça/classe dele, skill, efeito, efeitos
+  ativos, zona), `kill` e `level_up`.
+- **Ações:** mensagens, perder/ganhar XP, trocar raça ou classe, marcas de
+  progressão (`set_flag`) e aplicar efeitos.
+- **Condições especiais:** `chance`, `flags` e `not_flags`.
+
+As regras de cada evento rodam de cima para baixo; `stop: true` encerra. A lista
+completa de campos e ações está no topo do arquivo. As regras que estão lá hoje
+são **exemplos provisórios**: troque pelas regras reais do jogo.
 
 Os arquivos são validados ao subir o servidor: campo com erro de digitação, tipo
 errado ou referência inexistente (ex.: skill que aplica um efeito que não existe)
@@ -63,8 +94,10 @@ e desenha o estado que recebe. Isso impede trapaça e deixa toda a regra do jogo
 ```
 server/              Python (aiohttp)
   main.py            HTTP + WebSocket, loop de 20 ticks/s, envio das mensagens
-  world.py           simulação: login, movimento, skills, efeitos, IA dos inimigos
+  world.py           simulação: login, movimento, skills, efeitos, IA, execução das regras
   content.py         carrega e valida data/*.yaml
+  rules.py           vocabulário das regras (eventos, campos, ações) e comparação
+  saves.py           versão do formato de save e migrações (sem wipes!)
   entities.py        Player, Enemy, Projectile, efeitos ativos e atributos derivados
   stats.py           atributos treináveis (nível + XP)
   tilemap.py         mapa ASCII e colisão de caixas com tiles
@@ -101,7 +134,9 @@ Para depurar no console do navegador: `__game.state`, `__game.pred`, `__game.pen
 
 ### Protocolo (JSON pelo WebSocket, campo `t` = tipo)
 
-Cliente → servidor: `login {name, password}`, `move {seq, up, down, left, right}`,
+HTTP: `GET /api/races` lista as raças da tela de criação.
+
+Cliente → servidor: `login {name, password, race}`, `move {seq, up, down, left, right}`,
 `skill {id, f}`, `meditate`, `rest`, `chat {text}`.
 
 Servidor → cliente: `welcome {id, map, skills, effects, enemies, stat_labels, ...}`,
@@ -125,7 +160,8 @@ Servidor → cliente: `welcome {id, map, skills, effects, enemies, stat_labels, 
 
 ## Pendências conhecidas
 
-- Por enquanto todo personagem recebe todas as skills de `player.yaml` (raças e classes: fase 2).
+- Ainda não há como trocar de raça/classe por escolha (NPC, item); hoje só por regras.
+- Zonas de PvP e duelos ainda não existem: fora da zona segura vale PvP, e `duel` é sempre falso.
 - Outros jogadores são desenhados com suavização simples, não interpolação com atraso fixo.
 - Login sem HTTPS: na VPS, colocar atrás de um proxy com TLS (ex.: Caddy) antes de abrir ao público.
 - O hash de senha roda no loop do servidor (~0,1 s por login); ok para poucos jogadores.

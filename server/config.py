@@ -11,10 +11,14 @@ DATA_DIR = ROOT / "data"
 VAR_DIR = ROOT / "var"
 DEFAULT_MAP = DATA_DIR / "maps" / "inicio.txt"
 DB_PATH = VAR_DIR / "game.db"
+BACKUP_DIR = VAR_DIR / "backups"
 
 TICK_RATE = 20  # simulações por segundo
 TILE_SIZE = 32
 AUTOSAVE_SECONDS = 60.0
+BACKUP_INTERVAL_HOURS = 6.0  # além de um backup ao ligar o servidor
+BACKUP_KEEP = 28  # cópias guardadas (28 × 6 h = 1 semana)
+MAX_RULE_DEPTH = 3  # regras que disparam eventos que disparam regras...: limite de encadeamento
 
 # --- Rede -------------------------------------------------------------------
 MAX_MOVE_QUEUE = 8  # comandos de movimento guardados por jogador; o excesso é descartado

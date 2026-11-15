@@ -36,7 +36,7 @@ class PhysicsParityTests(unittest.TestCase):
         content = Content.load(C.DATA_DIR)
         world = World(load_map(C.DEFAULT_MAP, content.enemy_by_mark), Database(":memory:"), content)
         world.enemies.clear()
-        player, _ = world.login("Paridade", "1234")
+        player, _ = world.login("Paridade", "1234", "humano")
         # Agilidade no máximo: a velocidade não muda no meio do teste (e fica alta, testando mais colisões)
         player.stats["agility"] = Stat(level=C.MAX_STAT_LEVEL)
         speed = player.speed

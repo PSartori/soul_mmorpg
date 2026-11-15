@@ -1,0 +1,30 @@
+# Raças. Escolhidas na criação do personagem (se selectable) ou alcançadas por
+# regras (data/rules.yaml: set_race / set_class).
+#
+#   name, description
+#   selectable   aparece na tela de criação de personagem
+#   start_class  classe com que a raça começa (de classes.yaml, precisa ser desta raça)
+#   bonus        somado aos valores base do personagem: max_hp, max_energy, speed
+#
+# Nomes e números provisórios.
+
+humano:
+  name: Humano
+  description: Resistente e versátil. Treina o corpo mais rápido que o espírito.
+  selectable: true
+  start_class: aprendiz
+  bonus: { max_hp: 20 }
+
+desperto:
+  name: Desperto
+  description: Nasceu com a energia espiritual aflorada. Mais frágil, com muito mais energia.
+  selectable: true
+  start_class: iniciado
+  bonus: { max_hp: -10, max_energy: 25 }
+
+espectral:
+  name: Espectral
+  description: O que resta de quem caiu para os espectros. Rápido e traiçoeiro.
+  selectable: false
+  start_class: assombracao
+  bonus: { max_hp: -20, speed: 15 }

@@ -1,0 +1,110 @@
+# Regras de gatilho: QUANDO um evento acontece, SE as condições batem, FAÇA as ações.
+#
+# Formato:
+#   id_da_regra:
+#     when: evento
+#     if:   { campo: valor, ... }      (opcional; sem "if" a regra vale sempre)
+#     do:   [ ação, ação, ... ]         (opcional)
+#     stop: true                        (opcional; não avalia as regras seguintes deste evento)
+#
+# As regras de cada evento são avaliadas DE CIMA PARA BAIXO; todas as que baterem
+# são executadas, até alguma com "stop: true".
+#
+# ---------------------------------------------------------------- eventos e campos
+#   death     o personagem morreu
+#             race, class        raça/classe de quem morreu (antes das ações)
+#             killer             player | enemy | none
+#             killer_enemy       tipo do inimigo (enemies.yaml), se killer = enemy
+#             killer_race, killer_class   se killer = player
+#             skill              skill do golpe final (skills.yaml)
+#             effect             efeito que deu o dano final, se foi um efeito (ex.: veneno)
+#             effects            efeitos ativos no momento da morte (basta conter um)
+#             zone               safe | open
+#             duel               true | false (duelos ainda não existem: sempre false)
+#   kill      o personagem matou alguém
+#             race, class, victim (player | enemy), victim_enemy, victim_race,
+#             victim_class, skill, zone
+#   level_up  um atributo subiu de nível
+#             race, class, stat (strength | spirit | agility | vitality), level
+#
+# ---------------------------------------------------------------- valores nas condições
+#   campo: valor           igual a
+#   campo: [a, b]          qualquer um deles
+#   level: { min: 10 }     faixa numérica (min e/ou max)
+#   chance: 0.25           25% de chance (sorteado por último)
+#   flags: [x, y]          o personagem tem todas essas marcas
+#   not_flags: [x]         o personagem não tem nenhuma dessas marcas
+#
+# ---------------------------------------------------------------- ações
+#   - message: texto                       só para o personagem
+#   - broadcast: texto                     para todos
+#        textos aceitam {name}, {race}, {class} (já depois das ações anteriores da regra),
+#        {killer} (death), {target} (kill), {stat} e {level} (level_up)
+#   - lose_xp: { percent: 10, stat: highest }   perde % do XP do nível atual
+#        stat: highest (atributo de maior nível) | all | strength | spirit | ...
+#        (nunca perde nível, só o progresso dentro dele)
+#   - gain_xp: { stat: spirit, amount: 20 }
+#   - set_class: classe                    troca a classe (e a raça, para a da classe)
+#   - set_race: raça                       troca a raça e vai para a classe inicial dela
+#   - set_race: { race: raça, class: classe }
+#   - set_flag: marca / clear_flag: marca  marcas de progressão, salvas no personagem
+#   - add_effect: { id: efeito, duration: 5 }  (não vale em death: o personagem está morto)
+#
+# AS REGRAS ABAIXO SÃO EXEMPLOS PROVISÓRIOS para demonstrar o sistema.
+
+# ================================================================ morte
+
+duelo_sem_consequencias:
+  when: death
+  if: { duel: true }
+  stop: true
+
+humano_vira_espectral:
+  when: death
+  if: { race: humano, killer_enemy: espectro }
+  do:
+    - set_race: espectral
+    - message: "Algo frio toma conta de você. Você renasce como {class}."
+    - broadcast: "{name} caiu para os espectros e voltou diferente."
+  stop: true
+
+espectral_purificado:
+  when: death
+  if: { race: espectral, killer_race: desperto }
+  do:
+    - set_race: humano
+    - message: "A energia de {killer} dissipa a sombra. Você volta a ser {race}."
+  stop: true
+
+penalidade_inimigo:
+  when: death
+  if: { zone: open, killer: enemy }
+  do:
+    - lose_xp: { percent: 10, stat: highest }
+    - message: "A derrota custou parte do seu treino."
+
+penalidade_jogador:
+  when: death
+  if: { zone: open, killer: player }
+  do:
+    - lose_xp: { percent: 5, stat: all }
+    - message: "Ser derrotado por {killer} custou parte do seu treino."
+
+# ================================================================ abates
+
+marca_de_agressor:
+  when: kill
+  if: { victim: player, zone: open, not_flags: [agressor] }
+  do:
+    - set_flag: agressor
+    - message: "Você agora carrega a marca de agressor."
+
+# ================================================================ progressão
+
+despertar:
+  when: level_up
+  if: { race: humano, stat: spirit, level: { min: 10 }, not_flags: [despertou], chance: 0.5 }
+  do:
+    - set_flag: despertou
+    - set_race: desperto
+    - broadcast: "{name} despertou!"

@@ -17,7 +17,7 @@ const state = {
   trails: [], // dashes
   floaters: [],
   you: null,
-  defs: { skills: {}, effects: {}, enemies: {} },
+  defs: { skills: {}, effects: {}, enemies: {}, races: {}, classes: {} },
   statLabels: {},
 };
 
@@ -43,7 +43,9 @@ function handleMessage(msg) {
     case "welcome":
       state.myId = msg.id;
       state.statLabels = msg.stat_labels;
-      state.defs = { skills: msg.skills, effects: msg.effects, enemies: msg.enemies };
+      state.defs = {
+        skills: msg.skills, effects: msg.effects, enemies: msg.enemies, races: msg.races, classes: msg.classes,
+      };
       state.ents.clear();
       renderer.setMap(msg.map);
       renderer.defs = state.defs;
@@ -194,6 +196,9 @@ function updateHud() {
   const me = state.ents.get(state.myId);
   if (!you || !me) return;
   $("me-name").textContent = me.n + (STATE_LABELS[you.s] ?? "");
+  const raceName = state.defs.races[you.race]?.name ?? "";
+  const className = state.defs.classes[you.cls]?.name ?? "";
+  $("me-class").textContent = [raceName, className].filter(Boolean).join(" · ");
   setBar("bar-hp", you.hp, you.mhp, "Vida");
   setBar("bar-energy", you.en, you.men, "Energia");
   setBar("bar-fatigue", you.fat, you.mfat, "Cansaço");
@@ -293,11 +298,34 @@ function addChatLine(text, from = null) {
 
 // ------------------------------------------------------------------ entrada
 
+// Raças disponíveis na criação de personagem (o servidor só usa se o nome for novo)
+async function loadRaces() {
+  try {
+    const races = await (await fetch("/api/races")).json();
+    $("race-options").replaceChildren(
+      ...races.map((race, i) => {
+        const label = document.createElement("label");
+        label.innerHTML = '<input type="radio" name="race"><span class="name"></span><span class="desc"></span>';
+        const radio = label.querySelector("input");
+        radio.value = race.id;
+        radio.checked = i === 0;
+        label.querySelector(".name").textContent = race.name;
+        label.querySelector(".desc").textContent = race.description;
+        return label;
+      }),
+    );
+  } catch {
+    $("login-error").textContent = "Não foi possível carregar as raças. O servidor está no ar?";
+  }
+}
+loadRaces();
+
 $("login").addEventListener("submit", (ev) => {
   ev.preventDefault();
   $("login-error").textContent = "";
   if (!conn || conn.closed) connect();
-  conn.send({ t: "login", name: $("login-name").value.trim(), password: $("login-password").value });
+  const race = document.querySelector('input[name="race"]:checked')?.value ?? null;
+  conn.send({ t: "login", name: $("login-name").value.trim(), password: $("login-password").value, race });
 });
 
 const chatInput = $("chat-input");

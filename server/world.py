@@ -10,20 +10,32 @@ sabe executar os *tipos* de skill (melee, projectile, area, dash, self) e os
 """
 from __future__ import annotations
 
+import logging
 import math
 import random
 import re
 from itertools import chain
-from typing import Iterator
+from typing import Any, Iterator
 
 from . import config as C
-from .content import Content, EffectApplication, SkillDef
+from .content import ClassDef, Content, EffectApplication, SkillDef
 from .db import Database
 from .entities import DIRECTIONS, MOVE_KEYS, ActiveEffect, Enemy, Entity, MoveKeys, Player, Projectile
+from .rules import rule_matches
+from .saves import SaveVersionError, migrate
 from .stats import STAT_LABELS
 from .tilemap import SAFE, SHOT_BLOCKERS, WALK_BLOCKERS, TileMap
 
+log = logging.getLogger("world")
+
 NAME_RE = re.compile(r"[A-Za-z0-9_]{3,16}")
+
+
+class _KeepUnknown(dict):
+    """Para str.format_map: deixa {marcador} desconhecido como está, em vez de dar erro."""
+
+    def __missing__(self, key: str) -> str:
+        return "{" + key + "}"
 
 # (id do jogador destinatário, ou None para todos; mensagem)
 Outgoing = tuple[int | None, dict]
@@ -92,8 +104,11 @@ class World:
 
     # ================================================================ sessão
 
-    def login(self, name: str, password: str) -> tuple[Player | None, str | None]:
-        """Entra com um personagem existente ou cria um novo. Devolve (jogador, erro)."""
+    def login(self, name: str, password: str, race: str | None = None) -> tuple[Player | None, str | None]:
+        """Entra com um personagem existente ou cria um novo. Devolve (jogador, erro).
+
+        `race` só é usada para criar personagem (precisa ser uma raça selecionável).
+        """
         name = name.strip()
         if not NAME_RE.fullmatch(name):
             return None, "O nome deve ter de 3 a 16 caracteres (letras, números ou _)."
@@ -104,16 +119,26 @@ class World:
 
         record = self.db.load_character(name)
         if record is None:
+            race_def = self.content.races.get(race) if isinstance(race, str) else None
+            if race_def is None or not race_def.selectable:
+                return None, "Escolha uma raça para criar o personagem."
             record = self.db.create_character(name, password)
+            data: dict = {"race": race_def.id, "class": race_def.start_class}
             is_new = True
         elif not self.db.verify_password(record, password):
             return None, "Senha incorreta."
         else:
+            try:
+                data = migrate(record.data)
+            except SaveVersionError:
+                log.exception("save incompatível: %s", record.name)
+                return None, "Não foi possível carregar este personagem (save incompatível)."
             is_new = False
 
         sx, sy = self.map.spawn
-        player = Player(id=self._new_id(), name=record.name, x=sx, y=sy, skills=list(self.content.starting_skills))
-        player.load_dict(record.data)
+        player = Player(id=self._new_id(), name=record.name, x=sx, y=sy)
+        self._set_class(player, self._resolve_class(data))  # antes do load: vida máxima depende da raça
+        player.load_dict(data)
         if is_new:
             player.hp = player.max_hp
             player.energy = player.max_energy
@@ -125,6 +150,25 @@ class World:
         if is_new:
             self._private(player, "Bem-vindo! Personagem criado. Treine meditando (M) e lutando.")
         return player, None
+
+    def _resolve_class(self, data: dict) -> ClassDef:
+        """Classe do save; se sumiu do conteúdo, a inicial da raça; senão, a da raça padrão."""
+        races, classes = self.content.races, self.content.classes
+        race = races.get(data.get("race"))
+        cls = classes.get(data.get("class"))
+        if cls and (race is None or cls.race == race.id):
+            return cls
+        if race:
+            return classes[race.start_class]
+        return classes[races[self.content.default_race].start_class]
+
+    def _set_class(self, p: Player, cls: ClassDef) -> None:
+        """Troca classe e, junto, a raça (a da classe). As skills vêm da classe."""
+        p.class_def = cls
+        p.race_def = self.content.races[cls.race]
+        p.skills = list(cls.skills)
+        p.hp = min(p.hp, p.max_hp)
+        p.energy = min(p.energy, p.max_energy)
 
     def logout(self, player: Player) -> None:
         if self.players.pop(player.id, None) is None:
@@ -321,12 +365,79 @@ class World:
         p.energy = min(p.max_energy, p.energy + energy_rate * p.modifier("energy_regen") * dt)
         p.fatigue = max(0.0, min(C.MAX_FATIGUE, p.fatigue))
 
-    def _train(self, p: Player, stat: str, amount: float) -> None:
+    def _train(self, p: Player, stat: str, amount: float, depth: int = 0, use_rate: bool = True) -> None:
+        """Dá XP a um atributo, aplicando o multiplicador da classe (train_rate)."""
+        if use_rate and p.class_def:
+            amount *= p.class_def.train_rate.get(stat, 1.0)
         gained = p.stats[stat].add_xp(amount)
         if gained:
             level = p.stats[stat].level
             self._private(p, f"{STAT_LABELS[stat]} subiu para o nível {level}!")
             self._fx.append({"k": "lvl", "id": p.id, "x": round(p.x), "y": round(p.y)})
+            self._fire("level_up", p, {"stat": stat, "level": level}, depth)
+
+    # ================================================================ regras (data/rules.yaml)
+
+    def _fire(self, event: str, p: Player, ctx: dict, depth: int = 0) -> None:
+        """Avalia as regras de um evento para o jogador p, de cima para baixo."""
+        if depth > C.MAX_RULE_DEPTH:
+            log.warning("regras encadeadas demais em '%s' para %s; parando", event, p.name)
+            return
+        full = {"race": p.race_id, "class": p.class_id, **ctx}  # raça/classe de ANTES das ações
+        for rule in self.content.rules_by_event[event]:
+            if rule_matches(rule, full, p.flags, self.rng):
+                for name, args in rule.actions:
+                    self._do_action(p, name, args, full, depth)
+                if rule.stop:
+                    break
+
+    def _do_action(self, p: Player, name: str, args: Any, ctx: dict, depth: int) -> None:
+        if name == "message":
+            self._private(p, self._format(args, p, ctx))
+        elif name == "broadcast":
+            self._system(self._format(args, p, ctx))
+        elif name == "lose_xp":
+            self._lose_xp(p, args["percent"], args["stat"])
+        elif name == "gain_xp":
+            self._train(p, args["stat"], args["amount"], depth + 1, use_rate=False)
+        elif name == "set_class":
+            self._set_class(p, self.content.classes[args])
+        elif name == "set_race":
+            self._set_class(p, self.content.classes[args["class"]])
+        elif name == "set_flag":
+            p.flags.add(args)
+        elif name == "clear_flag":
+            p.flags.discard(args)
+        elif name == "add_effect":
+            self._apply_effect(p, args, None)
+
+    @staticmethod
+    def _lose_xp(p: Player, percent: float, which: str) -> None:
+        """Perde uma % do XP necessário para o próximo nível; nunca perde nível."""
+        if which == "highest":
+            stats = [max(p.stats.values(), key=lambda s: (s.level, s.xp))]
+        elif which == "all":
+            stats = list(p.stats.values())
+        else:
+            stats = [p.stats[which]]
+        for s in stats:
+            s.xp = max(0.0, s.xp - s.xp_to_next() * percent / 100)
+
+    @staticmethod
+    def _format(text: str, p: Player, ctx: dict) -> str:
+        values = _KeepUnknown(
+            name=p.name,
+            race=p.race_def.name if p.race_def else "",
+            **{"class": p.class_def.name if p.class_def else ""},
+            killer=ctx.get("killer_name") or "",
+            target=ctx.get("victim_name") or "",
+            stat=STAT_LABELS.get(ctx.get("stat", ""), ""),
+            level=ctx.get("level", ""),
+        )
+        try:
+            return text.format_map(values)
+        except (ValueError, AttributeError, IndexError, KeyError):
+            return text  # texto com chaves malformadas: mostra como está
 
     # ================================================================ skills
 
@@ -481,24 +592,37 @@ class World:
 
     # ================================================================ dano e efeitos
 
-    def _damage(self, target: Entity, amount: float, source: Entity | None, skill: SkillDef | None = None) -> None:
+    def _damage(
+        self,
+        target: Entity,
+        amount: float,
+        source: Entity | None,
+        skill: SkillDef | None = None,
+        effect_id: str | None = None,
+    ) -> None:
         amount = max(1, round(amount * target.modifier("damage_taken")))
+        lost = min(amount, max(0.0, target.hp))  # vida que realmente saiu (golpe exagerado não treina mais)
         target.hp -= amount
         self._fx.append({"k": "dmg", "id": target.id, "x": round(target.x), "y": round(target.y), "v": amount})
         if isinstance(target, Player):
             if target.state in ("meditate", "rest"):
                 target.state = "idle"
-            self._train(target, "vitality", amount * C.VITALITY_XP_PER_DAMAGE)
+            self._train(target, "vitality", lost * C.VITALITY_XP_PER_DAMAGE)
         elif isinstance(target, Enemy) and isinstance(source, Player):
             target.target_id = source.id
         if target.hp <= 0:
-            self._kill(target, source, skill)
+            self._kill(target, source, skill, effect_id)
 
-    def _kill(self, target: Entity, killer: Entity | None, skill: SkillDef | None) -> None:
+    def _kill(
+        self, target: Entity, killer: Entity | None, skill: SkillDef | None, effect_id: str | None = None
+    ) -> None:
+        zone = "safe" if self.map.is_safe(target.x, target.y) else "open"
+        effects_at_death = sorted(target.effects)
         target.hp = 0
         target.state = "dead"
         target.effects.clear()
         target.cooldowns.clear()
+
         if isinstance(target, Player):
             target.dead_timer = C.RESPAWN_SECONDS
             if killer is None:
@@ -506,11 +630,36 @@ class World:
             else:
                 who = killer.name if isinstance(killer, Player) else f"um {killer.name}"
                 self._system(f"{target.name} foi derrotado por {who}.")
+            killer_player = killer if isinstance(killer, Player) else None
+            self._fire("death", target, {
+                "killer": "player" if killer_player else "enemy" if isinstance(killer, Enemy) else "none",
+                "killer_enemy": killer.defn.id if isinstance(killer, Enemy) else None,
+                "killer_race": killer_player.race_id if killer_player else None,
+                "killer_class": killer_player.class_id if killer_player else None,
+                "killer_name": killer.name if killer else None,  # só para textos ({killer})
+                "skill": skill.id if skill else None,
+                "effect": effect_id,
+                "effects": effects_at_death,
+                "zone": zone,
+                "duel": False,  # duelos ainda não existem
+            })
         elif isinstance(target, Enemy):
             target.dead_timer = target.defn.respawn
             # Bônus de abate vai para o atributo principal (o primeiro de "train") da skill usada
             if isinstance(killer, Player) and skill and skill.train:
                 self._train(killer, next(iter(skill.train)), target.defn.kill_xp)
+
+        if isinstance(killer, Player):
+            victim_player = target if isinstance(target, Player) else None
+            self._fire("kill", killer, {
+                "victim": "player" if victim_player else "enemy",
+                "victim_enemy": target.defn.id if isinstance(target, Enemy) else None,
+                "victim_race": victim_player.race_id if victim_player else None,
+                "victim_class": victim_player.class_id if victim_player else None,
+                "victim_name": target.name,  # só para textos ({target})
+                "skill": skill.id if skill else None,
+                "zone": zone,
+            })
 
     def _apply_effect(self, target: Entity, app: EffectApplication, source: Entity | None) -> None:
         if not target.alive:
@@ -541,7 +690,7 @@ class World:
                             self._fx.append({"k": "heal", "id": e.id, "x": round(e.x), "y": round(e.y), "v": round(healed)})
                     # Na zona segura, efeitos não causam dano em jogadores
                     if d.tick_damage and not (isinstance(e, Player) and self.map.is_safe(e.x, e.y)):
-                        self._damage(e, d.tick_damage, self._entity(active.source_id))
+                        self._damage(e, d.tick_damage, self._entity(active.source_id), effect_id=d.id)
                         if not e.alive:
                             return
             if active.remaining <= 1e-9:

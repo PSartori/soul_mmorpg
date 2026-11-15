@@ -1,6 +1,8 @@
-# Configuração de personagens novos.
+# Configuração geral de personagens.
 #
-#   starting_skills  skills disponíveis, na ordem da barra (teclas 1–8; Espaço = 1, F = 2).
-#                    Por enquanto todos recebem todas; raças e classes vêm na fase 2.
+#   default_race  raça dada a personagens antigos (de antes das raças existirem)
+#                 e a quem tiver no save uma raça que foi removida do jogo.
+#
+# As skills de cada personagem vêm da classe (data/classes.yaml).
 
-starting_skills: [golpe, rajada, passo, flecha_gelida, dardo, leque, onda, foco]
+default_race: humano
