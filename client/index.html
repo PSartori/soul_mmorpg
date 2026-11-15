@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RPG Online — protótipo</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div id="app">
+    <main id="stage">
+      <canvas id="canvas" width="960" height="640"></canvas>
+    </main>
+
+    <aside id="side">
+      <section id="status">
+        <h2 id="me-name">—</h2>
+        <div class="bar hp" id="bar-hp"><span class="fill"></span><span class="label"></span></div>
+        <div class="bar energy" id="bar-energy"><span class="fill"></span><span class="label"></span></div>
+        <div class="bar fatigue" id="bar-fatigue"><span class="fill"></span><span class="label"></span></div>
+        <ul id="stats"></ul>
+      </section>
+
+      <section id="chat">
+        <div id="chat-log" aria-live="polite"></div>
+        <input id="chat-input" maxlength="200" placeholder="Enter para conversar" autocomplete="off">
+      </section>
+
+      <section id="help">
+        <b>WASD / setas</b> andar ·
+        <b>Espaço</b> golpe ·
+        <b>F</b> rajada ·
+        <b>M</b> meditar ·
+        <b>R</b> descansar ·
+        <b>Enter</b> chat
+      </section>
+    </aside>
+  </div>
+
+  <div id="overlay">
+    <form id="login">
+      <h1>RPG Online</h1>
+      <p class="sub">Protótipo</p>
+      <input id="login-name" placeholder="Nome do personagem" maxlength="16" autocomplete="username" required>
+      <input id="login-password" type="password" placeholder="Senha" autocomplete="current-password" required>
+      <button type="submit">Entrar</button>
+      <p class="hint">Se o nome ainda não existir, o personagem é criado.</p>
+      <p id="login-error" class="error"></p>
+    </form>
+  </div>
+
+  <script type="module" src="/static/js/main.js"></script>
+</body>
+</html>
