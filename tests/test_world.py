@@ -1023,5 +1023,277 @@ perdeu:
         ents = {e["id"]: e for e in snaps[self.a.id]["ents"]}
         self.assertEqual(ents[self.a.id]["du"], self.b.id)
 
+
+class InventoryUnitTests(unittest.TestCase):
+    def test_stacks_then_fills_empty_slots(self):
+        from server.inventory import Inventory
+        inv = Inventory(size=3)
+        potion = CONTENT.items["pocao_vida"]  # pilha de 10
+        self.assertEqual(inv.add(potion, 25), 0)
+        self.assertEqual([s.qty for s in inv.slots], [10, 10, 5])
+        self.assertEqual(inv.add(potion, 10), 5)  # só cabem 5
+        self.assertEqual(inv.count("pocao_vida"), 30)
+
+    def test_equipment_does_not_stack(self):
+        from server.inventory import Inventory
+        inv = Inventory(size=3)
+        self.assertEqual(inv.add(CONTENT.items["espada_curta"], 2), 0)
+        self.assertEqual(inv.free_slots(), 1)
+
+    def test_from_dict_ignores_unknown(self):
+        from server.inventory import Inventory
+        inv = Inventory.from_dict({
+            "slots": [["pocao_vida", 3], ["item_removido", 1], ["espada_curta", 0]],
+            "equipment": {"weapon": "espada_curta", "armor": "espada_curta"},  # espada não é armadura
+            "gold": 12,
+        }, CONTENT.items)
+        self.assertEqual(inv.count("pocao_vida"), 3)
+        self.assertIsNone(inv.slots[1])
+        self.assertEqual(set(inv.equipment), {"weapon"})
+        self.assertEqual(inv.gold, 12)
+
+
+class ItemTests(GameplayBase):
+    def give(self, item_id: str, qty: int = 1):
+        self.player.inventory.add(CONTENT.items[item_id], qty)
+
+    def slot_of(self, item_id: str) -> int:
+        return next(i for i, s in enumerate(self.player.inventory.slots) if s and s.item.id == item_id)
+
+    def item(self, op: str, slot):
+        self.world.handle_message(self.player, {"t": "item", "op": op, "slot": slot})
+        self.world.step(DT)
+
+    def deterministic_loot(self):
+        defn = dataclasses.replace(self.enemy.defn, gold=(7, 7), loot=(
+            dataclasses.replace(CONTENT.enemies["espectro"].loot[0], chance=1.0, qty_min=2, qty_max=2),
+        ))
+        self.enemy.defn = defn
+
+    def kill_enemy(self, killer):
+        self.world._damage(self.enemy, 10_000, killer, CONTENT.skills["golpe"])
+
+    def test_loot_drops_and_owner_picks_up(self):
+        self.deterministic_loot()
+        self.kill_enemy(self.player)
+        self.assertEqual(len(self.world.drops), 2)  # moedas + fragmentos
+        drop = next(iter(self.world.drops.values()))
+        self.player.x, self.player.y = drop.x, drop.y
+        for d in self.world.drops.values():
+            d.x, d.y = self.player.x, self.player.y
+        self.world.step(DT)
+        self.assertEqual(self.world.drops, {})
+        self.assertEqual(self.player.inventory.gold, 7)
+        self.assertEqual(self.player.inventory.count("fragmento_espectral"), 2)
+
+    def test_loot_is_exclusive_then_free(self):
+        self.deterministic_loot()
+        other, _ = self.world.login("Outro", "1234", "humano")
+        self.kill_enemy(self.player)
+        for d in self.world.drops.values():
+            d.x, d.y = tile_center(7, 1)
+        other.x, other.y = tile_center(7, 1)
+        self.player.x, self.player.y = tile_center(2, 2)
+        self.world.step(DT)
+        self.assertEqual(len(self.world.drops), 2)  # o outro não pega ainda
+        run(self.world, C.LOOT_OWNER_SECONDS)
+        self.assertEqual(self.world.drops, {})  # agora pega
+        self.assertEqual(other.inventory.gold, 7)
+
+    def test_loot_expires(self):
+        self.deterministic_loot()
+        self.kill_enemy(self.player)
+        for d in self.world.drops.values():
+            d.x, d.y = tile_center(7, 1)
+        self.player.x, self.player.y = tile_center(2, 2)
+        run(self.world, C.LOOT_EXPIRE_SECONDS + 0.1)
+        self.assertEqual(self.world.drops, {})
+
+    def test_full_inventory_leaves_item_on_ground(self):
+        self.deterministic_loot()
+        for _ in range(C.INVENTORY_SIZE):
+            self.give("espada_curta")
+        self.kill_enemy(self.player)
+        for d in self.world.drops.values():
+            d.x, d.y = self.player.x, self.player.y
+        self.world.step(DT)
+        self.assertEqual(len(self.world.drops), 1)  # moedas entraram, fragmentos ficaram
+        self.assertEqual(self.player.inventory.gold, 7)
+
+    def test_use_potion(self):
+        self.give("pocao_vida", 2)
+        p = self.player
+        p.hp = 10
+        self.item("use", self.slot_of("pocao_vida"))
+        self.assertAlmostEqual(p.hp, 50, delta=1)
+        self.assertEqual(p.inventory.count("pocao_vida"), 1)
+        self.item("use", self.slot_of("pocao_vida"))  # em recarga
+        self.assertEqual(p.inventory.count("pocao_vida"), 1)
+
+    def test_potion_not_wasted_at_full_hp(self):
+        self.give("pocao_vida")
+        self.item("use", self.slot_of("pocao_vida"))
+        self.assertEqual(self.player.inventory.count("pocao_vida"), 1)
+
+    def test_effect_potion(self):
+        self.give("tonico_veloz")
+        speed = self.player.speed
+        self.item("use", self.slot_of("tonico_veloz"))
+        self.assertIn("veloz", self.player.effects)
+        self.assertAlmostEqual(self.player.speed, speed * 1.3)
+
+    def test_equip_changes_stats_and_swaps(self):
+        p = self.player
+        hp = p.max_hp
+        self.give("gibao_de_couro")
+        self.item("use", self.slot_of("gibao_de_couro"))
+        self.assertEqual(p.inventory.equipment["armor"].id, "gibao_de_couro")
+        self.assertEqual(p.max_hp, hp + 25)
+        self.assertAlmostEqual(p.modifier("damage_taken"), 0.95)
+        self.give("couraca_de_bruto")
+        self.item("use", self.slot_of("couraca_de_bruto"))
+        self.assertEqual(p.inventory.equipment["armor"].id, "couraca_de_bruto")
+        self.assertEqual(p.inventory.count("gibao_de_couro"), 1)  # o anterior voltou para a bolsa
+        self.item("unequip", "armor")
+        self.assertNotIn("armor", p.inventory.equipment)
+        self.assertEqual(p.max_hp, hp)
+
+    def test_weapon_raises_damage(self):
+        p = self.player
+        plain = self.world._skill_damage(p, CONTENT.skills["golpe"])
+        self.give("espada_curta")
+        self.item("use", self.slot_of("espada_curta"))
+        self.assertAlmostEqual(self.world._skill_damage(p, CONTENT.skills["golpe"]), plain * 1.1)
+
+    def test_race_restriction(self):
+        self.give("cajado_de_foco")  # só desperto
+        self.item("use", self.slot_of("cajado_de_foco"))
+        self.assertNotIn("weapon", self.player.inventory.equipment)
+
+    def test_class_change_unequips_invalid(self):
+        p = self.player
+        self.world._set_class(p, CONTENT.classes["iniciado"])  # vira desperto
+        self.give("cajado_de_foco")
+        self.item("use", self.slot_of("cajado_de_foco"))
+        self.assertIn("weapon", p.inventory.equipment)
+        self.world._set_class(p, CONTENT.classes["aprendiz"])  # volta a humano
+        self.assertNotIn("weapon", p.inventory.equipment)
+        self.assertEqual(p.inventory.count("cajado_de_foco"), 1)
+
+    def test_drop_item(self):
+        self.give("pocao_vida", 3)
+        p = self.player
+        p.x, p.y = tile_center(2, 2)
+        p.facing = "down"
+        self.item("drop", self.slot_of("pocao_vida"))
+        self.assertEqual(p.inventory.count("pocao_vida"), 0)
+        (drop,) = self.world.drops.values()
+        self.assertEqual(drop.qty, 3)
+        self.assertGreater(drop.y, p.y)  # caiu à frente
+        drop.x, drop.y = p.x, p.y  # mesmo em cima, não pega de volta na hora
+        run(self.world, 1.0)
+        self.assertEqual(len(self.world.drops), 1)
+        run(self.world, C.DROP_PICKUP_DELAY)
+        self.assertEqual(p.inventory.count("pocao_vida"), 3)
+
+    def test_other_player_can_pick_dropped_item(self):
+        self.give("pocao_vida", 2)
+        other, _ = self.world.login("Outro", "1234", "humano")
+        self.player.x, self.player.y = tile_center(2, 2)
+        self.player.facing = "right"
+        self.item("drop", self.slot_of("pocao_vida"))
+        (drop,) = self.world.drops.values()
+        other.x, other.y = drop.x, drop.y
+        self.world.step(DT)
+        self.assertEqual(other.inventory.count("pocao_vida"), 2)
+
+    def test_invalid_item_messages_are_ignored(self):
+        for msg in ({"op": "use", "slot": "x"}, {"op": "use", "slot": 999}, {"op": "unequip", "slot": "chapeu"},
+                    {"op": "comer", "slot": 0}, {"op": "use", "slot": True}):
+            self.world.handle_message(self.player, {"t": "item", **msg})
+        self.world.step(DT)  # não pode quebrar
+
+    def test_inventory_is_saved(self):
+        db = Database(":memory:")
+        world = make_world(db)
+        p, _ = world.login("Teste", "1234", "humano")
+        p.inventory.add(CONTENT.items["pocao_vida"], 4)
+        p.inventory.add(CONTENT.items["gibao_de_couro"], 1)
+        world._item_action(p, "use", 1)  # equipa o gibão
+        p.inventory.add_gold(33)
+        world.logout(p)
+        p, _ = make_world(db).login("Teste", "1234")
+        self.assertEqual(p.inventory.count("pocao_vida"), 4)
+        self.assertEqual(p.inventory.equipment["armor"].id, "gibao_de_couro")
+        self.assertEqual(p.inventory.gold, 33)
+
+    def test_v2_save_gets_empty_inventory(self):
+        data = migrate({"v": 2, "race": "humano", "class": "aprendiz", "flags": []})
+        self.assertEqual(data["inventory"], {"slots": [], "equipment": {}, "gold": 0})
+
+    def test_snapshot_sends_inventory_only_when_changed(self):
+        self.world.step(DT)
+        first = [m for t, m in self.world.drain_outbox() if m["t"] == "snap" and t == self.player.id][-1]
+        self.assertIn("inv", first["you"])
+        self.world.step(DT)
+        second = [m for t, m in self.world.drain_outbox() if m["t"] == "snap" and t == self.player.id][-1]
+        self.assertNotIn("inv", second["you"])
+        self.give("pocao_vida")
+        self.world.step(DT)
+        third = [m for t, m in self.world.drain_outbox() if m["t"] == "snap" and t == self.player.id][-1]
+        self.assertIn("inv", third["you"])
+
+
+class ItemRuleTests(unittest.TestCase):
+    def test_give_and_lose_gold_and_items(self):
+        world = make_world(rules=rules_from("""
+premio:
+  when: level_up
+  do:
+    - give_item: { id: pocao_vida, qty: 3 }
+    - give_gold: 50
+multa:
+  when: death
+  do: [ { lose_gold: { percent: 20 } } ]
+"""))
+        p, _ = world.login("Teste", "1234", "humano")
+        world._train(p, "strength", 1_000, use_rate=False)
+        self.assertEqual(p.inventory.count("pocao_vida"), 3)
+        self.assertEqual(p.inventory.gold, 50)
+        world._kill(p, None, None)
+        self.assertEqual(p.inventory.gold, 40)
+
+    def test_give_item_shorthand_and_validation(self):
+        rules = rules_from("r:\n  when: level_up\n  do: [ { give_item: pocao_vida } ]\n")
+        self.assertEqual(rules[0].actions[0][1], {"id": "pocao_vida", "qty": 1})
+        with self.assertRaises(ContentError):
+            rules_from("r:\n  when: level_up\n  do: [ { give_item: espada_de_ouro } ]\n")
+        with self.assertRaises(ContentError):
+            rules_from("r:\n  when: level_up\n  do: [ { lose_gold: { percent: 10, amount: 3 } } ]\n")
+
+
+class ItemContentTests(ContentTests):
+    def test_loot_unknown_item(self):
+        self.append("enemies.yaml", "teste:\n  name: T\n  mark: Z\n  hp: 1\n  speed: 1\n  aggro_radius: 1\n"
+                    "  leash: 1\n  wander_radius: 1\n  respawn: 1\n  loot: [ { item: tesouro } ]\n")
+        self.assert_error("teste", "tesouro")
+
+    def test_bad_slot(self):
+        self.append("items.yaml", "teste:\n  name: T\n  type: equipment\n  slot: chapeu\n")
+        self.assert_error("teste", "chapeu")
+
+    def test_consumable_without_use(self):
+        self.append("items.yaml", "teste:\n  name: T\n  type: consumable\n")
+        self.assert_error("teste", "heal")
+
+    def test_equipment_cannot_stack(self):
+        self.append("items.yaml", "teste:\n  name: T\n  type: equipment\n  slot: weapon\n  stack: 5\n")
+        self.assert_error("teste", "stack")
+
+    def test_bad_qty_range(self):
+        self.append("enemies.yaml", "teste:\n  name: T\n  mark: Z\n  hp: 1\n  speed: 1\n  aggro_radius: 1\n"
+                    "  leash: 1\n  wander_radius: 1\n  respawn: 1\n  gold: [5, 2]\n")
+        self.assert_error("teste", "gold")
+
 if __name__ == "__main__":
     unittest.main()

@@ -28,7 +28,7 @@ EVENT_FIELDS: dict[str, tuple[str, ...]] = {
 SPECIAL_CONDITIONS = ("chance", "flags", "not_flags")
 
 ACTIONS = ("message", "broadcast", "lose_xp", "gain_xp", "set_class", "set_race",
-           "set_flag", "clear_flag", "add_effect")
+           "set_flag", "clear_flag", "add_effect", "give_item", "give_gold", "lose_gold")
 
 KILLER_KINDS = ("player", "enemy", "none")  # "none": morreu sem autor (ex.: veneno de quem já saiu)
 VICTIM_KINDS = ("player", "enemy")

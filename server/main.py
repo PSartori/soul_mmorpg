@@ -38,6 +38,16 @@ async def index(request: web.Request) -> web.FileResponse:
     return web.FileResponse(C.CLIENT_DIR / "index.html")
 
 
+async def revalidate_client_files(request: web.Request, response: web.StreamResponse) -> None:
+    """O navegador sempre confere se o cliente mudou (responde 304 se não mudou).
+
+    Sem isso, depois de uma atualização o navegador pode misturar arquivos JS
+    novos com antigos guardados em cache.
+    """
+    if request.path == "/" or request.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-cache"
+
+
 async def races_handler(request: web.Request) -> web.Response:
     """Raças que aparecem na criação de personagem (antes do login)."""
     return web.json_response(request.app[WORLD].content.selectable_races())
@@ -140,6 +150,7 @@ def create_app(db_path: str | Path = C.DB_PATH, map_path: str | Path = C.DEFAULT
     app.router.add_get("/ws", ws_handler)
     app.router.add_get("/api/races", races_handler)
     app.router.add_static("/static/", C.CLIENT_DIR)
+    app.on_response_prepare.append(revalidate_client_files)
 
     async def on_startup(app: web.Application) -> None:
         app[LOOP_TASK] = asyncio.create_task(game_loop(app))

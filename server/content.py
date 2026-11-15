@@ -7,7 +7,7 @@ digitação no YAML aparece na hora de subir o servidor, não no meio do jogo.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
 from typing import Any
@@ -24,6 +24,9 @@ MODIFIERS = ("speed", "damage", "damage_taken", "energy_regen")
 FLAGS = ("stunned", "silenced")
 MAX_HOTBAR = 8
 RACE_BONUSES = ("max_hp", "max_energy", "speed")
+ITEM_TYPES = ("equipment", "consumable", "material")
+EQUIP_SLOTS = ("weapon", "armor", "accessory")
+RARITIES = ("common", "uncommon", "rare", "epic")
 ID_RE = re.compile(r"[a-z0-9_]+")
 
 _REQUIRED = object()
@@ -106,6 +109,47 @@ class EnemyDef:
     respawn: float
     kill_xp: float
     skills: tuple[str, ...]
+    gold: tuple[int, int] = (0, 0)  # moedas que caem: [mínimo, máximo]
+    loot: tuple[LootEntry, ...] = ()
+
+
+@dataclass(frozen=True)
+class LootEntry:
+    item: str
+    chance: float  # 0–1
+    qty_min: int
+    qty_max: int
+
+
+@dataclass(frozen=True)
+class ItemDef:
+    id: str
+    name: str
+    type: str  # equipment | consumable | material
+    rarity: str
+    description: str
+    stack: int  # quantos cabem num espaço do inventário
+    value: int  # valor em moedas (para lojas, no futuro)
+    # equipamento
+    slot: str | None = None
+    bonus: dict[str, float] = field(default_factory=dict)  # max_hp, max_energy, speed (somados)
+    modifiers: dict[str, float] = field(default_factory=dict)  # multiplicadores, como nos efeitos
+    races: tuple[str, ...] = ()  # vazio = qualquer raça
+    classes: tuple[str, ...] = ()  # vazio = qualquer classe
+    # consumível
+    heal: float = 0.0
+    energy: float = 0.0
+    effects: tuple[EffectApplication, ...] = ()
+    cooldown: float = 0.0
+
+    def client_info(self) -> dict:
+        return {
+            "name": self.name, "type": self.type, "rarity": self.rarity, "desc": self.description,
+            "stack": self.stack, "value": self.value, "slot": self.slot, "bonus": self.bonus,
+            "mods": self.modifiers, "races": list(self.races), "classes": list(self.classes),
+            "heal": self.heal, "energy": self.energy, "effects": [a.effect for a in self.effects],
+            "cd": self.cooldown,
+        }
 
 
 @dataclass(frozen=True)
@@ -137,6 +181,7 @@ class Content:
     classes: dict[str, ClassDef]
     rules: tuple[Rule, ...]
     default_race: str
+    items: dict[str, ItemDef] = field(default_factory=dict)
 
     @property
     def enemy_by_mark(self) -> dict[str, EnemyDef]:
@@ -160,6 +205,7 @@ class Content:
             "enemies": {e.id: {"color": e.color} for e in self.enemies.values()},
             "races": {r.id: {"name": r.name} for r in self.races.values()},
             "classes": {c.id: {"name": c.name, "race": c.race} for c in self.classes.values()},
+            "items": {i.id: i.client_info() for i in self.items.values()},
         }
 
     @classmethod
@@ -170,17 +216,18 @@ class Content:
         enemies = {i: _parse_enemy(i, raw) for i, raw in _load_yaml(data_dir / "enemies.yaml").items()}
         races = {i: _parse_race(i, raw) for i, raw in _load_yaml(data_dir / "races.yaml").items()}
         classes = {i: _parse_class(i, raw) for i, raw in _load_yaml(data_dir / "classes.yaml").items()}
+        items = {i: _parse_item(i, raw) for i, raw in _load_yaml(data_dir / "items.yaml").items()}
 
         player = _Fields("player.yaml", _load_yaml(data_dir / "player.yaml"))
         default_race = player.text("default_race")
         player.done()
 
         # Regras por último: as condições e ações são conferidas contra todo o resto
-        refs = _RuleRefs(effects=effects, skills=skills, enemies=enemies, races=races, classes=classes)
+        refs = _RuleRefs(effects=effects, skills=skills, enemies=enemies, races=races, classes=classes, items=items)
         rules = tuple(_parse_rule(i, raw, refs) for i, raw in _load_yaml(data_dir / "rules.yaml").items())
 
         content = cls(effects=effects, skills=skills, enemies=enemies, races=races, classes=classes,
-                      rules=rules, default_race=default_race)
+                      rules=rules, default_race=default_race, items=items)
         content.check_references()
         return content
 
@@ -199,6 +246,20 @@ class Content:
                     raise ContentError(f"enemies.yaml > {e.id}: skill '{sid}' não existe em skills.yaml")
                 if self.skills[sid].type not in AI_SKILL_TYPES:
                     raise ContentError(f"enemies.yaml > {e.id}: a IA não sabe usar skills do tipo '{self.skills[sid].type}'")
+            for entry in e.loot:
+                if entry.item not in self.items:
+                    raise ContentError(f"enemies.yaml > {e.id}: item de saque '{entry.item}' não existe em items.yaml")
+        for item in self.items.values():
+            where = f"items.yaml > {item.id}"
+            for race in item.races:
+                if race not in self.races:
+                    raise ContentError(f"{where}: raça '{race}' não existe em races.yaml")
+            for cls_id in item.classes:
+                if cls_id not in self.classes:
+                    raise ContentError(f"{where}: classe '{cls_id}' não existe em classes.yaml")
+            for app in item.effects:
+                if app.effect not in self.effects:
+                    raise ContentError(f"{where}: efeito '{app.effect}' não existe em effects.yaml")
         for c in self.classes.values():
             where = f"classes.yaml > {c.id}"
             if c.race not in self.races:
@@ -425,9 +486,95 @@ def _parse_enemy(eid: str, raw: Any) -> EnemyDef:
         respawn=f.num("respawn"),
         kill_xp=f.num("kill_xp", 0.0),
         skills=tuple(f.str_list("skills")),
+        gold=_int_range(f, "gold", (0, 0)),
+        loot=tuple(_parse_loot(f)),
     )
     f.done()
     return enemy
+
+
+def _int_range(f: _Fields, key: str, default: tuple[int, int]) -> tuple[int, int]:
+    """Aceita N ou [mínimo, máximo] (inteiros, mínimo ≤ máximo)."""
+    value = f._get(key, list(default))
+    if isinstance(value, int) and not isinstance(value, bool):
+        value = [value, value]
+    if (
+        not isinstance(value, list)
+        or len(value) != 2
+        or not all(isinstance(v, int) and not isinstance(v, bool) and v >= 0 for v in value)
+        or value[0] > value[1]
+    ):
+        raise ContentError(f"{f.where}: '{key}' deve ser um número inteiro ou [mínimo, máximo], veio {value!r}")
+    return value[0], value[1]
+
+
+def _parse_loot(f: _Fields) -> list[LootEntry]:
+    entries = []
+    for i, raw in enumerate(f.list("loot")):
+        e = _Fields(f"{f.where}.loot[{i}]", raw)
+        chance = e.num("chance", 1.0)
+        if not 0 < chance <= 1:
+            raise ContentError(f"{e.where}: 'chance' deve estar entre 0 e 1 (ex.: 0.25 = 25%)")
+        qty_min, qty_max = _int_range(e, "qty", (1, 1))
+        if qty_min < 1:
+            raise ContentError(f"{e.where}: 'qty' deve ser pelo menos 1")
+        entries.append(LootEntry(item=e.text("item"), chance=chance, qty_min=qty_min, qty_max=qty_max))
+        e.done()
+    return entries
+
+
+def _parse_item(iid: str, raw: Any) -> ItemDef:
+    f = _Fields(f"items.yaml > {iid}", raw)
+    itype = f.text("type")
+    if itype not in ITEM_TYPES:
+        raise ContentError(f"{f.where}: type '{itype}' inválido (válidos: {', '.join(ITEM_TYPES)})")
+    rarity = f.text("rarity", "common")
+    if rarity not in RARITIES:
+        raise ContentError(f"{f.where}: rarity '{rarity}' inválida (válidas: {', '.join(RARITIES)})")
+
+    extra: dict[str, Any] = {}
+    if itype == "equipment":
+        slot = f.text("slot")
+        if slot not in EQUIP_SLOTS:
+            raise ContentError(f"{f.where}: slot '{slot}' inválido (válidos: {', '.join(EQUIP_SLOTS)})")
+        bonus_f = f.sub("bonus")
+        bonus = {}
+        for key in list(bonus_f.raw):
+            if key not in RACE_BONUSES:
+                raise ContentError(f"{bonus_f.where}: bônus desconhecido '{key}' (válidos: {', '.join(RACE_BONUSES)})")
+            bonus[key] = bonus_f.num(key, minimum=-1e9)
+        mods_f = f.sub("modifiers")
+        modifiers = {}
+        for key in list(mods_f.raw):
+            if key not in MODIFIERS:
+                raise ContentError(f"{mods_f.where}: modificador desconhecido '{key}' (válidos: {', '.join(MODIFIERS)})")
+            modifiers[key] = mods_f.num(key)
+        extra = {"slot": slot, "bonus": bonus, "modifiers": modifiers,
+                 "races": tuple(f.str_list("races")), "classes": tuple(f.str_list("classes"))}
+        stack = 1  # equipamento não empilha
+    else:
+        if itype == "consumable":
+            use = f.sub("use")
+            heal, energy = use.num("heal", 0.0), use.num("energy", 0.0)
+            effects = _effect_apps(use, "effects")
+            use.done()
+            if not (heal or energy or effects):
+                raise ContentError(f"{f.where}.use: precisa de heal, energy e/ou effects")
+            extra = {"heal": heal, "energy": energy, "effects": effects, "cooldown": f.num("cooldown", 1.0)}
+        stack = f.int("stack", 10 if itype == "consumable" else 50, minimum=1)
+
+    item = ItemDef(
+        id=iid,
+        name=f.text("name"),
+        type=itype,
+        rarity=rarity,
+        description=f.text("description", ""),
+        stack=stack,
+        value=f.int("value", 0),
+        **extra,
+    )
+    f.done()
+    return item
 
 
 def _parse_race(rid: str, raw: Any) -> RaceDef:
@@ -476,6 +623,7 @@ class _RuleRefs:
     enemies: dict[str, EnemyDef]
     races: dict[str, RaceDef]
     classes: dict[str, ClassDef]
+    items: dict[str, ItemDef] = field(default_factory=dict)
 
     def allowed(self, field: str) -> tuple[str, ...] | type | None:
         """Valores válidos para um campo de condição (ou o tipo esperado)."""
@@ -531,6 +679,27 @@ def _check_action(where: str, when: str, name: str, args: Any, refs: _RuleRefs) 
         if not isinstance(args, str) or not args:
             raise ContentError(f"{where}: {name} precisa de um texto")
         return args
+    if name == "give_gold":
+        if isinstance(args, bool) or not isinstance(args, int) or args < 1:
+            raise ContentError(f"{where}: give_gold precisa de um número inteiro positivo")
+        return args
+    if name == "lose_gold":
+        f = _Fields(f"{where}.lose_gold", args)
+        if ("percent" in args) == ("amount" in args):
+            raise ContentError(f"{f.where}: use percent OU amount")
+        result = {"percent": f.num("percent")} if "percent" in args else {"amount": f.int("amount", minimum=1)}
+        if "percent" in result and not 0 < result["percent"] <= 100:
+            raise ContentError(f"{f.where}: 'percent' deve estar entre 0 e 100")
+        f.done()
+        return result
+    if name == "give_item":
+        f = _Fields(f"{where}.give_item", args if isinstance(args, dict) else {"id": args})
+        item = f.text("id")
+        if item not in refs.items:
+            raise ContentError(f"{f.where}: item {item!r} não existe em items.yaml")
+        result = {"id": item, "qty": f.int("qty", 1, minimum=1)}
+        f.done()
+        return result
     if name in ("set_flag", "clear_flag"):
         return flag_name(args)
     if name == "set_class":
@@ -619,5 +788,5 @@ def _parse_rule(rid: str, raw: Any, refs: _RuleRefs) -> Rule:
 def parse_rules(raw: dict, content: Content) -> tuple[Rule, ...]:
     """Valida regras avulsas contra um conteúdo já carregado (usado nos testes)."""
     refs = _RuleRefs(effects=content.effects, skills=content.skills, enemies=content.enemies,
-                     races=content.races, classes=content.classes)
+                     races=content.races, classes=content.classes, items=content.items)
     return tuple(_parse_rule(i, r, refs) for i, r in raw.items())

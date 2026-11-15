@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-SAVE_VERSION = 2
+SAVE_VERSION = 3
 
 
 class SaveVersionError(ValueError):
@@ -33,8 +33,15 @@ def _v1_to_v2(data: dict) -> dict:
     return data
 
 
+def _v2_to_v3(data: dict) -> dict:
+    """v3: inventário (espaços, equipamento e moedas), começando vazio."""
+    data.setdefault("inventory", {"slots": [], "equipment": {}, "gold": 0})
+    return data
+
+
 MIGRATIONS: dict[int, Callable[[dict], dict]] = {
     1: _v1_to_v2,
+    2: _v2_to_v3,
 }
 
 

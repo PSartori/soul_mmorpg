@@ -18,10 +18,13 @@ from itertools import chain
 from typing import Any, Iterator
 
 from . import config as C
-from .content import ClassDef, Content, EffectApplication, SkillDef
+from .content import EQUIP_SLOTS, ClassDef, Content, EffectApplication, ItemDef, SkillDef
 from .db import Database
 from .duels import DuelSystem
-from .entities import DIRECTIONS, MOVE_KEYS, ActiveEffect, Enemy, Entity, MoveKeys, Player, Projectile
+from .entities import (
+    DIRECTIONS, MOVE_KEYS, ActiveEffect, Enemy, Entity, GroundItem, MoveKeys, Player, Projectile,
+)
+from .inventory import Inventory
 from .rules import rule_matches
 from .saves import SaveVersionError, migrate
 from .stats import STAT_LABELS
@@ -80,6 +83,7 @@ class World:
         self.players: dict[int, Player] = {}
         self.enemies: dict[int, Enemy] = {}
         self.projectiles: dict[int, Projectile] = {}
+        self.drops: dict[int, GroundItem] = {}  # itens e moedas no chão
         self._fx: list[dict] = []  # efeitos visuais deste tick (dano, golpes, level up...)
         self._outbox: list[Outgoing] = []
         self._save_timer = C.AUTOSAVE_SECONDS
@@ -139,7 +143,9 @@ class World:
 
         sx, sy = self.map.spawn
         player = Player(id=self._new_id(), name=record.name, x=sx, y=sy)
-        self._set_class(player, self._resolve_class(data))  # antes do load: vida máxima depende da raça
+        # antes do load: a vida máxima depende da raça e do equipamento
+        player.inventory = Inventory.from_dict(data.get("inventory") or {}, self.content.items)
+        self._set_class(player, self._resolve_class(data))
         player.load_dict(data)
         if is_new:
             player.hp = player.max_hp
@@ -169,6 +175,12 @@ class World:
         p.class_def = cls
         p.race_def = self.content.races[cls.race]
         p.skills = list(cls.skills)
+        for slot, item in list(p.inventory.equipment.items()):
+            if not self._can_equip(p, item):  # a raça/classe nova não pode usar: volta para a bolsa
+                del p.inventory.equipment[slot]
+                self._give_item(p, item, 1)
+                self._private(p, f"{item.name} não serve para {p.race_def.name}/{cls.name} e foi desequipado.")
+        p.inventory.dirty = True
         p.hp = min(p.hp, p.max_hp)
         p.energy = min(p.energy, p.max_energy)
 
@@ -215,6 +227,14 @@ class World:
         elif kind in ("meditate", "rest"):
             if len(player.actions) < C.MAX_QUEUED_ACTIONS:
                 player.actions.append((kind, None, None))
+        elif kind == "item":
+            op, slot = data.get("op"), data.get("slot")
+            valid = (
+                (op in ("use", "drop") and isinstance(slot, int) and not isinstance(slot, bool))
+                or (op == "unequip" and slot in EQUIP_SLOTS)
+            )
+            if valid and len(player.actions) < C.MAX_QUEUED_ACTIONS:
+                player.actions.append(("item", op, slot))
         elif kind == "chat":
             text = str(data.get("text", ""))[: C.CHAT_MAX_LEN].strip()
             if text:
@@ -277,6 +297,7 @@ class World:
         for enemy in list(self.enemies.values()):
             self._update_enemy(enemy, dt)
         self._update_projectiles(dt)
+        self._update_drops()
 
         self._save_timer -= dt
         if self._save_timer <= 0:
@@ -293,13 +314,19 @@ class World:
                 snap["du"] = opponent  # em duelo com
             ents.append(snap)
         projs = [p.snapshot() for p in self.projectiles.values()]
+        drops = [d.snapshot() for d in self.drops.values()]
         fx, self._fx = self._fx, []
         for player in self.players.values():
             you = player.private_snapshot()
             zone = self.map.zone_at(player.x, player.y)
             you["zone"] = {"t": zone.type, "n": zone.name}
             you["duel"] = self.duels.client_info(player)
-            self._outbox.append((player.id, {"t": "snap", "ents": ents, "projs": projs, "fx": fx, "you": you}))
+            if player.inventory.dirty:  # inventário só vai quando muda
+                you["inv"] = player.inventory.client_info()
+                player.inventory.dirty = False
+            self._outbox.append(
+                (player.id, {"t": "snap", "ents": ents, "projs": projs, "drops": drops, "fx": fx, "you": you})
+            )
 
     # ================================================================ jogadores
 
@@ -317,6 +344,10 @@ class World:
             return
 
         self._tick_cooldowns(p, dt)
+        for item_id in list(p.item_cooldowns):
+            p.item_cooldowns[item_id] -= dt
+            if p.item_cooldowns[item_id] <= 0:
+                del p.item_cooldowns[item_id]
         self._update_effects(p, dt)
         if not p.alive:
             return
@@ -339,9 +370,12 @@ class World:
                 p.state = "idle" if p.state == "rest" else "rest"
             elif kind == "skill":
                 self._use_skill(p, self.content.skills[skill_id], facing)
+            elif kind == "item":
+                self._item_action(p, skill_id, facing)  # (op, espaço)
             if not p.alive:
                 return
 
+        self._pickup(p)
         self._regen_player(p, dt)
 
     def _toggle_meditate(self, p: Player) -> None:
@@ -440,6 +474,14 @@ class World:
             p.flags.discard(args)
         elif name == "add_effect":
             self._apply_effect(p, args, None)
+        elif name == "give_item":
+            self._give_item(p, self.content.items[args["id"]], args["qty"])
+        elif name == "give_gold":
+            p.inventory.add_gold(args)
+        elif name == "lose_gold":
+            gold = p.inventory.gold
+            lost = int(gold * args["percent"] / 100) if "percent" in args else min(gold, args["amount"])
+            p.inventory.add_gold(-lost)
 
     @staticmethod
     def _lose_xp(p: Player, percent: float, which: str) -> None:
@@ -699,6 +741,7 @@ class World:
             })
         elif isinstance(target, Enemy):
             target.dead_timer = target.defn.respawn
+            self._spawn_loot(target, killer)
             # Bônus de abate vai para o atributo principal (o primeiro de "train") da skill usada
             if isinstance(killer, Player) and skill and skill.train:
                 self._train(killer, next(iter(skill.train)), target.defn.kill_xp)
@@ -755,6 +798,148 @@ class World:
                             return
             if active.remaining <= 1e-9:
                 e.effects.pop(effect_id, None)
+
+    # ================================================================ itens
+
+    def _can_equip(self, p: Player, item: ItemDef) -> bool:
+        return (not item.races or p.race_id in item.races) and (not item.classes or p.class_id in item.classes)
+
+    def _item_action(self, p: Player, op: str, slot: int | str) -> None:
+        inv = p.inventory
+        if op == "unequip":
+            item = inv.equipment.get(slot)  # type: ignore[arg-type]
+            if item is None:
+                return
+            if inv.add(item, 1):
+                self._private(p, "Inventário cheio.")
+                return
+            del inv.equipment[slot]  # type: ignore[arg-type]
+            self._clamp_resources(p)
+            return
+        stack = inv.slots[slot] if 0 <= slot < inv.size else None  # type: ignore[operator]
+        if stack is None:
+            return
+        if op == "drop":
+            taken = inv.take(slot, stack.qty)  # type: ignore[arg-type]
+            if taken:
+                fdx, fdy = DIRECTIONS[p.facing]
+                x, y = p.x + fdx * C.DROP_DISTANCE, p.y + fdy * C.DROP_DISTANCE
+                if self.map.box_blocked(x, y, 4, _player_blocks):
+                    x, y = p.x, p.y
+                drop = self._drop(taken.item, taken.qty, x, y, owner=None, scatter=False)
+                drop.ignore_id, drop.ignore_until = p.id, self.time + C.DROP_PICKUP_DELAY
+        elif stack.item.type == "consumable":
+            self._use_consumable(p, slot, stack.item)  # type: ignore[arg-type]
+        elif stack.item.type == "equipment":
+            self._equip(p, slot, stack.item)  # type: ignore[arg-type]
+        else:
+            self._private(p, f"{stack.item.name} não tem uso direto.")
+
+    def _use_consumable(self, p: Player, slot: int, item: ItemDef) -> None:
+        if p.item_cooldowns.get(item.id, 0) > 0:
+            self._private(p, f"Espere {p.item_cooldowns[item.id]:.0f}s para usar {item.name} de novo.")
+            return
+        useless = (
+            not item.effects
+            and (not item.heal or p.hp >= p.max_hp)
+            and (not item.energy or p.energy >= p.max_energy)
+        )
+        if useless:
+            self._private(p, f"Não precisa usar {item.name} agora.")
+            return
+        p.inventory.take(slot, 1)
+        p.item_cooldowns[item.id] = item.cooldown
+        if item.heal:
+            healed = min(item.heal, p.max_hp - p.hp)
+            p.hp += healed
+            if healed > 0:
+                self._fx.append({"k": "heal", "id": p.id, "x": round(p.x), "y": round(p.y), "v": round(healed)})
+        if item.energy:
+            p.energy = min(p.max_energy, p.energy + item.energy)
+        for app in item.effects:
+            self._apply_effect(p, app, p)
+
+    def _equip(self, p: Player, slot: int, item: ItemDef) -> None:
+        if not self._can_equip(p, item):
+            who = ", ".join(
+                [self.content.races[r].name for r in item.races] + [self.content.classes[c].name for c in item.classes]
+            )
+            self._private(p, f"{item.name} é só para: {who}.")
+            return
+        inv = p.inventory
+        inv.take(slot, 1)
+        previous = inv.equipment.get(item.slot)  # type: ignore[arg-type]
+        inv.equipment[item.slot] = item  # type: ignore[index]
+        if previous:
+            inv.add(previous, 1)  # sempre cabe: o espaço do item novo acabou de vagar
+        inv.dirty = True
+        self._clamp_resources(p)
+
+    @staticmethod
+    def _clamp_resources(p: Player) -> None:
+        p.hp = min(p.hp, p.max_hp)
+        p.energy = min(p.energy, p.max_energy)
+
+    def _give_item(self, p: Player, item: ItemDef, qty: int) -> None:
+        """Põe no inventário; o que não couber cai no chão aos pés dele (só ele pega)."""
+        leftover = p.inventory.add(item, qty)
+        if leftover:
+            self._drop(item, leftover, p.x, p.y, owner=p.id, scatter=False)
+            self._private(p, "Inventário cheio: o que não coube ficou no chão.")
+
+    def _drop(self, item: ItemDef | None, qty: int, x: float, y: float, owner: int | None,
+              scatter: bool = True) -> GroundItem:
+        if scatter:
+            angle = self.rng.uniform(0, 2 * math.pi)
+            dist = self.rng.uniform(0, C.LOOT_SCATTER)
+            nx, ny = x + math.cos(angle) * dist, y + math.sin(angle) * dist
+            if not self.map.box_blocked(nx, ny, 4, _player_blocks):
+                x, y = nx, ny
+        drop = GroundItem(
+            id=self._new_id(), item=item, qty=qty, x=x, y=y, owner_id=owner,
+            owner_until=self.time + C.LOOT_OWNER_SECONDS, expires_at=self.time + C.LOOT_EXPIRE_SECONDS,
+        )
+        self.drops[drop.id] = drop
+        return drop
+
+    def _spawn_loot(self, enemy: Enemy, killer: Entity | None) -> None:
+        owner = killer.id if isinstance(killer, Player) else None
+        low, high = enemy.defn.gold
+        gold = self.rng.randint(low, high) if high > 0 else 0
+        if gold:
+            self._drop(None, gold, enemy.x, enemy.y, owner)
+        for entry in enemy.defn.loot:
+            if self.rng.random() < entry.chance:
+                qty = self.rng.randint(entry.qty_min, entry.qty_max)
+                self._drop(self.content.items[entry.item], qty, enemy.x, enemy.y, owner)
+
+    def _pickup(self, p: Player) -> None:
+        for drop in list(self.drops.values()):
+            if math.hypot(drop.x - p.x, drop.y - p.y) > C.PICKUP_RADIUS:
+                continue
+            if drop.owner_id not in (None, p.id) and self.time < drop.owner_until:
+                continue  # ainda é de quem matou
+            if drop.ignore_id == p.id and self.time < drop.ignore_until:
+                continue  # acabou de largar
+            if drop.item is None:
+                p.inventory.add_gold(drop.qty)
+                taken = drop.qty
+                label = f"+{taken} moedas"
+            else:
+                taken = drop.qty - p.inventory.add(drop.item, drop.qty)
+                label = f"+{taken} {drop.item.name}"
+            if taken == 0:
+                continue  # inventário cheio
+            drop.qty -= taken
+            if drop.qty == 0:
+                del self.drops[drop.id]
+            self._fx.append({"k": "pick", "id": p.id, "x": round(p.x), "y": round(p.y), "t": label,
+                             "r": drop.item.rarity if drop.item else "gold"})
+
+    def _update_drops(self) -> None:
+        for drop in list(self.drops.values()):
+            if self.time >= drop.expires_at:
+                del self.drops[drop.id]
 
     # ================================================================ inimigos
 

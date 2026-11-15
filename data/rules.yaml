@@ -54,6 +54,9 @@
 #   - set_race: { race: raça, class: classe }
 #   - set_flag: marca / clear_flag: marca  marcas de progressão, salvas no personagem
 #   - add_effect: { id: efeito, duration: 5 }  (não vale em death: o personagem está morto)
+#   - give_item: { id: item, qty: 1 }      dá um item (se o inventário estiver cheio, cai no chão)
+#   - give_gold: 10                        dá moedas
+#   - lose_gold: { percent: 10 }           perde % das moedas (ou { amount: N })
 #
 # AS REGRAS ABAIXO SÃO EXEMPLOS PROVISÓRIOS para demonstrar o sistema.
 
@@ -88,7 +91,8 @@ penalidade_jogador:
   if: { zone: pvp, killer: player }
   do:
     - lose_xp: { percent: 5, stat: all }
-    - message: "Ser derrotado por {killer} custou parte do seu treino."
+    - lose_gold: { percent: 10 }
+    - message: "Ser derrotado por {killer} custou parte do seu treino e das suas moedas."
 
 # ================================================================ abates
 

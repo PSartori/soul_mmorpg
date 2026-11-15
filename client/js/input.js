@@ -15,13 +15,14 @@ const SLOT_KEYS = {
 export const SLOT_LABELS = ["1 · Espaço", "2 · F", "3", "4", "5", "6", "7", "8"];
 
 const ACTION_KEYS = { KeyM: "meditate", KeyR: "rest" };
+const LOCAL_KEYS = { KeyI: "inventory", Escape: "escape" }; // só mexem na interface
 
 export function isTypingInField() {
   const el = document.activeElement;
   return !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA");
 }
 
-export function setupInput({ onSlot, onAction, onEnter, enabled }) {
+export function setupInput({ onSlot, onAction, onLocal, onEnter, enabled }) {
   const held = { up: false, down: false, left: false, right: false };
   // Toques rápidos (apertou e soltou entre dois ticks) ainda contam no próximo tick
   const tapped = { up: false, down: false, left: false, right: false };
@@ -47,6 +48,12 @@ export function setupInput({ onSlot, onAction, onEnter, enabled }) {
     if (ev.code in SLOT_KEYS) {
       ev.preventDefault();
       onSlot(SLOT_KEYS[ev.code]); // segurar repete; o cliente e o servidor respeitam o cooldown
+      return;
+    }
+    const local = LOCAL_KEYS[ev.code];
+    if (local && !ev.repeat) {
+      ev.preventDefault();
+      onLocal(local);
       return;
     }
     const action = ACTION_KEYS[ev.code];

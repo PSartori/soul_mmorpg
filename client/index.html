@@ -9,7 +9,20 @@
 <body>
   <div id="app">
     <main id="stage">
-      <canvas id="canvas" width="960" height="640"></canvas>
+      <div id="viewport">
+        <canvas id="canvas" width="960" height="640"></canvas>
+        <section id="inventory" hidden aria-label="Inventário">
+          <header>
+            <h3>Inventário</h3>
+            <span id="inv-gold"></span>
+            <button type="button" id="inv-close" aria-label="Fechar">✕</button>
+          </header>
+          <div id="inv-equipment"></div>
+          <div id="inv-grid"></div>
+          <div id="inv-info">Passe o mouse sobre um item.</div>
+          <p class="hint">Clique: usar / equipar · Shift + clique: largar no chão · clique no equipado: tirar</p>
+        </section>
+      </div>
       <div id="hotbar" aria-label="Skills"></div>
     </main>
 
@@ -24,6 +37,10 @@
         <div class="bar fatigue" id="bar-fatigue"><span class="fill"></span><span class="label"></span></div>
         <div id="effects"></div>
         <ul id="stats"></ul>
+        <div id="status-footer">
+          <span id="gold">0 moedas</span>
+          <button type="button" id="inv-open">Inventário (I)</button>
+        </div>
       </section>
 
       <section id="chat">
@@ -36,6 +53,7 @@
         <b>1–8</b> skills (<b>Espaço</b> = 1, <b>F</b> = 2) ·
         <b>M</b> meditar ·
         <b>R</b> descansar ·
+        <b>I</b> inventário ·
         <b>Enter</b> chat
         <br>Duelo: <b>/duelo Nome</b> · <b>/aceitar</b> · <b>/recusar</b> · <b>/render</b>
       </section>

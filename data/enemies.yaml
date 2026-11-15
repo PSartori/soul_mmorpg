@@ -9,6 +9,12 @@
 #   kill_xp        XP de bônus para quem mata (vai para o atributo principal da skill usada)
 #   skills         skills que a IA usa (melee, projectile, area, self)
 #   color          cor do corpo no cliente
+#   gold           moedas que caem: N ou [mínimo, máximo]
+#   loot           itens que podem cair (items.yaml), cada um sorteado separadamente:
+#                    - { item: id, chance: 0.25, qty: [1, 2] }   (chance 0–1; qty N ou [mín, máx])
+#
+# O saque cai no chão: quem matou tem alguns segundos de exclusividade para pegar
+# (passando por cima); depois qualquer um pega, até sumir.
 
 espectro:
   name: Espectro
@@ -22,6 +28,13 @@ espectro:
   respawn: 15
   kill_xp: 10
   skills: [garra]
+  gold: [1, 4]
+  loot:
+    - { item: fragmento_espectral, chance: 0.6, qty: [1, 2] }
+    - { item: pocao_vida, chance: 0.15 }
+    - { item: pocao_energia, chance: 0.1 }
+    - { item: espada_curta, chance: 0.04 }
+    - { item: amuleto_espectral, chance: 0.01 }
 
 bruto:
   name: Bruto
@@ -35,3 +48,11 @@ bruto:
   respawn: 30
   kill_xp: 25
   skills: [pancada, endurecer]
+  gold: [5, 12]
+  loot:
+    - { item: couro_grosso, chance: 0.7, qty: [1, 3] }
+    - { item: pocao_vida, chance: 0.3, qty: [1, 2] }
+    - { item: tonico_veloz, chance: 0.1 }
+    - { item: gibao_de_couro, chance: 0.08 }
+    - { item: cajado_de_foco, chance: 0.05 }
+    - { item: couraca_de_bruto, chance: 0.02 }

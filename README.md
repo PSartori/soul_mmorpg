@@ -36,6 +36,7 @@ por cima de `var/game.db`.
 | 1–8 (Espaço = 1, F = 2) | skills da barra |
 | M | meditar (treina Espírito, gera cansaço) |
 | R | descansar (recupera cansaço e vida) |
+| I | inventário (clique: usar/equipar · Shift + clique: largar · clique no equipado: tirar) |
 | Enter | chat (`/who` lista quem está online) |
 | `/duelo Nome` | desafia alguém por perto para um duelo |
 | `/aceitar`, `/recusar` | responde a um desafio |
@@ -50,7 +51,8 @@ Cada arquivo tem no topo a explicação de todos os campos.
 |---|---|
 | `data/skills.yaml` | técnicas: tipo (melee, projectile, area, dash, self), custo, recarga, dano, efeitos, treino |
 | `data/effects.yaml` | efeitos de status: modificadores (velocidade, dano...), flags (atordoado, silenciado), dano/cura periódicos |
-| `data/enemies.yaml` | tipos de inimigo: vida, velocidade, alcance de perseguição, skills que a IA usa, letra no mapa |
+| `data/enemies.yaml` | tipos de inimigo: vida, velocidade, alcance de perseguição, skills que a IA usa, letra no mapa, moedas e tabela de saque |
+| `data/items.yaml` | itens: equipamento (slot, bônus, restrição de raça/classe), consumível (cura, energia, efeitos), material |
 | `data/races.yaml` | raças: se aparecem na criação, classe inicial, bônus de vida/energia/velocidade |
 | `data/classes.yaml` | classes: raça, skills da barra, multiplicador de treino por atributo |
 | `data/rules.yaml` | regras "quando X, se Y, faça Z": morte, abates, subida de nível (veja abaixo) |
@@ -75,7 +77,7 @@ humano_vira_espectral:
 - **Eventos:** `death` (com quem matou, raça/classe dele, skill, efeito, efeitos
   ativos, zona), `kill`, `level_up` e `duel_end` (vitória/derrota/empate e motivo).
 - **Ações:** mensagens, perder/ganhar XP, trocar raça ou classe, marcas de
-  progressão (`set_flag`) e aplicar efeitos.
+  progressão (`set_flag`), aplicar efeitos, dar itens e dar/tirar moedas.
 - **Condições especiais:** `chance`, `flags` e `not_flags`.
 
 As regras de cada evento rodam de cima para baixo; `stop: true` encerra. A lista
@@ -102,6 +104,7 @@ server/              Python (aiohttp)
   content.py         carrega e valida data/*.yaml
   rules.py           vocabulário das regras (eventos, campos, ações) e comparação
   duels.py           desafios e duelos
+  inventory.py       inventário: espaços que empilham, equipamento e moedas
   saves.py           versão do formato de save e migrações (sem wipes!)
   entities.py        Player, Enemy, Projectile, efeitos ativos e atributos derivados
   stats.py           atributos treináveis (nível + XP)
@@ -113,6 +116,7 @@ client/              JavaScript puro, sem build
   js/main.js         estado, previsão de movimento, HUD, barra de skills, chat
   js/physics.js      cópia da colisão/movimento do servidor (previsão)
   js/render.js       desenho no canvas (arte provisória com formas)
+  js/inventory.js    janela de inventário
   js/input.js        teclado
   js/net.js          WebSocket
 data/                conteúdo do jogo (veja acima)
@@ -142,10 +146,12 @@ Para depurar no console do navegador: `__game.state`, `__game.pred`, `__game.pen
 HTTP: `GET /api/races` lista as raças da tela de criação.
 
 Cliente → servidor: `login {name, password, race}`, `move {seq, up, down, left, right}`,
-`skill {id, f}`, `meditate`, `rest`, `chat {text}`.
+`skill {id, f}`, `item {op: use|drop, slot: n}`, `item {op: unequip, slot: weapon|armor|accessory}`,
+`meditate`, `rest`, `chat {text}`.
 
 Servidor → cliente: `welcome {id, map, skills, effects, enemies, stat_labels, ...}`,
-`error {msg}`, `snap {ents, projs, fx, you}` (20×/s), `chat {from, text}`, `sys {text}`.
+`error {msg}`, `snap {ents, projs, drops, fx, you}` (20×/s; `you.inv` só vem quando o
+inventário muda), `chat {from, text}`, `sys {text}`.
 
 ### Regras atuais
 
@@ -168,6 +174,14 @@ Servidor → cliente: `welcome {id, map, skills, effects, enemies, stat_labels, 
   interfere. **Não matam**: o perdedor fica com 1 de vida. Também terminam por
   desistência, saída do jogo, distância (15 tiles) ou tempo (3 min, empate). Ao
   fim, os efeitos dos dois são limpos e o evento `duel_end` das regras dispara.
+- **Saque**: inimigos deixam moedas e itens no chão conforme a tabela deles. Quem
+  matou tem 15 s de exclusividade; depois qualquer um pega (passando por cima), e
+  tudo some em 60 s. Item largado cai à frente e quem largou só pega de volta
+  depois de 3 s.
+- **Itens**: 20 espaços que empilham; 3 de equipamento (arma, armadura, acessório)
+  que somam bônus e multiplicadores. Se a raça/classe mudar e o item não servir
+  mais, ele volta para a bolsa. Consumíveis têm recarga e não são gastos à toa
+  (poção de vida com a vida cheia).
 - **Morte**: renasce no ponto inicial depois de 3 s.
 - **Salvamento**: ao sair e automaticamente a cada 60 s.
 

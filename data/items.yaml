@@ -1,0 +1,114 @@
+# Itens.
+#
+# Campos comuns:
+#   name, description
+#   type       equipment | consumable | material
+#   rarity     common | uncommon | rare | epic   (cor do nome no cliente)
+#   value      valor em moedas (para lojas, no futuro)
+#   stack      quantos cabem num espaço do inventário
+#              (padrão: consumível 10, material 50; equipamento sempre 1)
+#
+# Equipamento (type: equipment):
+#   slot       weapon | armor | accessory
+#   bonus      somado ao personagem: max_hp, max_energy, speed
+#   modifiers  multiplicadores, como nos efeitos: speed, damage, damage_taken, energy_regen
+#   races      só essas raças podem equipar (vazio = qualquer)
+#   classes    só essas classes podem equipar (vazio = qualquer)
+#
+# Consumível (type: consumable):
+#   use        { heal: N, energy: N, effects: [ { id: efeito, duration: s } ] }
+#   cooldown   segundos até poder usar outro do mesmo item (padrão 1)
+#
+# Itens caem dos inimigos conforme o "loot" de cada um em enemies.yaml.
+# Nomes e números provisórios.
+
+# ---------------------------------------------------------------- consumíveis
+
+pocao_vida:
+  name: Poção de vida
+  description: Recupera 40 de vida.
+  type: consumable
+  value: 10
+  use: { heal: 40 }
+  cooldown: 5
+
+pocao_energia:
+  name: Poção de energia
+  description: Recupera 30 de energia.
+  type: consumable
+  value: 10
+  use: { energy: 30 }
+  cooldown: 5
+
+tonico_veloz:
+  name: Tônico veloz
+  description: Deixa você mais rápido por 10 segundos.
+  type: consumable
+  rarity: uncommon
+  value: 25
+  stack: 5
+  use: { effects: [ { id: veloz, duration: 10 } ] }
+  cooldown: 30
+
+# ---------------------------------------------------------------- materiais
+
+fragmento_espectral:
+  name: Fragmento espectral
+  description: Resto frio de um espectro.
+  type: material
+  value: 2
+
+couro_grosso:
+  name: Couro grosso
+  description: Couro resistente tirado de um bruto.
+  type: material
+  value: 5
+
+# ---------------------------------------------------------------- equipamentos
+
+espada_curta:
+  name: Espada curta
+  description: Simples e confiável.
+  type: equipment
+  slot: weapon
+  value: 30
+  modifiers: { damage: 1.1 }
+
+cajado_de_foco:
+  name: Cajado de foco
+  description: Canaliza energia. Só para quem nasceu desperto.
+  type: equipment
+  slot: weapon
+  rarity: uncommon
+  value: 60
+  races: [desperto]
+  bonus: { max_energy: 20 }
+  modifiers: { damage: 1.05, energy_regen: 1.25 }
+
+gibao_de_couro:
+  name: Gibão de couro
+  description: Protege sem atrapalhar muito.
+  type: equipment
+  slot: armor
+  value: 40
+  bonus: { max_hp: 25 }
+  modifiers: { damage_taken: 0.95 }
+
+couraca_de_bruto:
+  name: Couraça de bruto
+  description: Pesada, mas segura quase tudo.
+  type: equipment
+  slot: armor
+  rarity: rare
+  value: 120
+  bonus: { max_hp: 40 }
+  modifiers: { damage_taken: 0.85, speed: 0.9 }
+
+amuleto_espectral:
+  name: Amuleto espectral
+  description: Pulsa num ritmo estranho.
+  type: equipment
+  slot: accessory
+  rarity: rare
+  value: 150
+  bonus: { speed: 12, max_energy: 10 }

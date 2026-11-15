@@ -4,6 +4,7 @@ import { Connection, gameSocketUrl } from "./net.js";
 import { SLOT_LABELS, setupInput } from "./input.js";
 import { Physics } from "./physics.js";
 import { Renderer } from "./render.js";
+import { InventoryUI, RARITY_COLORS } from "./inventory.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -11,13 +12,14 @@ const state = {
   myId: null,
   ents: new Map(), // id -> dados do snapshot + posição desenhada (rx, ry)
   projs: [],
+  drops: [], // itens no chão
   snapTime: 0,
   swings: [],
   rings: [], // áreas e buffs
   trails: [], // dashes
   floaters: [],
   you: null,
-  defs: { skills: {}, effects: {}, enemies: {}, races: {}, classes: {} },
+  defs: { skills: {}, effects: {}, enemies: {}, races: {}, classes: {}, items: {} },
   statLabels: {},
 };
 
@@ -45,6 +47,7 @@ function handleMessage(msg) {
       state.statLabels = msg.stat_labels;
       state.defs = {
         skills: msg.skills, effects: msg.effects, enemies: msg.enemies, races: msg.races, classes: msg.classes,
+        items: msg.items,
       };
       state.ents.clear();
       renderer.setMap(msg.map);
@@ -104,11 +107,13 @@ function applySnapshot(msg) {
   for (const id of state.ents.keys()) if (!seen.has(id)) state.ents.delete(id);
 
   state.projs = msg.projs;
+  state.drops = msg.drops ?? [];
   state.snapTime = now;
   for (const fx of msg.fx) handleFx(fx, now);
 
   state.you = msg.you;
   reconcile(msg.you);
+  inventoryUI.update(msg.you.inv, msg.you.icd);
   updateHud();
 }
 
@@ -131,6 +136,12 @@ function handleFx(fx, now) {
     }
     case "heal":
       state.floaters.push({ x: fx.x, y: fx.y, text: `+${fx.v}`, color: "#7bd65a", born: now, ttl: 800 });
+      break;
+    case "pick":
+      if (fx.id === state.myId) {
+        const color = RARITY_COLORS[fx.r] ?? RARITY_COLORS.common;
+        state.floaters.push({ x: fx.x, y: fx.y - 6, text: fx.t, color, born: now, ttl: 1500 });
+      }
       break;
     case "lvl":
       state.floaters.push({ x: fx.x, y: fx.y - 12, text: "Nível +1", color: "#ffd65a", born: now, ttl: 1400 });
@@ -218,6 +229,7 @@ function updateHud() {
   setBar("bar-hp", you.hp, you.mhp, "Vida");
   setBar("bar-energy", you.en, you.men, "Energia");
   setBar("bar-fatigue", you.fat, you.mfat, "Cansaço");
+  $("gold").textContent = `${you.gold} moedas`;
 
   $("effects").replaceChildren(
     ...you.ef.map(({ id, t }) => {
@@ -357,10 +369,20 @@ chatInput.addEventListener("keydown", (ev) => {
   }
 });
 
+const inventoryUI = new InventoryUI({ getDefs: () => state.defs, send: (msg) => conn?.send(msg) });
+$("inv-open").addEventListener("click", (ev) => {
+  inventoryUI.toggle();
+  ev.currentTarget.blur();
+});
+
 const input = setupInput({
   enabled: () => inGame,
   onSlot: useSlot,
   onAction: (action) => conn?.send({ t: action }),
+  onLocal: (name) => {
+    if (name === "inventory") inventoryUI.toggle();
+    else if (name === "escape") inventoryUI.toggle(false);
+  },
   onEnter: () => chatInput.focus(),
 });
 

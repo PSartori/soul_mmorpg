@@ -57,6 +57,15 @@ VITALITY_XP_PER_DAMAGE = 0.25
 ENEMY_HP_REGEN = 2.0  # por segundo, quando sem alvo
 ENEMY_DETOUR_SECONDS = 0.5  # tempo contornando um obstáculo antes de tentar ir reto de novo
 
+# --- Itens e saque ----------------------------------------------------------
+INVENTORY_SIZE = 20
+PICKUP_RADIUS = 24.0  # distância (centro a centro) para pegar um item do chão passando por cima
+LOOT_OWNER_SECONDS = 15.0  # só quem matou pode pegar durante este tempo
+LOOT_EXPIRE_SECONDS = 60.0  # depois disso o item some do chão
+LOOT_SCATTER = 14.0  # espalha os itens em volta de onde o inimigo morreu
+DROP_DISTANCE = 30.0  # item largado pelo jogador cai esta distância à frente dele
+DROP_PICKUP_DELAY = 3.0  # quem largou só pega de volta depois disso
+
 # --- Duelos (server/duels.py) -------------------------------------------------
 DUEL_CHALLENGE_RANGE = 256.0  # distância máxima para desafiar/aceitar (8 tiles)
 DUEL_CHALLENGE_SECONDS = 30.0  # o desafio expira

@@ -6,7 +6,8 @@ from dataclasses import dataclass, field
 from typing import ClassVar
 
 from . import config as C
-from .content import ClassDef, EffectDef, EnemyDef, RaceDef
+from .content import ClassDef, EffectDef, EnemyDef, ItemDef, RaceDef
+from .inventory import Inventory
 from .saves import SAVE_VERSION
 from .stats import STAT_NAMES, Stat
 
@@ -96,6 +97,8 @@ class Player(Entity):
     race_def: RaceDef | None = None
     class_def: ClassDef | None = None
     flags: set[str] = field(default_factory=set)  # marcas de progressão (data/rules.yaml)
+    inventory: Inventory = field(default_factory=Inventory)
+    item_cooldowns: dict[str, float] = field(default_factory=dict)  # item -> segundos restantes
     skills: list[str] = field(default_factory=list)  # vem da classe; ordem da barra de atalhos
     actions: list[tuple] = field(default_factory=list)  # ações pedidas, executadas no próximo tick
     # Movimento: o cliente manda um comando numerado por tick; o servidor executa um por tick
@@ -117,21 +120,32 @@ class Player(Entity):
     def class_id(self) -> str | None:
         return self.class_def.id if self.class_def else None
 
-    def _race_bonus(self, key: str) -> float:
-        return self.race_def.bonus.get(key, 0.0) if self.race_def else 0.0
+    def _bonus(self, key: str) -> float:
+        """Bônus somado da raça e dos equipamentos."""
+        total = self.race_def.bonus.get(key, 0.0) if self.race_def else 0.0
+        for item in self.inventory.equipment.values():
+            total += item.bonus.get(key, 0.0)
+        return total
 
-    # --- Valores derivados dos atributos e da raça ---
+    def modifier(self, name: str) -> float:
+        """Multiplicador dos efeitos ativos e dos equipamentos."""
+        result = super().modifier(name)
+        for item in self.inventory.equipment.values():
+            result *= item.modifiers.get(name, 1.0)
+        return result
+
+    # --- Valores derivados dos atributos, da raça e do equipamento ---
     @property
     def max_hp(self) -> float:
-        return max(10.0, 80 + 20 * self.stat_level("vitality") + self._race_bonus("max_hp"))
+        return max(10.0, 80 + 20 * self.stat_level("vitality") + self._bonus("max_hp"))
 
     @property
     def max_energy(self) -> float:
-        return max(10.0, 40 + 15 * self.stat_level("spirit") + self._race_bonus("max_energy"))
+        return max(10.0, 40 + 15 * self.stat_level("spirit") + self._bonus("max_energy"))
 
     @property
     def base_speed(self) -> float:
-        speed = C.BASE_SPEED + C.SPEED_PER_AGILITY * self.stat_level("agility") + self._race_bonus("speed")
+        speed = C.BASE_SPEED + C.SPEED_PER_AGILITY * self.stat_level("agility") + self._bonus("speed")
         return max(30.0, min(C.MAX_SPEED, speed))
 
     def private_snapshot(self) -> dict:
@@ -152,6 +166,8 @@ class Player(Entity):
             "ack": self.ack,
             "skills": self.skills,
             "cd": {sid: round(t, 2) for sid, t in self.cooldowns.items() if t > 0},
+            "icd": {iid: round(t, 1) for iid, t in self.item_cooldowns.items() if t > 0},
+            "gold": self.inventory.gold,
             "ef": [{"id": eid, "t": round(a.remaining, 1)} for eid, a in self.effects.items()],
             "stats": {
                 n: {"lv": s.level, "xp": int(s.xp), "next": s.xp_to_next()} for n, s in self.stats.items()
@@ -165,6 +181,7 @@ class Player(Entity):
             "race": self.race_id,
             "class": self.class_id,
             "flags": sorted(self.flags),
+            "inventory": self.inventory.to_dict(),
             "x": self.x,
             "y": self.y,
             "hp": self.hp,
@@ -249,3 +266,23 @@ class Projectile:
             "vx": round(self.vx, 1),
             "vy": round(self.vy, 1),
         }
+
+
+@dataclass(eq=False)
+class GroundItem:
+    """Item (ou moedas, se item for None) caído no chão."""
+
+    id: int
+    item: ItemDef | None
+    qty: int
+    x: float
+    y: float
+    owner_id: int | None  # só ele pega até owner_until
+    owner_until: float
+    expires_at: float
+    ignore_id: int | None = None  # quem largou o item não pega de volta até ignore_until
+    ignore_until: float = 0.0
+
+    def snapshot(self) -> dict:
+        return {"id": self.id, "i": self.item.id if self.item else "gold", "q": self.qty,
+                "x": round(self.x), "y": round(self.y)}

@@ -1,4 +1,5 @@
 // Desenho no canvas. Arte provisória feita só com formas, até termos sprites.
+import { RARITY_COLORS } from "./inventory.js";
 
 const DIR = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
 const FACING_ANGLE = { right: 0, down: Math.PI / 2, left: Math.PI, up: -Math.PI / 2 };
@@ -135,6 +136,7 @@ export class Renderer {
     ctx.translate(-camX, -camY);
     ctx.drawImage(mapLayer, 0, 0);
 
+    for (const d of state.drops) this.drawDrop(d, now);
     for (const t of state.trails) this.drawTrail(t, now);
     const ents = [...state.ents.values()].sort((a, b) => a.ry - b.ry);
     for (const e of ents) this.drawEntity(e, e.id === state.myId, now);
@@ -257,6 +259,37 @@ export class Renderer {
     ctx.beginPath();
     ctx.arc(e.rx, e.ry, s.r * 0.8, a - 0.9 + t * 0.4, a + 0.9 + t * 0.4);
     ctx.stroke();
+  }
+
+  drawDrop(d, now) {
+    const { ctx } = this;
+    const bob = Math.sin(now / 300 + d.id) * 2;
+    const x = d.x;
+    const y = d.y + bob;
+    ctx.fillStyle = "rgba(0,0,0,0.3)";
+    ctx.beginPath(); ctx.ellipse(d.x, d.y + 7, 6, 2.5, 0, 0, TAU); ctx.fill();
+    if (d.i === "gold") {
+      ctx.fillStyle = "#ffd65a";
+      ctx.strokeStyle = "#a07a10";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(x, y, 5, 0, TAU); ctx.fill(); ctx.stroke();
+      return;
+    }
+    const rarity = this.defs.items?.[d.i]?.rarity ?? "common";
+    const color = RARITY_COLORS[rarity];
+    const glow = ctx.createRadialGradient(x, y, 0, x, y, 12);
+    glow.addColorStop(0, color);
+    glow.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.globalAlpha = 0.45;
+    ctx.fillStyle = glow;
+    ctx.beginPath(); ctx.arc(x, y, 12, 0, TAU); ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = color;
+    ctx.strokeStyle = "rgba(0,0,0,0.7)";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(x, y - 6); ctx.lineTo(x + 5, y); ctx.lineTo(x, y + 6); ctx.lineTo(x - 5, y);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
   }
 
   drawRing(r, now) {

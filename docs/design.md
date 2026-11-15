@@ -145,7 +145,13 @@ diferentes. As raças, classes e regras atuais são **exemplos provisórios**.
 e duelos combinados (`/duelo`), que não matam e disparam o evento `duel_end` —
 base para a disputa de cargos (seção 6).
 
-**Próximo passo sugerido:** base 6 (itens, inventário e saque).
+**Base 6 (concluída):** itens em `data/items.yaml` (equipamento, consumível,
+material), inventário com equipamento e moedas (save v3), saque no chão com
+exclusividade para quem matou, e ações de regra para dar itens e dar/tirar
+moedas. Lojas ficam para quando houver NPCs.
+
+**Próximo passo sugerido:** base 7 (ferramenta de balanceamento), agora que há
+classes, skills, equipamentos e inimigos para comparar.
 
 ## 10. Perguntas em aberto
 

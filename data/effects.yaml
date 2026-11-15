@@ -38,3 +38,8 @@ couraca:
   name: Couraça
   color: "#b9b9c8"
   modifiers: { damage_taken: 0.6, speed: 0.8 }
+
+veloz:
+  name: Veloz
+  color: "#9cf0d0"
+  modifiers: { speed: 1.3 }
