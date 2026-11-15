@@ -135,3 +135,21 @@ endurecer:
   type: self
   cooldown: 12
   self_effects: [ { id: couraca, duration: 5 } ]
+
+mordida:
+  name: Mordida
+  type: melee
+  cooldown: 1.2
+  reach: 18
+  size: 16
+  damage: { base: 22 }
+  effects: [ { id: veneno, duration: 3 } ]
+
+uivo:
+  name: Uivo
+  type: area
+  color: "#9cd6b8"
+  cooldown: 8
+  radius: 80
+  damage: { base: 12 }
+  effects: [ { id: lento, duration: 2 } ]

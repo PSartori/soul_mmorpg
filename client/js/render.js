@@ -126,7 +126,38 @@ export class Renderer {
       g.fillStyle = "#ffb0b0";
       g.fillText(`PvP · ${zone.name}`, x + 6, y + 16);
     }
+    // Portais: placa com o destino (o brilho animado é desenhado a cada quadro)
+    for (const portal of map.portals ?? []) {
+      const [x0, y0, x1] = portal.area;
+      const label = `→ ${portal.title ?? portal.to}`;
+      g.font = "bold 12px system-ui, sans-serif";
+      g.textAlign = "center";
+      const cx = ((x0 + x1 + 1) / 2) * ts;
+      g.fillStyle = "rgba(0,0,0,0.7)";
+      g.fillText(label, cx + 1, y0 * ts - 5);
+      g.fillStyle = "#a8e4ff";
+      g.fillText(label, cx, y0 * ts - 6);
+    }
+    this.map = map;
     this.mapLayer = layer;
+  }
+
+  drawPortals(now) {
+    const { ctx } = this;
+    const ts = this.map.tile_size;
+    for (const portal of this.map.portals ?? []) {
+      const [x0, y0, x1, y1] = portal.area;
+      const x = x0 * ts, y = y0 * ts, w = (x1 - x0 + 1) * ts, h = (y1 - y0 + 1) * ts;
+      const pulse = 0.5 + 0.5 * Math.sin(now / 350);
+      const glow = ctx.createRadialGradient(x + w / 2, y + h / 2, 2, x + w / 2, y + h / 2, Math.max(w, h) * 0.75);
+      glow.addColorStop(0, `rgba(170, 230, 255, ${0.55 + 0.25 * pulse})`);
+      glow.addColorStop(1, "rgba(80, 140, 255, 0)");
+      ctx.fillStyle = glow;
+      ctx.fillRect(x - 8, y - 8, w + 16, h + 16);
+      ctx.strokeStyle = `rgba(170, 230, 255, ${0.6 + 0.3 * pulse})`;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x + 2, y + 2, w - 4, h - 4);
+    }
   }
 
   draw(state, now) {
@@ -144,6 +175,7 @@ export class Renderer {
     ctx.save();
     ctx.translate(-camX, -camY);
     ctx.drawImage(mapLayer, 0, 0);
+    this.drawPortals(now);
 
     for (const d of state.drops) this.drawDrop(d, now);
     for (const t of state.trails) this.drawTrail(t, now);

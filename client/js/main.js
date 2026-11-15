@@ -30,6 +30,8 @@ let inGame = false;
 // Previsão de movimento (só do próprio personagem)
 let physics = null;
 let tickTimer = null;
+let entityHalf = 10;
+let tickRate = 20;
 let seq = 0;
 let pending = []; // comandos enviados que o servidor ainda não confirmou
 let pred = null; // posição prevista {x, y, f}
@@ -52,7 +54,9 @@ function handleMessage(msg) {
       state.ents.clear();
       renderer.setMap(msg.map);
       renderer.defs = state.defs;
-      physics = new Physics(msg.map, msg.half, msg.tick_rate);
+      entityHalf = msg.half;
+      tickRate = msg.tick_rate;
+      physics = new Physics(msg.map, entityHalf, tickRate);
       // Ticks do cliente num timer próprio, independentes da taxa de quadros do desenho
       clearInterval(tickTimer);
       tickTimer = setInterval(clientTick, 1000 / msg.tick_rate);
@@ -63,6 +67,9 @@ function handleMessage(msg) {
       inGame = true;
       $("overlay").classList.add("hidden");
       document.activeElement?.blur();
+      break;
+    case "map":
+      changeMap(msg);
       break;
     case "error":
       $("login-error").textContent = msg.msg;
@@ -77,6 +84,21 @@ function handleMessage(msg) {
       addChatLine(msg.text);
       break;
   }
+}
+
+// Atravessou um portal: troca o mapa desenhado e a física, e recomeça a previsão
+function changeMap(msg) {
+  renderer.setMap(msg.map);
+  physics = new Physics(msg.map, entityHalf, tickRate);
+  pending = [];
+  pred = { x: msg.x, y: msg.y, f: pred?.f ?? "down" };
+  state.ents.clear();
+  state.projs = [];
+  state.drops = [];
+  state.swings = [];
+  state.rings = [];
+  state.trails = [];
+  state.floaters = [];
 }
 
 function handleClose() {
@@ -222,7 +244,7 @@ function updateHud() {
   const zone = you.zone ?? { t: "pve", n: "" };
   const zoneEl = $("me-zone");
   zoneEl.className = zone.t;
-  zoneEl.textContent = `${ZONE_LABELS[zone.t] ?? zone.t}${zone.n ? ` — ${zone.n}` : ""}`;
+  zoneEl.textContent = `${zone.m ? `${zone.m} · ` : ""}${ZONE_LABELS[zone.t] ?? zone.t}${zone.n ? ` — ${zone.n}` : ""}`;
 
   const duelEl = $("me-duel");
   duelEl.hidden = !you.duel;

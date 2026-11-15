@@ -18,7 +18,7 @@ from aiohttp import WSMsgType, web
 from . import config as C
 from .content import Content
 from .db import Database
-from .tilemap import load_map
+from .tilemap import load_maps
 from .world import World
 
 log = logging.getLogger("server")
@@ -139,11 +139,12 @@ async def backup_loop(app: web.Application) -> None:
         await asyncio.sleep(C.BACKUP_INTERVAL_HOURS * 3600)
 
 
-def create_app(db_path: str | Path = C.DB_PATH, map_path: str | Path = C.DEFAULT_MAP) -> web.Application:
+def create_app(db_path: str | Path = C.DB_PATH, maps_dir: str | Path = C.MAPS_DIR) -> web.Application:
     content = Content.load(C.DATA_DIR)  # erro no YAML derruba aqui, com a mensagem do campo
     app = web.Application()
     app[DB] = Database(db_path)
-    app[WORLD] = World(load_map(map_path, content.enemy_by_mark), app[DB], content)
+    maps = load_maps(maps_dir, content.enemy_by_mark)  # erro num mapa ou portal também derruba aqui
+    app[WORLD] = World(maps, app[DB], content, start_map=C.START_MAP)
     app[SESSIONS] = {}
 
     app.router.add_get("/", index)

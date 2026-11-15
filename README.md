@@ -81,8 +81,8 @@ Cada arquivo tem no topo a explicação de todos os campos.
 | `data/classes.yaml` | classes: raça, skills da barra, multiplicador de treino por atributo |
 | `data/rules.yaml` | regras "quando X, se Y, faça Z": morte, abates, subida de nível (veja abaixo) |
 | `data/player.yaml` | raça padrão para personagens antigos |
-| `data/maps/inicio.txt` | mapa em texto (legenda no topo do arquivo) |
-| `data/maps/inicio.yaml` | zonas do mapa: zona padrão e áreas PvE/PvP |
+| `data/maps/<mapa>.txt` | terreno de cada mapa em texto (legenda no topo de `inicio.txt`); todo `.txt` da pasta vira um mapa |
+| `data/maps/<mapa>.yaml` | nome do mapa, zonas (padrão e áreas PvE/PvP) e portais para outros mapas |
 
 ### Regras (data/rules.yaml)
 
@@ -135,7 +135,7 @@ server/              Python (aiohttp)
   saves.py           versão do formato de save e migrações (sem wipes!)
   entities.py        Player, Enemy, Projectile, efeitos ativos e atributos derivados
   stats.py           atributos treináveis (nível + XP)
-  tilemap.py         mapa ASCII, zonas e colisão de caixas com tiles
+  tilemap.py         mapas ASCII, zonas, portais e colisão de caixas com tiles
   db.py              SQLite: personagens e senhas (PBKDF2)
   config.py          números de regra do motor (o resto está em data/)
 client/              JavaScript puro, sem build
@@ -180,8 +180,8 @@ Cliente → servidor: `login {name, password, race}`, `move {seq, up, down, left
 `meditate`, `rest`, `chat {text}`.
 
 Servidor → cliente: `welcome {id, map, skills, effects, enemies, stat_labels, ...}`,
-`error {msg}`, `snap {ents, projs, drops, fx, you}` (20×/s; `you.inv` só vem quando o
-inventário muda), `chat {from, text}`, `sys {text}`.
+`map {map, x, y}` (atravessou um portal), `error {msg}`, `snap {ents, projs, drops, fx, you}`
+(20×/s, só o que está perto; `you.inv` só vem quando o inventário muda), `chat {from, text}`, `sys {text}`.
 
 ### Regras atuais
 
@@ -219,7 +219,14 @@ inventário muda), `chat {from, text}`, `sys {text}`.
   do vencedor; quem perde espera 5 min para disputar de novo). Os vínculos ficam no
   banco e valem com o ocupante offline. Se a raça mudar para uma que a organização
   não aceita, o personagem sai.
-- **Morte**: renasce no ponto inicial depois de 3 s.
+- **Mapas**: `inicio` (Campos de Início, onde nascem personagens novos) e `bosque`
+  (Bosque Sombrio, mais perigoso, com Devoradores), ligados por portais. Cada mapa
+  tem seus inimigos, saque e projéteis; o mapa onde o personagem está é salvo.
+  Duelo termina se um dos dois mudar de mapa.
+- **Visão**: cada jogador só recebe o que está no mesmo mapa e a até 900 px dele
+  (`VIEW_RADIUS`), o que mantém o tráfego proporcional ao que está por perto, e não
+  ao total de jogadores.
+- **Morte**: renasce no ponto de nascimento (`S`) do mapa onde está, depois de 3 s.
 - **Salvamento**: ao sair e automaticamente a cada 60 s.
 
 ## Pendências conhecidas

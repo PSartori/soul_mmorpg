@@ -56,3 +56,23 @@ bruto:
     - { item: gibao_de_couro, chance: 0.08 }
     - { item: cajado_de_foco, chance: 0.05 }
     - { item: couraca_de_bruto, chance: 0.02 }
+
+devorador:
+  name: Devorador
+  mark: D
+  color: "#3d6b5a"
+  hp: 260
+  speed: 105
+  aggro_radius: 180
+  leash: 360
+  wander_radius: 96
+  respawn: 25
+  kill_xp: 40
+  skills: [mordida, uivo]
+  gold: [12, 25]
+  loot:
+    - { item: presa_de_devorador, chance: 0.6, qty: [1, 2] }
+    - { item: pocao_vida, chance: 0.4, qty: [1, 2] }
+    - { item: tonico_veloz, chance: 0.15 }
+    - { item: couraca_de_bruto, chance: 0.06 }
+    - { item: amuleto_espectral, chance: 0.04 }

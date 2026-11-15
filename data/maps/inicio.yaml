@@ -11,9 +11,19 @@
 #                 coluna x, linha y, contando do 0 no canto superior esquerdo do .txt,
 #                 sem contar as linhas de comentário). A primeira área que contém o ponto vence.
 #
+#   name          nome do mapa exibido no jogo
+#   portals       áreas que levam a outro mapa: quem pisa aparece no tile "at" do mapa "to"
+#                   - { area: [x0, y0, x1, y1], to: outro_mapa, at: [x, y] }
+#                 (o servidor confere se o mapa existe e se o tile de chegada é livre)
+#
 # Duelos (/duelo Nome) valem em qualquer zona, inclusive na segura.
 
+name: Campos de Início
+
 default_zone: { type: pve, name: Campos }
+
+portals:
+  - { area: [37, 1, 38, 2], to: bosque, at: [4, 3] }
 
 zones:
   arena:

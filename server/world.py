@@ -74,8 +74,19 @@ def _boxes_overlap(ax: float, ay: float, ah: float, bx: float, by: float, bh: fl
 
 
 class World:
-    def __init__(self, tilemap: TileMap, db: Database, content: Content, rng: random.Random | None = None):
-        self.map = tilemap
+    def __init__(
+        self,
+        maps: TileMap | dict[str, TileMap],
+        db: Database,
+        content: Content,
+        rng: random.Random | None = None,
+        start_map: str | None = None,
+    ):
+        if isinstance(maps, TileMap):
+            maps = {maps.name: maps}
+        self.maps = maps
+        # mapa onde nascem personagens novos
+        self.start_map_id = next(m for m in (start_map, C.START_MAP, next(iter(maps))) if m in maps)
         self.db = db
         self.content = content
         self.rng = rng or random.Random()
@@ -85,20 +96,43 @@ class World:
         self.enemies: dict[int, Enemy] = {}
         self.projectiles: dict[int, Projectile] = {}
         self.drops: dict[int, GroundItem] = {}  # itens e moedas no chão
-        self._fx: list[dict] = []  # efeitos visuais deste tick (dano, golpes, level up...)
+        self._fx: list[tuple[str, float, float, dict]] = []  # efeitos visuais do tick: (mapa, x, y, dados)
         self._outbox: list[Outgoing] = []
         self._save_timer = C.AUTOSAVE_SECONDS
         self.duels = DuelSystem(self)
         self.orgs = OrgSystem(self)
 
         by_mark = content.enemy_by_mark
-        for mark, x, y in tilemap.enemy_spawns:
-            if mark not in by_mark:
-                raise ValueError(f"Mapa {tilemap.name!r}: nenhum inimigo com mark {mark!r} em enemies.yaml")
-            defn = by_mark[mark]
-            enemy = Enemy(id=self._new_id(), name=defn.name, x=x, y=y, defn=defn, home_x=x, home_y=y)
-            enemy.hp = enemy.max_hp
-            self.enemies[enemy.id] = enemy
+        for map_id, tilemap in maps.items():
+            for mark, x, y in tilemap.enemy_spawns:
+                if mark not in by_mark:
+                    raise ValueError(f"Mapa {tilemap.name!r}: nenhum inimigo com mark {mark!r} em enemies.yaml")
+                defn = by_mark[mark]
+                enemy = Enemy(id=self._new_id(), name=defn.name, x=x, y=y, defn=defn, home_x=x, home_y=y,
+                              map_id=map_id)
+                enemy.hp = enemy.max_hp
+                self.enemies[enemy.id] = enemy
+
+    @property
+    def map(self) -> TileMap:
+        """O mapa inicial (onde nascem personagens novos)."""
+        return self.maps[self.start_map_id]
+
+    def _map(self, e: Entity) -> TileMap:
+        """O mapa onde a entidade está."""
+        return self.maps.get(e.map_id) or self.map
+
+    def _map_payload(self, tilemap: TileMap) -> dict:
+        """Mapa para o cliente, com o nome do destino de cada portal."""
+        info = tilemap.client_info()
+        for portal in info["portals"]:
+            dest = self.maps.get(portal["to"])
+            portal["title"] = (dest.title or dest.name) if dest else portal["to"]
+        return info
+
+    def _fx_at(self, who: Entity, data: dict) -> None:
+        """Efeito visual na posição de `who` (só vai para quem está perto, no mesmo mapa)."""
+        self._fx.append((who.map_id, who.x, who.y, data))
 
     def _new_id(self) -> int:
         new_id = self._next_id
@@ -144,7 +178,7 @@ class World:
             is_new = False
 
         sx, sy = self.map.spawn
-        player = Player(id=self._new_id(), name=record.name, x=sx, y=sy)
+        player = Player(id=self._new_id(), name=record.name, x=sx, y=sy, map_id=self.start_map_id)
         # antes do load: a vida máxima depende da raça e do equipamento
         player.inventory = Inventory.from_dict(data.get("inventory") or {}, self.content.items)
         self._set_class(player, self._resolve_class(data))
@@ -152,8 +186,14 @@ class World:
         if is_new:
             player.hp = player.max_hp
             player.energy = player.max_energy
-        if self.map.box_blocked(player.x, player.y, player.half, _player_blocks):
+        saved_map = data.get("map")
+        if saved_map in self.maps:
+            player.map_id = saved_map
+        elif saved_map:  # o mapa foi removido: volta para o início
             player.x, player.y = sx, sy
+        tilemap = self._map(player)
+        if tilemap.box_blocked(player.x, player.y, player.half, _player_blocks):
+            player.x, player.y = tilemap.spawn
 
         self.players[player.id] = player
         self._system(f"{player.name} entrou no jogo.")
@@ -201,12 +241,7 @@ class World:
             "id": player.id,
             "tick_rate": C.TICK_RATE,
             "half": player.half,
-            "map": {
-                "name": self.map.name,
-                "tile_size": self.map.tile_size,
-                "rows": self.map.rows,
-                "zones": [z.client_info() for z in self.map.zones],
-            },
+            "map": self._map_payload(self._map(player)),
             "stat_labels": STAT_LABELS,
             **self.content.client_payload(),
         }
@@ -250,7 +285,7 @@ class World:
     def _save(self, player: Player) -> None:
         data = player.to_dict()
         if not player.alive:  # quem sai morto volta no ponto de nascimento
-            data["x"], data["y"] = self.map.spawn
+            data["x"], data["y"] = self._map(player).spawn
             data["hp"] = player.max_hp
         self.db.save_character(player.name, data)
 
@@ -313,6 +348,8 @@ class World:
         self._emit_snapshots()
 
     def _emit_snapshots(self) -> None:
+        # Cada coisa vira (mapa, x, y, dados) uma vez; depois cada jogador recebe só o que
+        # está no mesmo mapa e dentro de VIEW_RADIUS.
         ents = []
         for e in chain(self.players.values(), self.enemies.values()):
             snap = e.snapshot()
@@ -320,21 +357,30 @@ class World:
                 snap["du"] = opponent  # em duelo com
             if isinstance(e, Player) and (org := self.orgs.snapshot(e)):
                 snap["o"] = org  # [organização, cargo, vaga]
-            ents.append(snap)
-        projs = [p.snapshot() for p in self.projectiles.values()]
-        drops = [d.snapshot() for d in self.drops.values()]
-        fx, self._fx = self._fx, []
+            ents.append((e.map_id, e.x, e.y, snap))
+        all_projs = [(p.map_id, p.x, p.y, p.snapshot()) for p in self.projectiles.values()]
+        all_drops = [(d.map_id, d.x, d.y, d.snapshot()) for d in self.drops.values()]
+        all_fx, self._fx = self._fx, []
+        radius2 = C.VIEW_RADIUS ** 2
+
         for player in self.players.values():
+            map_id, px, py = player.map_id, player.x, player.y
+
+            def near(items: list) -> list:
+                return [data for m, x, y, data in items if m == map_id and (x - px) ** 2 + (y - py) ** 2 <= radius2]
+
             you = player.private_snapshot()
-            zone = self.map.zone_at(player.x, player.y)
-            you["zone"] = {"t": zone.type, "n": zone.name}
+            tilemap = self._map(player)
+            zone = tilemap.zone_at(px, py)
+            you["zone"] = {"t": zone.type, "n": zone.name, "m": tilemap.title or tilemap.name}
             you["duel"] = self.duels.client_info(player)
             if player.inventory.dirty:  # inventário só vai quando muda
                 you["inv"] = player.inventory.client_info()
                 player.inventory.dirty = False
-            self._outbox.append(
-                (player.id, {"t": "snap", "ents": ents, "projs": projs, "drops": drops, "fx": fx, "you": you})
-            )
+            self._outbox.append((player.id, {
+                "t": "snap", "ents": near(ents), "projs": near(all_projs), "drops": near(all_drops),
+                "fx": near(all_fx), "you": you,
+            }))
 
     # ================================================================ jogadores
 
@@ -346,7 +392,7 @@ class World:
                 p.ack = p.move_queue[-1][0]
                 p.move_queue.clear()
             if p.dead_timer <= 0:
-                p.x, p.y = self.map.spawn
+                p.x, p.y = self._map(p).spawn
                 p.hp, p.energy = p.max_hp, p.max_energy
                 p.state = "idle"
             return
@@ -369,6 +415,7 @@ class World:
             moved = self._move_player(p, dt, keys) or moved
         if not moved and p.state == "walk":
             p.state = "idle"
+        self._check_portal(p)
 
         actions, p.actions = p.actions, []
         for kind, skill_id, facing in actions:
@@ -412,12 +459,34 @@ class World:
         _face(p, dx, dy)
         scale = speed * dt * (math.sqrt(0.5) if dx and dy else 1.0)
         old_x, old_y = p.x, p.y
-        p.x, p.y = self.map.move_box(p.x, p.y, p.half, dx * scale, dy * scale, _player_blocks)
+        p.x, p.y = self._map(p).move_box(p.x, p.y, p.half, dx * scale, dy * scale, _player_blocks)
         distance = math.hypot(p.x - old_x, p.y - old_y)
         p.state = "walk" if distance > 0 else "idle"
         if distance > 0:
             self._train(p, "agility", distance * C.AGILITY_XP_PER_PX)
         return distance > 0
+
+    def _check_portal(self, p: Player) -> None:
+        portal = self._map(p).portal_at(p.x, p.y)
+        if portal is None:
+            p.portal_lock = False  # saiu de cima do portal: o próximo vale
+        elif not p.portal_lock:
+            self.teleport(p, portal.to, *self.maps[portal.to].tile_center(*portal.at))
+
+    def teleport(self, p: Player, map_id: str, x: float, y: float) -> None:
+        """Leva o jogador para outro lugar (talvez outro mapa) e avisa o cliente."""
+        changed = map_id != p.map_id
+        p.map_id, p.x, p.y = map_id, x, y
+        p.portal_lock = True  # chegou em cima de algo? só usa portal de novo depois de sair
+        if p.state in ("meditate", "rest", "walk"):
+            p.state = "idle"
+        if p.move_queue:  # comandos de antes da viagem não valem no lugar novo
+            p.ack = p.move_queue[-1][0]
+            p.move_queue.clear()
+        tilemap = self._map(p)
+        self._outbox.append((p.id, {"t": "map", "map": self._map_payload(tilemap), "x": x, "y": y}))
+        if changed:
+            self._private(p, f"Você chegou a {tilemap.title or tilemap.name}.")
 
     def _regen_player(self, p: Player, dt: float) -> None:
         if p.state == "meditate":
@@ -445,7 +514,7 @@ class World:
         if gained:
             level = p.stats[stat].level
             self._private(p, f"{STAT_LABELS[stat]} subiu para o nível {level}!")
-            self._fx.append({"k": "lvl", "id": p.id, "x": round(p.x), "y": round(p.y)})
+            self._fx_at(p, {"k": "lvl", "id": p.id, "x": round(p.x), "y": round(p.y)})
             self._fire("level_up", p, {"stat": stat, "level": level}, depth)
 
     # ================================================================ regras (data/rules.yaml)
@@ -564,7 +633,7 @@ class World:
         elif skill.type == "dash":
             self._cast_dash(caster, skill)
         elif skill.type == "self":
-            self._fx.append({"k": "buff", "id": caster.id, "c": skill.color})
+            self._fx_at(caster, {"k": "buff", "id": caster.id, "c": skill.color})
             if isinstance(caster, Player):
                 self._train_from_skill(caster, skill)
         return True
@@ -577,9 +646,9 @@ class World:
         for stat, xp in skill.train.items():
             self._train(p, stat, xp)
 
-    def _living_targets(self, exclude: Entity | None) -> Iterator[Entity]:
+    def _living_targets(self, exclude: Entity | None, map_id: str) -> Iterator[Entity]:
         for e in chain(self.players.values(), self.enemies.values()):
-            if e.alive and e is not exclude:
+            if e.alive and e is not exclude and e.map_id == map_id:
                 yield e
 
     def _can_hit(self, attacker: Entity, target: Entity) -> bool:
@@ -590,7 +659,7 @@ class World:
         - inimigo × jogador: em qualquer lugar menos na zona segura;
         - jogador × inimigo: sempre; inimigo × inimigo: nunca.
         """
-        if not target.alive or attacker is target:
+        if not target.alive or attacker is target or attacker.map_id != target.map_id:
             return False
         if isinstance(attacker, Enemy) and isinstance(target, Enemy):
             return False
@@ -599,18 +668,19 @@ class World:
                 return self.duels.fighting(attacker, target)  # não vale durante a contagem
             if self.duels.duel_of(attacker) or self.duels.duel_of(target):
                 return False  # ninguém de fora entra (nem sai) de um duelo
-            return (self.map.zone_at(attacker.x, attacker.y).type == "pvp"
-                    and self.map.zone_at(target.x, target.y).type == "pvp")
+            tilemap = self._map(attacker)
+            return (tilemap.zone_at(attacker.x, attacker.y).type == "pvp"
+                    and tilemap.zone_at(target.x, target.y).type == "pvp")
         if isinstance(target, Player):
-            return not self.map.is_safe(target.x, target.y)
+            return not self._map(target).is_safe(target.x, target.y)
         return True
 
     def _cast_melee(self, caster: Entity, skill: SkillDef) -> None:
         fdx, fdy = DIRECTIONS[caster.facing]
         cx, cy = caster.x + fdx * skill.reach, caster.y + fdy * skill.reach
-        self._fx.append({"k": "swing", "id": caster.id, "r": skill.reach + skill.size})
+        self._fx_at(caster, {"k": "swing", "id": caster.id, "r": skill.reach + skill.size})
         damage = self._skill_damage(caster, skill)
-        for target in list(self._living_targets(exclude=caster)):
+        for target in list(self._living_targets(exclude=caster, map_id=caster.map_id)):
             if _boxes_overlap(cx, cy, skill.size, target.x, target.y, target.half) and self._can_hit(caster, target):
                 self._skill_hit(caster, target, skill, damage)
 
@@ -632,13 +702,14 @@ class World:
                 damage=damage,
                 ttl=skill.ttl,
                 radius=skill.radius,
+                map_id=caster.map_id,
             )
             self.projectiles[proj.id] = proj
 
     def _cast_area(self, caster: Entity, skill: SkillDef) -> None:
-        self._fx.append({"k": "area", "id": caster.id, "r": skill.radius, "c": skill.color})
+        self._fx_at(caster, {"k": "area", "id": caster.id, "r": skill.radius, "c": skill.color})
         damage = self._skill_damage(caster, skill)
-        for target in list(self._living_targets(exclude=caster)):
+        for target in list(self._living_targets(exclude=caster, map_id=caster.map_id)):
             reach = skill.radius + target.half
             if math.hypot(target.x - caster.x, target.y - caster.y) <= reach and self._can_hit(caster, target):
                 self._skill_hit(caster, target, skill, damage)
@@ -650,14 +721,14 @@ class World:
         remaining = skill.distance
         while remaining > 0:
             step = min(C.DASH_STEP, remaining)
-            nx, ny = self.map.move_box(caster.x, caster.y, caster.half, fdx * step, fdy * step, blocks)
+            nx, ny = self._map(caster).move_box(caster.x, caster.y, caster.half, fdx * step, fdy * step, blocks)
             if (nx, ny) == (caster.x, caster.y):
                 break  # bateu numa parede
             caster.x, caster.y = nx, ny
             remaining -= step
         if caster.state in ("meditate", "rest"):
             caster.state = "idle"
-        self._fx.append({"k": "dash", "id": caster.id, "x0": round(start[0]), "y0": round(start[1]),
+        self._fx_at(caster, {"k": "dash", "id": caster.id, "x0": round(start[0]), "y0": round(start[1]),
                          "x1": round(caster.x), "y1": round(caster.y)})
         if isinstance(caster, Player):
             self._train_from_skill(caster, skill)
@@ -677,11 +748,12 @@ class World:
             proj.y += proj.vy * dt
             proj.ttl -= dt
             owner = self._entity(proj.owner_id)
-            if owner is None or proj.ttl <= 0 or _shot_blocks(self.map.tile_at_px(proj.x, proj.y)):
+            tilemap = self.maps.get(proj.map_id) or self.map
+            if owner is None or proj.ttl <= 0 or _shot_blocks(tilemap.tile_at_px(proj.x, proj.y)):
                 del self.projectiles[proj.id]
                 continue
             skill = self.content.skills[proj.skill_id]
-            for target in list(self._living_targets(exclude=owner)):
+            for target in list(self._living_targets(exclude=owner, map_id=proj.map_id)):
                 if _boxes_overlap(proj.x, proj.y, proj.radius, target.x, target.y, target.half):
                     if self._can_hit(owner, target):
                         self._skill_hit(owner, target, skill, proj.damage)
@@ -711,7 +783,7 @@ class World:
         target.hp -= amount
         if duel_defeat:
             target.hp = max(1.0, target.hp)
-        self._fx.append({"k": "dmg", "id": target.id, "x": round(target.x), "y": round(target.y), "v": amount})
+        self._fx_at(target, {"k": "dmg", "id": target.id, "x": round(target.x), "y": round(target.y), "v": amount})
         if isinstance(target, Player):
             if target.state in ("meditate", "rest"):
                 target.state = "idle"
@@ -726,7 +798,7 @@ class World:
     def _kill(
         self, target: Entity, killer: Entity | None, skill: SkillDef | None, effect_id: str | None = None
     ) -> None:
-        zone = self.map.zone_at(target.x, target.y).type
+        zone = self._map(target).zone_at(target.x, target.y).type
         effects_at_death = sorted(target.effects)
         was_dueling = isinstance(target, Player) and self.duels.on_death(target)
         target.hp = 0
@@ -799,12 +871,12 @@ class World:
                         healed = min(e.max_hp - e.hp, d.tick_heal)
                         e.hp += healed
                         if healed > 0:
-                            self._fx.append({"k": "heal", "id": e.id, "x": round(e.x), "y": round(e.y), "v": round(healed)})
+                            self._fx_at(e, {"k": "heal", "id": e.id, "x": round(e.x), "y": round(e.y), "v": round(healed)})
                     # Na zona segura, efeitos não ferem jogadores (a não ser vindos do oponente de duelo)
                     source = self._entity(active.source_id)
                     protected = (
                         isinstance(e, Player)
-                        and self.map.is_safe(e.x, e.y)
+                        and self._map(e).is_safe(e.x, e.y)
                         and not (isinstance(source, Player) and self.duels.fighting(e, source))
                     )
                     if d.tick_damage and not protected:
@@ -839,9 +911,9 @@ class World:
             if taken:
                 fdx, fdy = DIRECTIONS[p.facing]
                 x, y = p.x + fdx * C.DROP_DISTANCE, p.y + fdy * C.DROP_DISTANCE
-                if self.map.box_blocked(x, y, 4, _player_blocks):
+                if self._map(p).box_blocked(x, y, 4, _player_blocks):
                     x, y = p.x, p.y
-                drop = self._drop(taken.item, taken.qty, x, y, owner=None, scatter=False)
+                drop = self._drop(taken.item, taken.qty, p.map_id, x, y, owner=None, scatter=False)
                 drop.ignore_id, drop.ignore_until = p.id, self.time + C.DROP_PICKUP_DELAY
         elif stack.item.type == "consumable":
             self._use_consumable(p, slot, stack.item)  # type: ignore[arg-type]
@@ -868,7 +940,7 @@ class World:
             healed = min(item.heal, p.max_hp - p.hp)
             p.hp += healed
             if healed > 0:
-                self._fx.append({"k": "heal", "id": p.id, "x": round(p.x), "y": round(p.y), "v": round(healed)})
+                self._fx_at(p, {"k": "heal", "id": p.id, "x": round(p.x), "y": round(p.y), "v": round(healed)})
         if item.energy:
             p.energy = min(p.max_energy, p.energy + item.energy)
         for app in item.effects:
@@ -899,20 +971,21 @@ class World:
         """Põe no inventário; o que não couber cai no chão aos pés dele (só ele pega)."""
         leftover = p.inventory.add(item, qty)
         if leftover:
-            self._drop(item, leftover, p.x, p.y, owner=p.id, scatter=False)
+            self._drop(item, leftover, p.map_id, p.x, p.y, owner=p.id, scatter=False)
             self._private(p, "Inventário cheio: o que não coube ficou no chão.")
 
-    def _drop(self, item: ItemDef | None, qty: int, x: float, y: float, owner: int | None,
+    def _drop(self, item: ItemDef | None, qty: int, map_id: str, x: float, y: float, owner: int | None,
               scatter: bool = True) -> GroundItem:
         if scatter:
             angle = self.rng.uniform(0, 2 * math.pi)
             dist = self.rng.uniform(0, C.LOOT_SCATTER)
             nx, ny = x + math.cos(angle) * dist, y + math.sin(angle) * dist
-            if not self.map.box_blocked(nx, ny, 4, _player_blocks):
+            if not (self.maps.get(map_id) or self.map).box_blocked(nx, ny, 4, _player_blocks):
                 x, y = nx, ny
         drop = GroundItem(
             id=self._new_id(), item=item, qty=qty, x=x, y=y, owner_id=owner,
             owner_until=self.time + C.LOOT_OWNER_SECONDS, expires_at=self.time + C.LOOT_EXPIRE_SECONDS,
+            map_id=map_id,
         )
         self.drops[drop.id] = drop
         return drop
@@ -922,15 +995,15 @@ class World:
         low, high = enemy.defn.gold
         gold = self.rng.randint(low, high) if high > 0 else 0
         if gold:
-            self._drop(None, gold, enemy.x, enemy.y, owner)
+            self._drop(None, gold, enemy.map_id, enemy.x, enemy.y, owner)
         for entry in enemy.defn.loot:
             if self.rng.random() < entry.chance:
                 qty = self.rng.randint(entry.qty_min, entry.qty_max)
-                self._drop(self.content.items[entry.item], qty, enemy.x, enemy.y, owner)
+                self._drop(self.content.items[entry.item], qty, enemy.map_id, enemy.x, enemy.y, owner)
 
     def _pickup(self, p: Player) -> None:
         for drop in list(self.drops.values()):
-            if math.hypot(drop.x - p.x, drop.y - p.y) > C.PICKUP_RADIUS:
+            if drop.map_id != p.map_id or math.hypot(drop.x - p.x, drop.y - p.y) > C.PICKUP_RADIUS:
                 continue
             if drop.owner_id not in (None, p.id) and self.time < drop.owner_until:
                 continue  # ainda é de quem matou
@@ -948,7 +1021,7 @@ class World:
             drop.qty -= taken
             if drop.qty == 0:
                 del self.drops[drop.id]
-            self._fx.append({"k": "pick", "id": p.id, "x": round(p.x), "y": round(p.y), "t": label,
+            self._fx_at(p, {"k": "pick", "id": p.id, "x": round(p.x), "y": round(p.y), "t": label,
                              "r": drop.item.rarity if drop.item else "gold"})
 
     def _update_drops(self) -> None:
@@ -1009,7 +1082,7 @@ class World:
         step = e.speed * dt
 
         def sidestep(side: int) -> bool:  # perpendicular à direção do alvo
-            e.x, e.y = self.map.move_box(e.x, e.y, e.half, -uy * side * step, ux * side * step, _enemy_blocks)
+            e.x, e.y = self._map(e).move_box(e.x, e.y, e.half, -uy * side * step, ux * side * step, _enemy_blocks)
             return (e.x, e.y) != old
 
         if e.detour_timer > 0:
@@ -1018,7 +1091,7 @@ class World:
                 e.detour_side = -e.detour_side
                 e.detour_timer = 0.0
         else:
-            e.x, e.y = self.map.move_box(e.x, e.y, e.half, ux * step, uy * step, _enemy_blocks)
+            e.x, e.y = self._map(e).move_box(e.x, e.y, e.half, ux * step, uy * step, _enemy_blocks)
             if (e.x, e.y) == old:  # travou: começa a contornar (tenta um lado, depois o outro)
                 for side in (e.detour_side, -e.detour_side):
                     if sidestep(side):
@@ -1031,7 +1104,7 @@ class World:
         """Mantém o alvo atual se ainda for válido; senão procura o jogador mais próximo."""
 
         def valid(p: Player | None) -> bool:
-            return p is not None and p.alive and not self.map.is_safe(p.x, p.y)
+            return p is not None and p.alive and p.map_id == e.map_id and not self._map(p).is_safe(p.x, p.y)
 
         if math.hypot(e.x - e.home_x, e.y - e.home_y) > e.defn.leash:
             e.target_id = None
@@ -1069,6 +1142,6 @@ class World:
             return
         step = e.speed * 0.5 * dt
         old = (e.x, e.y)
-        e.x, e.y = self.map.move_box(e.x, e.y, e.half, wx * step, wy * step, _enemy_blocks)
+        e.x, e.y = self._map(e).move_box(e.x, e.y, e.half, wx * step, wy * step, _enemy_blocks)
         _face(e, wx, wy)
         e.state = "walk" if (e.x, e.y) != old else "idle"

@@ -1,0 +1,14 @@
+# Zonas e portais do mapa bosque.txt (formato explicado em inicio.yaml).
+
+name: Bosque Sombrio
+
+default_zone: { type: pve, name: Bosque }
+
+zones:
+  clareira:
+    name: Clareira Rubra
+    type: pvp
+    area: [24, 13, 34, 21]
+
+portals:
+  - { area: [1, 6, 2, 6], to: inicio, at: [35, 3] }

@@ -1,6 +1,6 @@
 # Relatório de balanceamento
 
-Gerado em 15/11/2026 12:05 · níveis: 1, 10, 25 · lutas de 30 s · equipamento: nenhum · 1,4 s para gerar
+Gerado em 15/11/2026 12:51 · níveis: 1, 10, 25 · lutas de 30 s · equipamento: nenhum · 1,7 s para gerar
 
 Os números vêm de lutas simuladas no próprio motor do jogo. Todos os atributos no nível indicado; os lutadores ficam parados a 28 px, então alcance e esquiva **não** contam — classes de longe aparecem piores do que seriam com um jogador se movendo. *Vida efetiva* = vida ÷ multiplicador de dano recebido.
 
@@ -11,12 +11,17 @@ Os números vêm de lutas simuladas no próprio motor do jogo. Todos os atributo
 - **Rajada** rende pouco para Iniciado: 5% (nível 1) do dano (contando os efeitos que ela aplica).
 - **Leque de energia** rende pouco para Iniciado: 4% (nível 1) do dano (contando os efeitos que ela aplica).
 - **Golpe** responde pela maior parte do dano de **Assombração**: 78% (nível 1). As outras skills pesam pouco.
+- **Aprendiz** perde para Devorador: folga 0,4 (nível 1).
+- **Iniciado** perde para Devorador: folga 0,3 (nível 1).
+- **Assombração** perde para Devorador: folga 0,3 (nível 1).
 - **Dardo venenoso** rende pouco para Assombração: 4% (nível 10), 2% (nível 25) do dano (contando os efeitos que ela aplica).
 - Espectro não é desafio para Aprendiz: folga 121× (nível 10), 729× (nível 25). Faltam inimigos para esse nível.
 - Espectro não é desafio para Iniciado: folga 107× (nível 10), 633× (nível 25). Faltam inimigos para esse nível.
 - Espectro não é desafio para Assombração: folga 101× (nível 10), 503× (nível 25). Faltam inimigos para esse nível.
 - Bruto não é desafio para Aprendiz: folga 118× (nível 25). Faltam inimigos para esse nível.
+- Devorador não é desafio para Aprendiz: folga 25× (nível 25). Faltam inimigos para esse nível.
 - Bruto não é desafio para Iniciado: folga 119× (nível 25). Faltam inimigos para esse nível.
+- Devorador não é desafio para Iniciado: folga 24× (nível 25). Faltam inimigos para esse nível.
 - Bruto não é desafio para Assombração: folga 76× (nível 25). Faltam inimigos para esse nível.
 
 ## Nível 1
@@ -42,7 +47,7 @@ Os números vêm de lutas simuladas no próprio motor do jogo. Todos os atributo
 | Iniciado | Flecha gélida | 4 | 26 | 4% |
 | Iniciado | Onda de choque | 1 | 10 | 2% |
 | Assombração | Golpe | 60 | 480 | 78% |
-| Assombração | Veneno (de Dardo venenoso) | – | 81 | 13% |
+| Assombração | Veneno (de Dardo venenoso / Mordida) | – | 81 | 13% |
 | Assombração | Leque de energia | 2 | 42 | 7% |
 | Assombração | Dardo venenoso | 8 | 16 | 3% |
 
@@ -54,10 +59,13 @@ Os números vêm de lutas simuladas no próprio motor do jogo. Todos os atributo
 |---|---|---|---|---|---|
 | Aprendiz | Espectro | 2,1 s | 24,0 s | 11,4 | fácil |
 | Aprendiz | Bruto | 10,7 s | 15,8 s | 1,5 | apertado |
+| Aprendiz | Devorador | 13,6 s | 5,3 s | 0,4 | **perde** |
 | Iniciado | Espectro | 2,1 s | 18,0 s | 8,7 | fácil |
 | Iniciado | Bruto | 10,4 s | 11,8 s | 1,1 | apertado |
+| Iniciado | Devorador | 12,9 s | 3,9 s | 0,3 | **perde** |
 | Assombração | Espectro | 1,9 s | 16,0 s | 8,3 | fácil |
 | Assombração | Bruto | 9,5 s | 10,5 s | 1,1 | apertado |
+| Assombração | Devorador | 12,6 s | 3,5 s | 0,3 | **perde** |
 
 ### PvP (mesmo nível, lutando parados)
 
@@ -111,7 +119,7 @@ Tempo para a classe da linha vencer a da coluna.
 | Iniciado | Onda de choque | 2 | 68 | 3% |
 | Assombração | Golpe | 60 | 1560 | 67% |
 | Assombração | Leque de energia | 9 | 675 | 29% |
-| Assombração | Veneno (de Dardo venenoso) | – | 87 | 4% |
+| Assombração | Veneno (de Dardo venenoso / Mordida) | – | 87 | 4% |
 | Assombração | Dardo venenoso | 9 | 18 | 1% |
 
 ### PvE
@@ -122,10 +130,13 @@ Tempo para a classe da linha vencer a da coluna.
 |---|---|---|---|---|---|
 | Aprendiz | Espectro | 0,5 s | 60,0 s | 121,2 | fácil |
 | Aprendiz | Bruto | 2,3 s | 39,5 s | 17,0 | fácil |
+| Aprendiz | Devorador | 3,2 s | 13,1 s | 4,1 | fácil |
 | Iniciado | Espectro | 0,5 s | 54,0 s | 107,4 | fácil |
 | Iniciado | Bruto | 2,2 s | 35,5 s | 16,1 | fácil |
+| Iniciado | Devorador | 3,0 s | 11,8 s | 4,0 | fácil |
 | Assombração | Espectro | 0,5 s | 52,0 s | 101,4 | fácil |
 | Assombração | Bruto | 2,3 s | 34,2 s | 14,9 | fácil |
+| Assombração | Devorador | 3,3 s | 11,4 s | 3,4 | fácil |
 
 ### PvP (mesmo nível, lutando parados)
 
@@ -179,7 +190,7 @@ Tempo para a classe da linha vencer a da coluna.
 | Iniciado | Onda de choque | 4 | 258 | 3% |
 | Assombração | Golpe | 59 | 3304 | 61% |
 | Assombração | Leque de energia | 12 | 1980 | 37% |
-| Assombração | Veneno (de Dardo venenoso) | – | 87 | 2% |
+| Assombração | Veneno (de Dardo venenoso / Mordida) | – | 87 | 2% |
 | Assombração | Dardo venenoso | 10 | 20 | 0% |
 
 ### PvE
@@ -190,10 +201,13 @@ Tempo para a classe da linha vencer a da coluna.
 |---|---|---|---|---|---|
 | Aprendiz | Espectro | 0,2 s | 124,1 s | 729,1 | fácil |
 | Aprendiz | Bruto | 0,7 s | 83,3 s | 117,9 | fácil |
+| Aprendiz | Devorador | 1,1 s | 27,1 s | 24,5 | fácil |
 | Iniciado | Espectro | 0,2 s | 114,0 s | 632,9 | fácil |
 | Iniciado | Bruto | 0,7 s | 79,2 s | 119,5 | fácil |
+| Iniciado | Devorador | 1,0 s | 25,0 s | 23,9 | fácil |
 | Assombração | Espectro | 0,2 s | 112,0 s | 503,2 | fácil |
 | Assombração | Bruto | 1,0 s | 73,7 s | 75,5 | fácil |
+| Assombração | Devorador | 1,4 s | 24,5 s | 17,0 | fácil |
 
 ### PvP (mesmo nível, lutando parados)
 

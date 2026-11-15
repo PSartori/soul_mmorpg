@@ -160,6 +160,13 @@ do nível 10 — faltam inimigos por faixa de nível.
 nomeação ou disputa (duelo valendo o cargo), chat próprio, título acima do nome e
 evento `rank_change` nas regras. As duas organizações atuais são exemplos.
 
+**Base 9 (concluída):** vários mapas (`data/maps/*.txt` + `.yaml`) ligados por
+portais, cada um com seus inimigos e saque; mapa salvo no personagem (save v4); e
+cada jogador só recebe o que está no mesmo mapa e dentro do raio de visão. Novo mapa
+"Bosque Sombrio" com o Devorador, que cobre a faixa de nível intermediária (perigoso
+no nível 1, luta razoável no 10). A decisão "mundo aberto ou portais" segue aberta:
+mundo aberto seria um mapa grande com a mesma visão por raio; portais já funcionam.
+
 Ainda a decidir sobre a hierarquia (seção 6): limite de recusas de desafio de
 cargo (hoje pode recusar sempre), cargo vago por inatividade do ocupante, e se
 alguns cargos devem ser por torneio ou pontos de contribuição.

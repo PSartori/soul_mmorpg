@@ -59,6 +59,19 @@ class Zone:
 SAFE_TILE_ZONE = Zone(id="segura", name="", type="safe")
 
 
+@dataclass(frozen=True)
+class Portal:
+    """Área do mapa que leva a outro mapa: quem pisa nela aparece em `at` do mapa `to`."""
+
+    area: tuple[int, int, int, int]  # x0, y0, x1, y1 em tiles (inclusive)
+    to: str  # id do mapa de destino (nome do arquivo sem extensão)
+    at: tuple[int, int]  # tile de chegada no destino
+
+    def contains_tile(self, tx: int, ty: int) -> bool:
+        x0, y0, x1, y1 = self.area
+        return x0 <= tx <= x1 and y0 <= ty <= y1
+
+
 @dataclass
 class TileMap:
     name: str
@@ -68,6 +81,26 @@ class TileMap:
     enemy_spawns: list[tuple[str, float, float]] = field(default_factory=list)  # (mark, x, y)
     zones: list[Zone] = field(default_factory=list)  # áreas do .yaml; a primeira que contém vence
     default_zone: Zone = Zone(id="", name="", type="pve")  # onde não há tile ':' nem área
+    title: str = ""  # nome exibido do mapa
+    portals: list[Portal] = field(default_factory=list)
+
+    def portal_at(self, x: float, y: float) -> Portal | None:
+        ts = self.tile_size
+        tx, ty = math.floor(x / ts), math.floor(y / ts)
+        return next((p for p in self.portals if p.contains_tile(tx, ty)), None)
+
+    def tile_center(self, tx: int, ty: int) -> tuple[float, float]:
+        return (tx + 0.5) * self.tile_size, (ty + 0.5) * self.tile_size
+
+    def client_info(self) -> dict:
+        return {
+            "id": self.name,
+            "title": self.title or self.name,
+            "tile_size": self.tile_size,
+            "rows": self.rows,
+            "zones": [z.client_info() for z in self.zones],
+            "portals": [{"area": list(p.area), "to": p.to} for p in self.portals],
+        }
 
     @property
     def width(self) -> int:
@@ -195,7 +228,38 @@ def parse_map(
     tilemap = TileMap(name=name, rows=rows, tile_size=tile_size, spawn=spawn, enemy_spawns=enemy_spawns)
     if zones:
         tilemap.default_zone, tilemap.zones = _parse_zones(zones, f"{name}.yaml", tilemap.width, tilemap.height)
+        tilemap.title = str(zones.get("name") or "")
+        tilemap.portals = _parse_portals(zones.get("portals") or [], f"{name}.yaml", tilemap.width, tilemap.height)
     return tilemap
+
+
+def _check_area(area: Any, at: str, width: int, height: int) -> tuple[int, int, int, int]:
+    if (
+        not isinstance(area, list)
+        or len(area) != 4
+        or not all(isinstance(v, int) and not isinstance(v, bool) for v in area)
+    ):
+        raise ValueError(f"{at}: area deve ser [x0, y0, x1, y1] em tiles (números inteiros)")
+    x0, y0, x1, y1 = area
+    if not (0 <= x0 <= x1 < width and 0 <= y0 <= y1 < height):
+        raise ValueError(f"{at}: area {area} fora do mapa ({width}×{height} tiles) ou invertida")
+    return x0, y0, x1, y1
+
+
+def _parse_portals(raw: Any, where: str, width: int, height: int) -> list[Portal]:
+    if not isinstance(raw, list):
+        raise ValueError(f"{where} > portals: deve ser uma lista")
+    portals = []
+    for i, item in enumerate(raw):
+        at = f"{where} > portals[{i}]"
+        if not isinstance(item, dict) or set(item) != {"area", "to", "at"}:
+            raise ValueError(f"{at}: use {{ area: [x0, y0, x1, y1], to: mapa, at: [x, y] }}")
+        dest = item["at"]
+        if not (isinstance(dest, list) and len(dest) == 2 and all(isinstance(v, int) for v in dest)):
+            raise ValueError(f"{at}: 'at' deve ser [x, y] (tile de chegada no outro mapa)")
+        portals.append(Portal(area=_check_area(item["area"], at, width, height), to=str(item["to"]),
+                              at=(dest[0], dest[1])))
+    return portals
 
 
 def _parse_zones(raw: Any, where: str, width: int, height: int) -> tuple[Zone, list[Zone]]:
@@ -208,7 +272,7 @@ def _parse_zones(raw: Any, where: str, width: int, height: int) -> tuple[Zone, l
 
     if not isinstance(raw, dict):
         raise ValueError(f"{where}: o arquivo deve ser um mapa com default_zone e zones")
-    unknown = set(raw) - {"default_zone", "zones"}
+    unknown = set(raw) - {"name", "default_zone", "zones", "portals"}
     if unknown:
         raise ValueError(f"{where}: campo(s) desconhecido(s): {', '.join(sorted(map(str, unknown)))}")
 
@@ -226,16 +290,7 @@ def _parse_zones(raw: Any, where: str, width: int, height: int) -> tuple[Zone, l
         at = f"{where} > zones > {zid}"
         if not isinstance(zraw, dict) or set(zraw) - {"name", "type", "area"} or "area" not in zraw:
             raise ValueError(f"{at}: use {{ name: texto, type: pve|pvp, area: [x0, y0, x1, y1] }}")
-        area = zraw["area"]
-        if (
-            not isinstance(area, list)
-            or len(area) != 4
-            or not all(isinstance(v, int) and not isinstance(v, bool) for v in area)
-        ):
-            raise ValueError(f"{at}: area deve ser [x0, y0, x1, y1] em tiles (números inteiros)")
-        x0, y0, x1, y1 = area
-        if not (0 <= x0 <= x1 < width and 0 <= y0 <= y1 < height):
-            raise ValueError(f"{at}: area {area} fora do mapa ({width}×{height} tiles) ou invertida")
+        x0, y0, x1, y1 = _check_area(zraw["area"], at, width, height)
         zones.append(Zone(
             id=str(zid),
             name=str(zraw.get("name", zid)),
@@ -243,6 +298,28 @@ def _parse_zones(raw: Any, where: str, width: int, height: int) -> tuple[Zone, l
             area=(x0, y0, x1, y1),
         ))
     return default, zones
+
+
+def load_maps(maps_dir: str | Path, spawn_marks: Iterable[str] = (), tile_size: int = C.TILE_SIZE) -> dict[str, TileMap]:
+    """Carrega todos os mapas (*.txt) da pasta e confere se os portais levam a lugares válidos."""
+    marks = tuple(spawn_marks)
+    maps = {path.stem: load_map(path, marks, tile_size) for path in sorted(Path(maps_dir).glob("*.txt"))}
+    check_portals(maps)
+    return maps
+
+
+def check_portals(maps: dict[str, TileMap]) -> None:
+    for tilemap in maps.values():
+        for portal in tilemap.portals:
+            dest = maps.get(portal.to)
+            where = f"{tilemap.name}.yaml > portal para {portal.to!r}"
+            if dest is None:
+                raise ValueError(f"{where}: mapa de destino não existe (mapas: {', '.join(maps)})")
+            tx, ty = portal.at
+            if dest.tile_at(tx, ty) in WALK_BLOCKERS:
+                raise ValueError(f"{where}: o tile de chegada {list(portal.at)} é bloqueado em {portal.to}")
+            if dest.portal_at(*dest.tile_center(tx, ty)):
+                raise ValueError(f"{where}: o tile de chegada {list(portal.at)} cai dentro de outro portal")
 
 
 def load_map(path: str | Path, spawn_marks: Iterable[str] = (), tile_size: int = C.TILE_SIZE) -> TileMap:

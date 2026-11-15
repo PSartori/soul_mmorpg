@@ -95,7 +95,7 @@ class Simulator:
 
     def player(self, world: World, build: Build, name: str, x: float, y: float) -> tuple[Player, list[str]]:
         """Cria o personagem direto no mundo (sem login). Devolve também os itens que não serviram."""
-        p = Player(id=world._new_id(), name=name, x=x, y=y)
+        p = Player(id=world._new_id(), name=name, x=x, y=y, map_id=world.start_map_id)
         p.stats = {n: Stat(level=build.level) for n in STAT_NAMES}
         world._set_class(p, self.content.classes[build.class_id])
         skipped = []
@@ -111,7 +111,8 @@ class Simulator:
 
     def enemy(self, world: World, enemy_id: str, x: float, y: float) -> Enemy:
         defn = self.content.enemies[enemy_id]
-        e = Enemy(id=world._new_id(), name=defn.name, x=x, y=y, defn=defn, home_x=x, home_y=y)
+        e = Enemy(id=world._new_id(), name=defn.name, x=x, y=y, defn=defn, home_x=x, home_y=y,
+                  map_id=world.start_map_id)
         e.hp = e.max_hp
         world.enemies[e.id] = e
         return e

@@ -64,6 +64,13 @@ couro_grosso:
   type: material
   value: 5
 
+presa_de_devorador:
+  name: Presa de devorador
+  description: Ainda pinga veneno.
+  type: material
+  rarity: uncommon
+  value: 12
+
 # ---------------------------------------------------------------- equipamentos
 
 espada_curta:

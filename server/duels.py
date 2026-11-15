@@ -244,4 +244,6 @@ class DuelSystem:
 
     @staticmethod
     def _distance(a: Player, b: Player) -> float:
+        if a.map_id != b.map_id:
+            return math.inf  # mapas diferentes: longe demais
         return math.hypot(a.x - b.x, a.y - b.y)

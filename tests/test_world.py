@@ -864,7 +864,7 @@ class ZoneTests(unittest.TestCase):
         self.place((7, 3), (2, 2))
         self.world.step(DT)
         snaps = {t: m for t, m in self.world.drain_outbox() if m["t"] == "snap"}
-        self.assertEqual(snaps[self.a.id]["you"]["zone"], {"t": "pvp", "n": "Arena"})
+        self.assertEqual(snaps[self.a.id]["you"]["zone"], {"t": "pvp", "n": "Arena", "m": "teste"})
         self.assertEqual(snaps[self.b.id]["you"]["zone"]["t"], "safe")
 
 
@@ -1541,6 +1541,172 @@ class OrgContentTests(ContentTests):
     def test_rule_with_unknown_rank(self):
         self.append("rules.yaml", "teste:\n  when: death\n  if: { rank: imperador }\n")
         self.assert_error("teste", "imperador")
+
+
+MAP_A = """
+##########
+#S:......#
+#........#
+#........#
+##########
+"""
+MAP_B = """
+############
+#S.........#
+#..........#
+#..........#
+############
+"""
+
+
+def two_maps(db: Database | None = None, rules: tuple = ()) -> World:
+    from server.tilemap import check_portals
+    maps = {
+        "a": parse_map(MAP_A, "a", (), zones={"name": "Mapa A", "default_zone": {"type": "pvp"},
+                                              "portals": [{"area": [8, 3, 8, 3], "to": "b", "at": [2, 2]}]}),
+        "b": parse_map(MAP_B, "b", (), zones={"name": "Mapa B", "default_zone": {"type": "pvp"},
+                                              "portals": [{"area": [1, 3, 1, 3], "to": "a", "at": [3, 2]}]}),
+    }
+    check_portals(maps)
+    content = dataclasses.replace(CONTENT, rules=rules)
+    return World(maps, db or Database(":memory:"), content, rng=random.Random(1), start_map="a")
+
+
+class MapTests(unittest.TestCase):
+    def setUp(self):
+        self.world = two_maps()
+        self.p, _ = self.world.login("Teste", "1234", "humano")
+
+    def walk_until_map_changes(self, p, **keys):
+        start = p.map_id
+        for _ in range(20):
+            move(self.world, p, 1, **keys)
+            if p.map_id != start:
+                return
+
+    def walk_into_portal(self, p=None):
+        p = p or self.p
+        p.x, p.y = tile_center(7, 3)
+        self.walk_until_map_changes(p, right=True)
+
+    def test_real_maps_load_and_link(self):
+        from server.tilemap import load_maps
+        maps = load_maps(C.MAPS_DIR, CONTENT.enemy_by_mark)
+        self.assertIn(C.START_MAP, maps)
+        for tilemap in maps.values():
+            self.assertTrue(tilemap.title)
+            for portal in tilemap.portals:
+                self.assertIn(portal.to, maps)
+
+    def test_portal_teleports_and_tells_client(self):
+        self.world.drain_outbox()
+        self.walk_into_portal()
+        self.assertEqual(self.p.map_id, "b")
+        self.assertEqual((self.p.x, self.p.y), tile_center(2, 2))
+        msgs = [m for t, m in self.world.drain_outbox() if t == self.p.id and m["t"] == "map"]
+        self.assertEqual(msgs[0]["map"]["id"], "b")
+        self.assertEqual(msgs[0]["map"]["title"], "Mapa B")
+
+    def test_no_bounce_back(self):
+        self.walk_into_portal()
+        # chegou num tile vizinho ao portal de volta; andar um pouco não pode quicar
+        move(self.world, self.p, 3, down=True)
+        self.assertEqual(self.p.map_id, "b")
+
+    def test_round_trip(self):
+        self.walk_into_portal()
+        self.p.x, self.p.y = tile_center(1, 2)
+        self.walk_until_map_changes(self.p, down=True)  # entra no portal de B
+        self.assertEqual(self.p.map_id, "a")
+        self.assertEqual((self.p.x, self.p.y), tile_center(3, 2))
+
+    def test_other_map_is_isolated(self):
+        other, _ = self.world.login("Outro", "1234", "humano")
+        self.walk_into_portal(other)  # outro vai para B
+        other.x, other.y = self.p.x + 20, self.p.y  # mesma posição, mapa diferente
+        self.p.facing = "right"
+        use(self.world, self.p, "golpe", facing="right")
+        self.assertEqual(other.hp, other.max_hp)
+        self.world.step(DT)
+        snap = [m for t, m in self.world.drain_outbox() if t == self.p.id and m["t"] == "snap"][-1]
+        self.assertNotIn(other.id, {e["id"] for e in snap["ents"]})
+
+    def test_view_radius(self):
+        far, _ = self.world.login("Longe", "1234", "humano")
+        self.world.step(DT)
+        snap = [m for t, m in self.world.drain_outbox() if t == self.p.id and m["t"] == "snap"][-1]
+        self.assertIn(far.id, {e["id"] for e in snap["ents"]})
+        far.x = self.p.x + C.VIEW_RADIUS + 50  # fora da visão (mesmo mapa)
+        self.world.step(DT)
+        snap = [m for t, m in self.world.drain_outbox() if t == self.p.id and m["t"] == "snap"][-1]
+        self.assertNotIn(far.id, {e["id"] for e in snap["ents"]})
+        self.assertIn(self.p.id, {e["id"] for e in snap["ents"]})  # sempre se vê
+
+    def test_fx_only_for_same_map(self):
+        other, _ = self.world.login("Outro", "1234", "humano")
+        self.walk_into_portal(other)
+        self.world.drain_outbox()
+        use(self.world, self.p, "golpe", facing="right")
+        snaps = {t: m for t, m in self.world.drain_outbox() if m["t"] == "snap"}
+        self.assertTrue(any(f["k"] == "swing" for f in snaps[self.p.id]["fx"]))
+        self.assertFalse(any(f["k"] == "swing" for f in snaps[other.id]["fx"]))
+
+    def test_drops_belong_to_a_map(self):
+        self.world._drop(CONTENT.items["pocao_vida"], 1, "b", self.p.x, self.p.y, owner=None, scatter=False)
+        self.world.step(DT)
+        self.assertEqual(self.p.inventory.count("pocao_vida"), 0)  # está em B, não em A
+
+    def test_map_is_saved(self):
+        db = Database(":memory:")
+        world = two_maps(db)
+        p, _ = world.login("Viajante", "1234", "humano")
+        p.x, p.y = tile_center(7, 3)
+        move(world, p, 8, right=True)
+        world.logout(p)
+        p, _ = two_maps(db).login("Viajante", "1234")
+        self.assertEqual(p.map_id, "b")
+
+    def test_removed_map_sends_to_start(self):
+        db = Database(":memory:")
+        db.create_character("Perdido", "1234")
+        db.save_character("Perdido", {"v": 4, "race": "humano", "class": "aprendiz", "flags": [],
+                                      "inventory": {}, "map": "mapa_removido", "x": 999.0, "y": 999.0})
+        p, _ = two_maps(db).login("Perdido", "1234")
+        self.assertEqual(p.map_id, "a")
+        self.assertEqual((p.x, p.y), two_maps().map.spawn)
+
+    def test_v3_save_goes_to_start_map(self):
+        self.assertIsNone(migrate({"v": 3})["map"])
+
+    def test_respawn_on_current_map(self):
+        self.walk_into_portal()
+        self.world._kill(self.p, None, None)
+        run(self.world, C.RESPAWN_SECONDS + 0.1)
+        self.assertEqual(self.p.map_id, "b")
+        self.assertEqual((self.p.x, self.p.y), self.world.maps["b"].spawn)
+
+    def test_duel_ends_when_someone_changes_map(self):
+        other, _ = self.world.login("Outro", "1234", "humano")
+        other.x, other.y = self.p.x + 20, self.p.y
+        chat(self.world, self.p, "/duelo Outro")
+        chat(self.world, other, "/aceitar")
+        self.assertIsNotNone(self.world.duels.duel_of(self.p))
+        self.walk_into_portal(other)
+        self.assertIsNone(self.world.duels.duel_of(self.p))
+
+    def test_invalid_portals(self):
+        from server.tilemap import check_portals
+        a = parse_map(MAP_A, "a", (), zones={"portals": [{"area": [8, 3, 8, 3], "to": "x", "at": [2, 2]}]})
+        with self.assertRaises(ValueError):
+            check_portals({"a": a})  # destino não existe
+        a = parse_map(MAP_A, "a", (), zones={"portals": [{"area": [8, 3, 8, 3], "to": "a", "at": [0, 0]}]})
+        with self.assertRaises(ValueError):
+            check_portals({"a": a})  # chegada numa parede
+        a = parse_map(MAP_A, "a", (), zones={"portals": [{"area": [8, 3, 8, 3], "to": "a", "at": [8, 3]}]})
+        with self.assertRaises(ValueError):
+            check_portals({"a": a})  # chegada dentro de um portal
+        with self.assertRaises(ValueError):
+            parse_map(MAP_A, "a", (), zones={"portals": [{"area": [8, 3, 8, 3], "to": "b"}]})  # sem "at"
 
 if __name__ == "__main__":
     unittest.main()

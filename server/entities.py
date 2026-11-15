@@ -36,6 +36,7 @@ class Entity:
     state: str = "idle"  # idle | walk | meditate | rest | dead
     dead_timer: float = 0.0
     half: float = C.ENTITY_HALF
+    map_id: str = ""  # em qual mapa está (nome do arquivo em data/maps/)
     cooldowns: dict[str, float] = field(default_factory=dict)  # skill -> segundos restantes
     effects: dict[str, ActiveEffect] = field(default_factory=dict)  # efeito -> estado
 
@@ -99,6 +100,7 @@ class Player(Entity):
     flags: set[str] = field(default_factory=set)  # marcas de progressão (data/rules.yaml)
     inventory: Inventory = field(default_factory=Inventory)
     item_cooldowns: dict[str, float] = field(default_factory=dict)  # item -> segundos restantes
+    portal_lock: bool = False  # acabou de atravessar um portal: só usa outro depois de sair dele
     skills: list[str] = field(default_factory=list)  # vem da classe; ordem da barra de atalhos
     actions: list[tuple] = field(default_factory=list)  # ações pedidas, executadas no próximo tick
     # Movimento: o cliente manda um comando numerado por tick; o servidor executa um por tick
@@ -182,6 +184,7 @@ class Player(Entity):
             "class": self.class_id,
             "flags": sorted(self.flags),
             "inventory": self.inventory.to_dict(),
+            "map": self.map_id,
             "x": self.x,
             "y": self.y,
             "hp": self.hp,
@@ -256,6 +259,7 @@ class Projectile:
     damage: float
     ttl: float
     radius: float
+    map_id: str = ""
 
     def snapshot(self) -> dict:
         return {
@@ -282,6 +286,7 @@ class GroundItem:
     expires_at: float
     ignore_id: int | None = None  # quem largou o item não pega de volta até ignore_until
     ignore_until: float = 0.0
+    map_id: str = ""
 
     def snapshot(self) -> dict:
         return {"id": self.id, "i": self.item.id if self.item else "gold", "q": self.qty,

@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-SAVE_VERSION = 3
+SAVE_VERSION = 4
 
 
 class SaveVersionError(ValueError):
@@ -39,9 +39,16 @@ def _v2_to_v3(data: dict) -> dict:
     return data
 
 
+def _v3_to_v4(data: dict) -> dict:
+    """v4: em qual mapa o personagem está. Vazio = o mapa inicial (o único que existia)."""
+    data.setdefault("map", None)
+    return data
+
+
 MIGRATIONS: dict[int, Callable[[dict], dict]] = {
     1: _v1_to_v2,
     2: _v2_to_v3,
+    3: _v3_to_v4,
 }
 
 
