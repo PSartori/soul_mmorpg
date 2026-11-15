@@ -22,6 +22,15 @@
           <div id="inv-info">Passe o mouse sobre um item.</div>
           <p class="hint">Clique: usar / equipar · Shift + clique: largar no chão · clique no equipado: tirar</p>
         </section>
+        <section id="admin" hidden aria-label="Administração">
+          <header>
+            <h3 id="admin-title">Administração</h3>
+            <button type="button" id="admin-close" aria-label="Fechar">✕</button>
+          </header>
+          <p id="admin-result"></p>
+          <div id="admin-body"></div>
+        </section>
+        <div id="announce" hidden></div>
       </div>
       <div id="hotbar" aria-label="Skills"></div>
     </main>
@@ -41,6 +50,7 @@
         <div id="status-footer">
           <span id="gold">0 moedas</span>
           <button type="button" id="inv-open">Inventário (I)</button>
+          <button type="button" id="admin-open" hidden>Administração (G)</button>
         </div>
       </section>
 

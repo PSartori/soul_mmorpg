@@ -1708,5 +1708,198 @@ class MapTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             parse_map(MAP_A, "a", (), zones={"portals": [{"area": [8, 3, 8, 3], "to": "b"}]})  # sem "at"
 
+
+class AdminTests(unittest.TestCase):
+    def setUp(self):
+        self.db = Database(":memory:")
+        self.now = [1_000_000.0]
+        self.world = self.new_world()
+        self.adm = self.make("Chefe", "admin")
+        self.gm = self.make("Mestre", "gm")
+        self.mod = self.make("Moder", "moderador")
+        self.p = self.make("Jogador")
+
+    def new_world(self):
+        world = make_world(self.db)
+        world.clock = lambda: self.now[0]
+        world.enemies.clear()
+        return world
+
+    def make(self, name, role=None, world=None):
+        world = world or self.world
+        if self.db.load_character(name) is None:
+            self.db.create_character(name, "1234")
+        if role:
+            self.db.set_role(name, role)
+        p, err = world.login(name, "1234", "humano")
+        self.assertIsNone(err, err)
+        p.x, p.y = tile_center(2, 2)
+        return p
+
+    def admin(self, actor, op, **data):
+        self.world.drain_outbox()
+        self.world.handle_message(actor, {"t": "admin", "op": op, **data})
+        return self.world.drain_outbox()
+
+    def result(self, out):
+        return next((m for _, m in out if m["t"] == "admin_result"), None)
+
+    def kicked(self, out, player):
+        return any(t == player.id and m["t"] == "kick" for t, m in out)
+
+    def test_roles_load_and_show(self):
+        self.assertEqual(self.adm.staff_role.id, "admin")
+        self.assertIsNone(self.p.staff_role)
+        self.world.step(DT)
+        snap = [m for t, m in self.world.drain_outbox() if t == self.adm.id and m["t"] == "snap"][-1]
+        self.assertEqual(snap["you"]["staff"], "admin")
+        self.assertEqual({e["id"]: e.get("st") for e in snap["ents"]}[self.gm.id], "gm")
+
+    def test_non_staff_is_ignored(self):
+        out = self.admin(self.p, "kick", target="Moder")
+        self.assertEqual(out, [])
+
+    def test_kick(self):
+        out = self.admin(self.mod, "kick", target="Jogador", reason="spam")
+        self.assertTrue(self.kicked(out, self.p))
+        self.assertTrue(self.result(out)["ok"])
+        self.assertEqual(self.db.recent_log(1)[0][1:4], ("Moder", "expulsou", "Jogador"))
+
+    def test_hierarchy(self):
+        out = self.admin(self.mod, "kick", target="Mestre")
+        self.assertFalse(self.kicked(out, self.gm))
+        self.assertFalse(self.result(out)["ok"])
+        out = self.admin(self.gm, "kick", target="Mestre")  # a si mesmo
+        self.assertFalse(self.result(out)["ok"])
+
+    def test_permissions(self):
+        out = self.admin(self.mod, "ban", target="Jogador", seconds=60)
+        self.assertFalse(self.result(out)["ok"])
+        self.assertIsNone(self.db.active_sanction("Jogador", "ban", self.now[0]))
+
+    def test_mute_blocks_chat_and_expires(self):
+        self.admin(self.mod, "mute", target="Jogador", seconds=300)
+        chat(self.world, self.p, "oi")
+        out = self.world.drain_outbox()
+        self.assertFalse(any(m["t"] == "chat" for _, m in out))
+        self.assertTrue(any(t == self.p.id and "silenciado" in m.get("text", "") for t, m in out))
+        self.now[0] += 301
+        chat(self.world, self.p, "voltei")
+        self.assertTrue(any(m["t"] == "chat" for _, m in self.world.drain_outbox()))
+
+    def test_mute_blocks_org_chat_and_survives_relog(self):
+        chat(self.world, self.p, "/entrar vigilia")
+        self.admin(self.mod, "mute", target="Jogador", seconds=3600)
+        self.world.logout(self.p)
+        world2 = self.new_world()
+        p = self.make("Jogador", world=world2)
+        world2.drain_outbox()
+        chat(world2, p, "/o alguém?")
+        self.assertFalse(any(m["t"] == "chat" for _, m in world2.drain_outbox()))
+
+    def test_unmute(self):
+        self.admin(self.mod, "mute", target="Jogador", seconds=3600)
+        self.admin(self.mod, "unmute", target="Jogador")
+        chat(self.world, self.p, "liberado")
+        self.assertTrue(any(m["t"] == "chat" for _, m in self.world.drain_outbox()))
+
+    def test_ban_kicks_and_blocks_login_until_expired(self):
+        out = self.admin(self.gm, "ban", target="Jogador", seconds=3600, reason="trapaça")
+        self.assertTrue(self.kicked(out, self.p))
+        self.world.logout(self.p)
+        _, err = self.world.login("Jogador", "1234")
+        self.assertIn("banido", err)
+        self.assertIn("trapaça", err)
+        self.now[0] += 3601
+        _, err = self.world.login("Jogador", "1234")
+        self.assertIsNone(err)
+
+    def test_permanent_ban_offline_and_unban(self):
+        self.db.create_character("Ausente", "1234")
+        self.admin(self.gm, "ban", target="Ausente", seconds=None)
+        self.now[0] += 10 ** 9
+        self.assertIn("para sempre", self.world.login("Ausente", "1234")[1])
+        self.admin(self.gm, "unban", target="Ausente")
+        self.assertIsNone(self.world.login("Ausente", "1234")[1])
+
+    def test_ban_unknown_or_invalid(self):
+        out = self.admin(self.gm, "ban", target="NaoExiste", seconds=60)
+        self.assertFalse(self.result(out)["ok"])
+        out = self.admin(self.gm, "ban", target="Jogador", seconds=-5)
+        self.assertFalse(self.result(out)["ok"])
+
+    def test_announce(self):
+        out = self.admin(self.mod, "announce", text="Invasão em 5 minutos!")
+        self.assertIn((None, {"t": "announce", "text": "Invasão em 5 minutos!", "by": "Moder"}), out)
+
+    def test_goto_and_bring(self):
+        self.p.x, self.p.y = tile_center(7, 3)
+        self.admin(self.gm, "goto", target="Jogador")
+        self.assertEqual((self.gm.x, self.gm.y), (self.p.x, self.p.y))
+        self.gm.x, self.gm.y = tile_center(3, 1)
+        self.admin(self.gm, "bring", target="Jogador")
+        self.assertEqual((self.p.x, self.p.y), tile_center(3, 1))
+
+    def test_give(self):
+        self.admin(self.gm, "give_item", target="Jogador", item="pocao_vida", qty=3)
+        self.admin(self.gm, "give_gold", target="Jogador", amount=50)
+        self.assertEqual(self.p.inventory.count("pocao_vida"), 3)
+        self.assertEqual(self.p.inventory.gold, 50)
+        out = self.admin(self.gm, "give_item", target="Jogador", item="pocao_vida", qty=5000)
+        self.assertFalse(self.result(out)["ok"])
+
+    def test_set_role(self):
+        self.admin(self.adm, "set_role", target="Jogador", role="gm")
+        self.assertEqual(self.p.staff_role.id, "gm")
+        self.assertEqual(self.db.get_role("Jogador"), "gm")
+        out = self.admin(self.adm, "set_role", target="Jogador", role="admin")  # não acima/igual ao próprio
+        self.assertFalse(self.result(out)["ok"])
+        out = self.admin(self.gm, "set_role", target="Moder", role=None)  # gm não tem set_role
+        self.assertFalse(self.result(out)["ok"])
+        self.admin(self.adm, "set_role", target="Jogador", role=None)
+        self.assertIsNone(self.p.staff_role)
+
+    def test_refresh_data_depends_on_permissions(self):
+        out = self.admin(self.mod, "refresh")
+        data = next(m for _, m in out if m["t"] == "admin_data")
+        self.assertEqual({p["name"] for p in data["players"]}, {"Chefe", "Mestre", "Moder", "Jogador"})
+        self.assertNotIn("bans", data)  # moderador não bane
+        self.assertIn("log", data)
+        out = self.admin(self.adm, "refresh")
+        data = next(m for _, m in out if m["t"] == "admin_data")
+        self.assertIn("bans", data)
+        self.assertEqual(data["roles"], ["moderador", "gm"])  # só abaixo do próprio
+
+    def test_invalid_payloads_do_not_crash(self):
+        for data in ({"op": "kick"}, {"op": "mute", "target": "Jogador", "seconds": "x"},
+                     {"op": "give_gold", "target": "Jogador", "amount": True}, {"op": "nada"}):
+            self.world.handle_message(self.adm, {"t": "admin", **data})
+        self.world.step(DT)
+
+
+class AdminCliTests(unittest.TestCase):
+    def test_cli(self):
+        from tools.admin import main as admin_main
+        tmp = Path(tempfile.mkdtemp())
+        try:
+            db_path = tmp / "game.db"
+            db = Database(db_path)
+            db.create_character("Dono", "1234")
+            db.add_sanction("Dono", "ban", None, "teste", "alguém")
+            db.close()
+            self.assertEqual(admin_main(["role", "dono", "admin"], db_path=db_path), 0)
+            self.assertEqual(admin_main(["role", "Dono", "imperador"], db_path=db_path), 1)
+            self.assertEqual(admin_main(["role", "Ninguem", "gm"], db_path=db_path), 1)
+            self.assertEqual(admin_main(["unban", "Dono"], db_path=db_path), 0)
+            self.assertEqual(admin_main(["unban", "Dono"], db_path=db_path), 1)
+            self.assertEqual(admin_main(["staff"], db_path=db_path), 0)
+            check = Database(db_path)
+            self.assertEqual(check.get_role("Dono"), "admin")
+            self.assertIsNone(check.active_sanction("Dono", "ban", 0))
+            self.assertTrue(check.recent_log(5))
+            check.close()
+        finally:
+            shutil.rmtree(tmp)
+
 if __name__ == "__main__":
     unittest.main()

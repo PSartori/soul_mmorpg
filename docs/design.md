@@ -167,6 +167,13 @@ cada jogador só recebe o que está no mesmo mapa e dentro do raio de visão. No
 no nível 1, luta razoável no 10). A decisão "mundo aberto ou portais" segue aberta:
 mundo aberto seria um mapa grande com a mesma visão por raio; portais já funcionam.
 
+**Base 10 (concluída):** equipe com papéis em `data/roles.yaml` (permissões e
+hierarquia), janela de administração no jogo (sem comandos de chat), bans e
+silêncios no banco com prazo, anúncios, teleporte, dar itens/moedas e registro de
+todas as ações; `./admin.sh` para o primeiro administrador e emergências.
+Ficou para depois: ban por IP/conta (hoje é por personagem, e ainda não existe
+"conta" separada de personagem) e eventos iniciados pela equipe (ex.: invasão).
+
 Ainda a decidir sobre a hierarquia (seção 6): limite de recusas de desafio de
 cargo (hoje pode recusar sempre), cargo vago por inatividade do ocupante, e se
 alguns cargos devem ser por torneio ou pontos de contribuição.

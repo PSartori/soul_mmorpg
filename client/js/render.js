@@ -282,11 +282,19 @@ export class Renderer {
     ctx.fillRect(x - w / 2, y - 21, w * Math.max(0, Math.min(1, e.hp / e.mhp)), 4);
 
     ctx.font = "11px system-ui, sans-serif";
-    ctx.textAlign = "center";
+    const role = e.st ? this.defs.roles?.[e.st] : null;
+    const tag = role ? `[${role.tag}] ` : "";
+    const left = x - ctx.measureText(tag + e.n).width / 2;
+    ctx.textAlign = "left";
     ctx.fillStyle = "rgba(0,0,0,0.8)";
-    ctx.fillText(e.n, x + 1, y - 25);
+    ctx.fillText(tag + e.n, left + 1, y - 25);
+    if (role) {
+      ctx.fillStyle = role.color;  // selo da equipe, antes do nome
+      ctx.fillText(tag, left, y - 26);
+    }
     ctx.fillStyle = isMe ? "#ffe08a" : e.k === "enemy" ? "#f0c8f5" : "#ffffff";
-    ctx.fillText(e.n, x, y - 26);
+    ctx.fillText(e.n, left + ctx.measureText(tag).width, y - 26);
+    ctx.textAlign = "center";
 
     // cargo na organização, na cor dela
     const title = rankTitle(this.defs, e.o);

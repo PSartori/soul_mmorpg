@@ -196,6 +196,9 @@ class OrgSystem:
         if m is None:
             self.world._private(p, "Você não faz parte de nenhuma organização.")
             return
+        if muted := self.world.admin.mute_message(p):
+            self.world._private(p, muted)
+            return
         if not text:
             return
         org = self.content.orgs[m.org]

@@ -106,6 +106,8 @@ async def send_outbox(world: World, sessions: dict) -> None:
                 continue
             with contextlib.suppress(ConnectionResetError, RuntimeError):
                 await ws.send_str(text)
+                if payload.get("t") == "kick":  # expulso/banido: avisa e desconecta (o handler desloga)
+                    await ws.close()
 
 
 async def game_loop(app: web.Application) -> None:

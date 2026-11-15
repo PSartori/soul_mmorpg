@@ -14,11 +14,14 @@ import logging
 import math
 import random
 import re
+import time
+from collections.abc import Callable
 from itertools import chain
 from typing import Any, Iterator
 
 from . import config as C
 from .content import EQUIP_SLOTS, ClassDef, Content, EffectApplication, ItemDef, SkillDef
+from .admin import AdminSystem
 from .db import Database
 from .duels import DuelSystem
 from .orgs import OrgSystem
@@ -81,6 +84,7 @@ class World:
         content: Content,
         rng: random.Random | None = None,
         start_map: str | None = None,
+        clock: Callable[[], float] | None = None,
     ):
         if isinstance(maps, TileMap):
             maps = {maps.name: maps}
@@ -89,6 +93,7 @@ class World:
         self.start_map_id = next(m for m in (start_map, C.START_MAP, next(iter(maps))) if m in maps)
         self.db = db
         self.content = content
+        self.clock = clock or time.time  # horário real (bans e silêncios); nos testes dá para trocar
         self.rng = rng or random.Random()
         self.time = 0.0
         self._next_id = 1
@@ -101,6 +106,7 @@ class World:
         self._save_timer = C.AUTOSAVE_SECONDS
         self.duels = DuelSystem(self)
         self.orgs = OrgSystem(self)
+        self.admin = AdminSystem(self)
 
         by_mark = content.enemy_by_mark
         for map_id, tilemap in maps.items():
@@ -169,6 +175,8 @@ class World:
             is_new = True
         elif not self.db.verify_password(record, password):
             return None, "Senha incorreta."
+        elif ban := self.admin.ban_message(record.name):
+            return None, ban
         else:
             try:
                 data = migrate(record.data)
@@ -195,6 +203,7 @@ class World:
         if tilemap.box_blocked(player.x, player.y, player.half, _player_blocks):
             player.x, player.y = tilemap.spawn
 
+        self.admin.load_player(player)
         self.players[player.id] = player
         self._system(f"{player.name} entrou no jogo.")
         if is_new:
@@ -277,6 +286,8 @@ class World:
             text = str(data.get("text", ""))[: C.CHAT_MAX_LEN].strip()
             if text:
                 self._chat(player, text)
+        elif kind == "admin":
+            self.admin.handle(player, data)
 
     def save_all(self) -> None:
         for player in self.players.values():
@@ -302,6 +313,9 @@ class World:
         self._outbox.append((player.id, {"t": "sys", "text": text}))
 
     def _chat(self, player: Player, text: str) -> None:
+        if not text.startswith("/") and (muted := self.admin.mute_message(player)):
+            self._private(player, muted)
+            return
         if text.startswith("/"):
             command, *args = text.split()
             command = command.lower()
@@ -357,6 +371,8 @@ class World:
                 snap["du"] = opponent  # em duelo com
             if isinstance(e, Player) and (org := self.orgs.snapshot(e)):
                 snap["o"] = org  # [organização, cargo, vaga]
+            if isinstance(e, Player) and e.staff_role:
+                snap["st"] = e.staff_role.id  # selo da equipe
             ents.append((e.map_id, e.x, e.y, snap))
         all_projs = [(p.map_id, p.x, p.y, p.snapshot()) for p in self.projectiles.values()]
         all_drops = [(d.map_id, d.x, d.y, d.snapshot()) for d in self.drops.values()]
@@ -374,6 +390,7 @@ class World:
             zone = tilemap.zone_at(px, py)
             you["zone"] = {"t": zone.type, "n": zone.name, "m": tilemap.title or tilemap.name}
             you["duel"] = self.duels.client_info(player)
+            you["staff"] = player.staff_role.id if player.staff_role else None
             if player.inventory.dirty:  # inventário só vai quando muda
                 you["inv"] = player.inventory.client_info()
                 player.inventory.dirty = False

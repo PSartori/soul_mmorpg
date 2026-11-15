@@ -5,6 +5,7 @@ import { SLOT_LABELS, setupInput } from "./input.js";
 import { Physics } from "./physics.js";
 import { Renderer, rankTitle } from "./render.js";
 import { InventoryUI, RARITY_COLORS } from "./inventory.js";
+import { AdminUI } from "./admin.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -19,7 +20,7 @@ const state = {
   trails: [], // dashes
   floaters: [],
   you: null,
-  defs: { skills: {}, effects: {}, enemies: {}, races: {}, classes: {}, items: {}, orgs: {} },
+  defs: { skills: {}, effects: {}, enemies: {}, races: {}, classes: {}, items: {}, orgs: {}, roles: {} },
   statLabels: {},
 };
 
@@ -49,8 +50,9 @@ function handleMessage(msg) {
       state.statLabels = msg.stat_labels;
       state.defs = {
         skills: msg.skills, effects: msg.effects, enemies: msg.enemies, races: msg.races, classes: msg.classes,
-        items: msg.items, orgs: msg.orgs,
+        items: msg.items, orgs: msg.orgs, roles: msg.roles,
       };
+      kickText = null;
       state.ents.clear();
       renderer.setMap(msg.map);
       renderer.defs = state.defs;
@@ -70,6 +72,18 @@ function handleMessage(msg) {
       break;
     case "map":
       changeMap(msg);
+      break;
+    case "admin_data":
+      adminUI.update(msg);
+      break;
+    case "admin_result":
+      adminUI.showResult(msg);
+      break;
+    case "announce":
+      showAnnouncement(msg.text, msg.by);
+      break;
+    case "kick":
+      kickText = msg.text;
       break;
     case "error":
       $("login-error").textContent = msg.msg;
@@ -101,11 +115,24 @@ function changeMap(msg) {
   state.floaters = [];
 }
 
+let kickText = null; // motivo de expulsão/ban, mostrado quando a conexão cair
+let announceTimer = null;
+
+function showAnnouncement(text, by) {
+  const box = $("announce");
+  box.textContent = text;
+  box.hidden = false;
+  clearTimeout(announceTimer);
+  announceTimer = setTimeout(() => (box.hidden = true), 7000);
+  addChatLine(`📢 ${text} (${by})`);
+}
+
 function handleClose() {
   inGame = false;
   clearInterval(tickTimer);
+  adminUI.toggle(false);
   $("overlay").classList.remove("hidden");
-  $("login-error").textContent = "Conexão perdida. Entre de novo.";
+  $("login-error").textContent = kickText ?? "Conexão perdida. Entre de novo.";
   conn = null;
 }
 
@@ -259,6 +286,8 @@ function updateHud() {
   setBar("bar-energy", you.en, you.men, "Energia");
   setBar("bar-fatigue", you.fat, you.mfat, "Cansaço");
   $("gold").textContent = `${you.gold} moedas`;
+  $("admin-open").hidden = !you.staff;
+  if (!you.staff && adminUI.isOpen) adminUI.toggle(false);
 
   $("effects").replaceChildren(
     ...you.ef.map(({ id, t }) => {
@@ -406,6 +435,11 @@ chatInput.addEventListener("keydown", (ev) => {
 });
 
 const inventoryUI = new InventoryUI({ getDefs: () => state.defs, send: (msg) => conn?.send(msg) });
+const adminUI = new AdminUI({ getDefs: () => state.defs, send: (msg) => conn?.send(msg) });
+$("admin-open").addEventListener("click", (ev) => {
+  adminUI.toggle();
+  ev.currentTarget.blur();
+});
 $("inv-open").addEventListener("click", (ev) => {
   inventoryUI.toggle();
   ev.currentTarget.blur();
@@ -417,7 +451,11 @@ const input = setupInput({
   onAction: (action) => conn?.send({ t: action }),
   onLocal: (name) => {
     if (name === "inventory") inventoryUI.toggle();
-    else if (name === "escape") inventoryUI.toggle(false);
+    else if (name === "admin" && state.you?.staff) adminUI.toggle();
+    else if (name === "escape") {
+      inventoryUI.toggle(false);
+      adminUI.toggle(false);
+    }
   },
   onEnter: () => chatInput.focus(),
 });

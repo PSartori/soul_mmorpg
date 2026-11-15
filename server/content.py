@@ -30,6 +30,7 @@ ITEM_TYPES = ("equipment", "consumable", "material")
 EQUIP_SLOTS = ("weapon", "armor", "accessory")
 RARITIES = ("common", "uncommon", "rare", "epic")
 PROMOTIONS = ("default", "appointment", "challenge")
+PERMISSIONS = ("kick", "mute", "ban", "announce", "teleport", "give", "set_role", "log")
 ID_RE = re.compile(r"[a-z0-9_]+")
 
 _REQUIRED = object()
@@ -190,6 +191,23 @@ class OrgDef:
 
 
 @dataclass(frozen=True)
+class RoleDef:
+    id: str
+    name: str
+    tag: str
+    color: str
+    level: int
+    permissions: frozenset[str]
+
+    def can(self, permission: str) -> bool:
+        return permission in self.permissions
+
+    def client_info(self) -> dict:
+        return {"name": self.name, "tag": self.tag, "color": self.color, "level": self.level,
+                "permissions": sorted(self.permissions)}
+
+
+@dataclass(frozen=True)
 class RaceDef:
     id: str
     name: str
@@ -220,6 +238,7 @@ class Content:
     default_race: str
     items: dict[str, ItemDef] = field(default_factory=dict)
     orgs: dict[str, OrgDef] = field(default_factory=dict)
+    roles: dict[str, RoleDef] = field(default_factory=dict)
 
     @property
     def enemy_by_mark(self) -> dict[str, EnemyDef]:
@@ -245,6 +264,7 @@ class Content:
             "classes": {c.id: {"name": c.name, "race": c.race} for c in self.classes.values()},
             "items": {i.id: i.client_info() for i in self.items.values()},
             "orgs": {o.id: o.client_info() for o in self.orgs.values()},
+            "roles": {r.id: r.client_info() for r in self.roles.values()},
         }
 
     @classmethod
@@ -257,6 +277,7 @@ class Content:
         classes = {i: _parse_class(i, raw) for i, raw in _load_yaml(data_dir / "classes.yaml").items()}
         items = {i: _parse_item(i, raw) for i, raw in _load_yaml(data_dir / "items.yaml").items()}
         orgs = {i: _parse_org(i, raw) for i, raw in _load_yaml(data_dir / "organizations.yaml").items()}
+        roles = {i: _parse_role(i, raw) for i, raw in _load_yaml(data_dir / "roles.yaml").items()}
 
         player = _Fields("player.yaml", _load_yaml(data_dir / "player.yaml"))
         default_race = player.text("default_race")
@@ -268,7 +289,7 @@ class Content:
         rules = tuple(_parse_rule(i, raw, refs) for i, raw in _load_yaml(data_dir / "rules.yaml").items())
 
         content = cls(effects=effects, skills=skills, enemies=enemies, races=races, classes=classes,
-                      rules=rules, default_race=default_race, items=items, orgs=orgs)
+                      rules=rules, default_race=default_race, items=items, orgs=orgs, roles=roles)
         content.check_references()
         return content
 
@@ -888,3 +909,21 @@ def _parse_org(oid: str, raw: Any) -> OrgDef:
     if sum(1 for r in ranks if r.promotion == "default") != 1:
         raise ContentError(f"{f.where}: precisa de exatamente um cargo com promotion: default")
     return org
+
+
+def _parse_role(rid: str, raw: Any) -> RoleDef:
+    f = _Fields(f"roles.yaml > {rid}", raw)
+    permissions = f.str_list("permissions")
+    for perm in permissions:
+        if perm not in PERMISSIONS:
+            raise ContentError(f"{f.where}: permissão desconhecida '{perm}' (válidas: {', '.join(PERMISSIONS)})")
+    role = RoleDef(
+        id=rid,
+        name=f.text("name"),
+        tag=f.text("tag"),
+        color=f.text("color", "#d8dbe2"),
+        level=f.int("level", minimum=1),
+        permissions=frozenset(permissions),
+    )
+    f.done()
+    return role

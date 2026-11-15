@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import ClassVar
 
 from . import config as C
-from .content import ClassDef, EffectDef, EnemyDef, ItemDef, RaceDef
+from .content import ClassDef, EffectDef, EnemyDef, ItemDef, RaceDef, RoleDef
 from .inventory import Inventory
 from .saves import SAVE_VERSION
 from .stats import STAT_NAMES, Stat
@@ -101,6 +101,9 @@ class Player(Entity):
     inventory: Inventory = field(default_factory=Inventory)
     item_cooldowns: dict[str, float] = field(default_factory=dict)  # item -> segundos restantes
     portal_lock: bool = False  # acabou de atravessar um portal: só usa outro depois de sair dele
+    staff_role: RoleDef | None = None  # papel na equipe (data/roles.yaml), vindo do banco
+    muted: bool = False  # silenciado no chat
+    muted_until: float | None = None  # até quando (horário real; None = para sempre)
     skills: list[str] = field(default_factory=list)  # vem da classe; ordem da barra de atalhos
     actions: list[tuple] = field(default_factory=list)  # ações pedidas, executadas no próximo tick
     # Movimento: o cliente manda um comando numerado por tick; o servidor executa um por tick

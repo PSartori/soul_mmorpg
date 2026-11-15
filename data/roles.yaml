@@ -1,0 +1,39 @@
+# Papéis da equipe (moderação e administração).
+#
+#   name         nome exibido
+#   tag          selo curto mostrado acima do nome do personagem no jogo
+#   color        cor do selo
+#   level        hierarquia: ninguém age sobre alguém da equipe com nível igual ou maior
+#   permissions  o que o papel pode fazer:
+#                  kick      expulsar do jogo (desconecta)
+#                  mute      silenciar no chat por um tempo
+#                  ban       banir por um tempo ou para sempre, e desbanir
+#                  announce  anúncio em destaque para todos
+#                  teleport  ir até um jogador ou trazê-lo
+#                  give      dar itens e moedas
+#                  set_role  dar e tirar papéis da equipe (só abaixo do próprio nível)
+#                  log       ver o registro de ações da equipe
+#
+# Quem tem papel aparece com a janela "Administração" no jogo.
+# Para dar o primeiro papel (o seu): ./admin.sh role SeuPersonagem admin
+
+moderador:
+  name: Moderador
+  tag: MOD
+  color: "#7bd65a"
+  level: 1
+  permissions: [kick, mute, announce, log]
+
+gm:
+  name: Mestre do jogo
+  tag: GM
+  color: "#ffd65a"
+  level: 2
+  permissions: [kick, mute, ban, announce, teleport, give, log]
+
+admin:
+  name: Administrador
+  tag: ADM
+  color: "#ff7a7a"
+  level: 3
+  permissions: [kick, mute, ban, announce, teleport, give, set_role, log]

@@ -42,6 +42,32 @@ class Database:
             )
             """
         )
+        # Equipe (papéis), sanções (ban/silêncio) e registro de ações da equipe
+        self.conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS staff (
+                character TEXT PRIMARY KEY COLLATE NOCASE,
+                role      TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS sanctions (
+                id        INTEGER PRIMARY KEY AUTOINCREMENT,
+                character TEXT NOT NULL COLLATE NOCASE,
+                kind      TEXT NOT NULL,          -- ban | mute
+                until     REAL,                   -- NULL = para sempre
+                reason    TEXT NOT NULL DEFAULT '',
+                by        TEXT NOT NULL,
+                at        REAL NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS admin_log (
+                id      INTEGER PRIMARY KEY AUTOINCREMENT,
+                at      REAL NOT NULL,
+                actor   TEXT NOT NULL,
+                action  TEXT NOT NULL,
+                target  TEXT NOT NULL DEFAULT '',
+                details TEXT NOT NULL DEFAULT ''
+            );
+            """
+        )
         # Vínculo com organizações fica fora do save: cargos são globais e valem com o ocupante offline
         self.conn.execute(
             """
@@ -107,6 +133,66 @@ class Database:
     def delete_membership(self, name: str) -> None:
         self.conn.execute("DELETE FROM memberships WHERE character = ?", (name,))
         self.conn.commit()
+
+    # ------------------------------------------------------------ equipe e moderação
+
+    def get_role(self, name: str) -> str | None:
+        row = self.conn.execute("SELECT role FROM staff WHERE character = ?", (name,)).fetchone()
+        return row[0] if row else None
+
+    def set_role(self, name: str, role: str | None) -> None:
+        if role is None:
+            self.conn.execute("DELETE FROM staff WHERE character = ?", (name,))
+        else:
+            self.conn.execute(
+                "INSERT INTO staff (character, role) VALUES (?, ?) "
+                "ON CONFLICT(character) DO UPDATE SET role = excluded.role",
+                (name, role),
+            )
+        self.conn.commit()
+
+    def list_staff(self) -> list[tuple[str, str]]:
+        return self.conn.execute("SELECT character, role FROM staff ORDER BY character").fetchall()
+
+    def add_sanction(self, name: str, kind: str, until: float | None, reason: str, by: str) -> None:
+        self.conn.execute(
+            "INSERT INTO sanctions (character, kind, until, reason, by, at) VALUES (?, ?, ?, ?, ?, ?)",
+            (name, kind, until, reason, by, time.time()),
+        )
+        self.conn.commit()
+
+    def active_sanction(self, name: str, kind: str, now: float) -> tuple[float | None, str, str] | None:
+        """A sanção mais longa ainda valendo: (até quando ou None = para sempre, motivo, por quem)."""
+        row = self.conn.execute(
+            "SELECT until, reason, by FROM sanctions WHERE character = ? AND kind = ? "
+            "AND (until IS NULL OR until > ?) ORDER BY until IS NULL DESC, until DESC LIMIT 1",
+            (name, kind, now),
+        ).fetchone()
+        return (row[0], row[1], row[2]) if row else None
+
+    def lift_sanctions(self, name: str, kind: str) -> int:
+        cursor = self.conn.execute("DELETE FROM sanctions WHERE character = ? AND kind = ?", (name, kind))
+        self.conn.commit()
+        return cursor.rowcount
+
+    def list_active(self, kind: str, now: float) -> list[tuple[str, float | None, str, str]]:
+        return self.conn.execute(
+            "SELECT character, MAX(COALESCE(until, 1e18)), reason, by FROM sanctions "
+            "WHERE kind = ? AND (until IS NULL OR until > ?) GROUP BY character ORDER BY character",
+            (kind, now),
+        ).fetchall()
+
+    def log_admin(self, actor: str, action: str, target: str = "", details: str = "") -> None:
+        self.conn.execute(
+            "INSERT INTO admin_log (at, actor, action, target, details) VALUES (?, ?, ?, ?, ?)",
+            (time.time(), actor, action, target, details),
+        )
+        self.conn.commit()
+
+    def recent_log(self, limit: int = 50) -> list[tuple[float, str, str, str, str]]:
+        return self.conn.execute(
+            "SELECT at, actor, action, target, details FROM admin_log ORDER BY id DESC LIMIT ?", (limit,)
+        ).fetchall()
 
     def backup(self, dest_dir: str | Path, keep: int) -> Path:
         """Copia o banco (com o servidor rodando) e apaga as cópias mais antigas além de `keep`."""

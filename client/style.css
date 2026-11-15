@@ -279,3 +279,69 @@ button:hover { background: #3a6c9c; }
   #side { width: auto; }
   #chat { min-height: 220px; }
 }
+
+/* ---------------------------------------------------------------- administração */
+#admin {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  width: min(420px, calc(100% - 24px));
+  max-height: calc(100% - 24px);
+  overflow-y: auto;
+  padding: 10px 12px;
+  background: rgba(22, 24, 30, .97);
+  border: 1px solid #5a3b3b;
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, .5);
+  font-size: 13px;
+}
+#admin[hidden] { display: none; }
+#admin header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+#admin h3 { margin: 0; font-size: 15px; flex: 1; color: #ffb0b0; }
+#admin-close { padding: 2px 8px; background: var(--panel-2); border-color: #353946; }
+#admin-result { margin: 0 0 6px; min-height: 1em; font-size: 12px; }
+#admin-result.ok { color: #7bd65a; }
+#admin-result.error { color: var(--error); }
+.adm-box { margin-bottom: 10px; padding: 8px; background: var(--panel-2); border-radius: 6px; }
+.adm-box h4 { margin: 0 0 6px; font-size: 13px; }
+.adm-box input, .adm-box select { padding: 4px 6px; font-size: 12px; }
+.adm-box > input { width: 100%; margin-bottom: 6px; }
+.adm-box input.small { width: 64px; }
+.adm-box button { padding: 4px 8px; font-size: 12px; }
+.adm-box button.danger { background: #8a2f2f; border-color: #a33c3c; }
+.adm-players { display: flex; flex-direction: column; gap: 3px; max-height: 180px; overflow-y: auto; }
+.adm-player {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  background: var(--panel);
+  border-color: #353946;
+}
+.adm-player.selected { border-color: var(--accent); background: #24324a; }
+.adm-player .name { font-weight: 600; }
+.adm-player .meta { font-size: 11px; color: var(--muted); }
+.adm-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-bottom: 4px; }
+.adm-row .label { min-width: 78px; color: var(--muted); font-size: 12px; }
+.adm-row .label.wide { flex: 1; min-width: 0; }
+.adm-row > input { flex: 1; }
+.adm-log { max-height: 150px; overflow-y: auto; font-size: 11px; color: var(--muted); }
+
+#announce {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 80%;
+  padding: 10px 18px;
+  font-size: 15px;
+  font-weight: 700;
+  text-align: center;
+  color: #fff6d0;
+  background: rgba(120, 80, 10, .92);
+  border: 1px solid #ffd65a;
+  border-radius: 8px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, .5);
+  pointer-events: none;
+}
+#announce[hidden] { display: none; }

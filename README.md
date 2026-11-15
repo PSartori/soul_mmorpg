@@ -28,6 +28,26 @@ backups automáticos em `var/backups/` (um ao ligar o servidor e outro a cada 6 
 guarda os 28 mais recentes). Para restaurar, pare o servidor e copie um backup
 por cima de `var/game.db`.
 
+## Administração
+
+A equipe (moderadores, mestres do jogo e administradores) age pela janela
+**Administração** (tecla G ou botão no painel, só para quem tem papel): lista de
+jogadores online e, para o escolhido, expulsar, silenciar, banir (com tempo e
+motivo), ir até/trazer, dar item ou moedas e trocar o papel; mais anúncio para
+todos, lista de banidos (com desbanir) e o registro de tudo que a equipe fez.
+Papéis e permissões ficam em `data/roles.yaml`; ninguém age sobre alguém da equipe
+de nível igual ou maior.
+
+O primeiro administrador (e emergências, como desbanir com o servidor parado) é
+pelo terminal:
+
+```bash
+./admin.sh role SeuPersonagem admin
+```
+
+Outros: `./admin.sh staff`, `./admin.sh bans`, `./admin.sh unban Nome`,
+`./admin.sh log`. Mudança de papel pelo terminal vale no próximo login.
+
 ## Balanceamento
 
 ```bash
@@ -54,6 +74,7 @@ lutadores ficam parados, então alcance e esquiva não contam.
 | M | meditar (treina Espírito, gera cansaço) |
 | R | descansar (recupera cansaço e vida) |
 | I | inventário (clique: usar/equipar · Shift + clique: largar · clique no equipado: tirar) |
+| G | janela de administração (só para a equipe) |
 | Enter | chat (`/who` lista quem está online) |
 | `/duelo Nome` | desafia alguém por perto para um duelo |
 | `/aceitar`, `/recusar` | responde a um desafio |
@@ -77,6 +98,7 @@ Cada arquivo tem no topo a explicação de todos os campos.
 | `data/enemies.yaml` | tipos de inimigo: vida, velocidade, alcance de perseguição, skills que a IA usa, letra no mapa, moedas e tabela de saque |
 | `data/items.yaml` | itens: equipamento (slot, bônus, restrição de raça/classe), consumível (cura, energia, efeitos), material |
 | `data/organizations.yaml` | organizações: raças aceitas, nível mínimo, cargos em ordem (vagas, numerados, líder, como se conquista) |
+| `data/roles.yaml` | papéis da equipe: selo, nível na hierarquia e permissões |
 | `data/races.yaml` | raças: se aparecem na criação, classe inicial, bônus de vida/energia/velocidade |
 | `data/classes.yaml` | classes: raça, skills da barra, multiplicador de treino por atributo |
 | `data/rules.yaml` | regras "quando X, se Y, faça Z": morte, abates, subida de nível (veja abaixo) |
@@ -132,6 +154,7 @@ server/              Python (aiohttp)
   duels.py           desafios e duelos
   inventory.py       inventário: espaços que empilham, equipamento e moedas
   orgs.py            organizações, cargos e disputas (vínculos na tabela memberships)
+  admin.py           equipe, sanções (ban/silêncio) e registro de ações
   saves.py           versão do formato de save e migrações (sem wipes!)
   entities.py        Player, Enemy, Projectile, efeitos ativos e atributos derivados
   stats.py           atributos treináveis (nível + XP)
@@ -144,12 +167,14 @@ client/              JavaScript puro, sem build
   js/physics.js      cópia da colisão/movimento do servidor (previsão)
   js/render.js       desenho no canvas (arte provisória com formas)
   js/inventory.js    janela de inventário
+  js/admin.js        janela de administração
   js/input.js        teclado
   js/net.js          WebSocket
 data/                conteúdo do jogo (veja acima)
 tools/               ferramentas de desenvolvimento
   simulator.py       lutas simuladas no motor do jogo
   balance.py         relatório de balanceamento (./balance.sh)
+  admin.py           administração pelo terminal (./admin.sh)
 tests/               testes do servidor e das ferramentas (unittest)
 ```
 
@@ -176,11 +201,12 @@ Para depurar no console do navegador: `__game.state`, `__game.pred`, `__game.pen
 HTTP: `GET /api/races` lista as raças da tela de criação.
 
 Cliente → servidor: `login {name, password, race}`, `move {seq, up, down, left, right}`,
-`skill {id, f}`, `item {op: use|drop, slot: n}`, `item {op: unequip, slot: weapon|armor|accessory}`,
+`skill {id, f}`, `admin {op, ...}` (equipe), `item {op: use|drop, slot: n}`, `item {op: unequip, slot: weapon|armor|accessory}`,
 `meditate`, `rest`, `chat {text}`.
 
 Servidor → cliente: `welcome {id, map, skills, effects, enemies, stat_labels, ...}`,
-`map {map, x, y}` (atravessou um portal), `error {msg}`, `snap {ents, projs, drops, fx, you}`
+`map {map, x, y}` (atravessou um portal), `announce {text, by}`, `kick {text}` (antes de
+desconectar), `admin_data`/`admin_result` (equipe), `error {msg}`, `snap {ents, projs, drops, fx, you}`
 (20×/s, só o que está perto; `you.inv` só vem quando o inventário muda), `chat {from, text}`, `sys {text}`.
 
 ### Regras atuais
