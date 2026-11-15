@@ -1,0 +1,6 @@
+# Configuração de personagens novos.
+#
+#   starting_skills  skills disponíveis, na ordem da barra (teclas 1–8; Espaço = 1, F = 2).
+#                    Por enquanto todos recebem todas; raças e classes vêm na fase 2.
+
+starting_skills: [golpe, rajada, passo, flecha_gelida, dardo, leque, onda, foco]

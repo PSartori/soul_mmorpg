@@ -1,14 +1,26 @@
 """Entidades do mundo: jogadores, inimigos e projéteis."""
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass, field
 from typing import ClassVar
 
 from . import config as C
+from .content import EffectDef, EnemyDef
 from .stats import STAT_NAMES, Stat
 
 DIRECTIONS = {"up": (0, -1), "down": (0, 1), "left": (-1, 0), "right": (1, 0)}
 MOVE_KEYS = ("up", "down", "left", "right")
+
+MoveKeys = tuple[bool, bool, bool, bool]  # up, down, left, right
+
+
+@dataclass(eq=False)
+class ActiveEffect:
+    defn: EffectDef
+    remaining: float
+    tick_timer: float
+    source_id: int | None
 
 
 @dataclass(eq=False)
@@ -20,9 +32,10 @@ class Entity:
     hp: float = 1.0
     facing: str = "down"
     state: str = "idle"  # idle | walk | meditate | rest | dead
-    attack_cd: float = 0.0
     dead_timer: float = 0.0
     half: float = C.ENTITY_HALF
+    cooldowns: dict[str, float] = field(default_factory=dict)  # skill -> segundos restantes
+    effects: dict[str, ActiveEffect] = field(default_factory=dict)  # efeito -> estado
 
     kind: ClassVar[str] = "?"
 
@@ -34,18 +47,43 @@ class Entity:
     def max_hp(self) -> float:
         raise NotImplementedError
 
+    @property
+    def base_speed(self) -> float:
+        raise NotImplementedError
+
+    def stat_level(self, stat: str) -> int:
+        """Inimigos não têm atributos: o dano das skills deles é só o 'base'."""
+        return 0
+
+    # --- efeitos de status ---
+    def modifier(self, name: str) -> float:
+        result = 1.0
+        for active in self.effects.values():
+            result *= active.defn.modifiers.get(name, 1.0)
+        return result
+
+    def has_flag(self, flag: str) -> bool:
+        return any(flag in active.defn.flags for active in self.effects.values())
+
+    @property
+    def speed(self) -> float:
+        if self.has_flag("stunned"):
+            return 0.0
+        return self.base_speed * self.modifier("speed")
+
     def snapshot(self) -> dict:
         """O que todo mundo vê desta entidade."""
         return {
             "id": self.id,
             "k": self.kind,
             "n": self.name,
-            "x": round(self.x, 1),
-            "y": round(self.y, 1),
+            "x": round(self.x, 2),
+            "y": round(self.y, 2),
             "f": self.facing,
             "s": self.state,
             "hp": round(self.hp),
             "mhp": round(self.max_hp),
+            "ef": sorted(self.effects),
         }
 
 
@@ -53,39 +91,35 @@ class Entity:
 class Player(Entity):
     energy: float = 0.0
     fatigue: float = 0.0
-    blast_cd: float = 0.0
     stats: dict[str, Stat] = field(default_factory=lambda: {n: Stat() for n in STAT_NAMES})
-    input: dict[str, bool] = field(default_factory=lambda: dict.fromkeys(MOVE_KEYS, False))
-    actions: list[str] = field(default_factory=list)
+    skills: list[str] = field(default_factory=list)  # ordem da barra de atalhos
+    actions: list[tuple] = field(default_factory=list)  # ações pedidas, executadas no próximo tick
+    # Movimento: o cliente manda um comando numerado por tick; o servidor executa um por tick
+    # e devolve o número do último executado ("ack") para o cliente corrigir a previsão.
+    move_queue: deque[tuple[int, MoveKeys]] = field(default_factory=deque)
+    last_seq: int = 0
+    ack: int = 0
 
     kind: ClassVar[str] = "player"
 
-    def level(self, stat: str) -> int:
+    def stat_level(self, stat: str) -> int:
         return self.stats[stat].level
 
     # --- Valores derivados dos atributos ---
     @property
     def max_hp(self) -> float:
-        return 80 + 20 * self.level("vitality")
+        return 80 + 20 * self.stat_level("vitality")
 
     @property
     def max_energy(self) -> float:
-        return 40 + 15 * self.level("spirit")
+        return 40 + 15 * self.stat_level("spirit")
 
     @property
-    def speed(self) -> float:
-        return min(C.MAX_SPEED, C.BASE_SPEED + C.SPEED_PER_AGILITY * self.level("agility"))
-
-    @property
-    def melee_damage(self) -> float:
-        return 6 + 2 * self.level("strength")
-
-    @property
-    def blast_damage(self) -> float:
-        return 8 + 3 * self.level("spirit")
+    def base_speed(self) -> float:
+        return min(C.MAX_SPEED, C.BASE_SPEED + C.SPEED_PER_AGILITY * self.stat_level("agility"))
 
     def private_snapshot(self) -> dict:
-        """O que só o próprio jogador vê (HUD)."""
+        """O que só o próprio jogador vê (HUD e previsão de movimento)."""
         return {
             "hp": round(self.hp),
             "mhp": round(self.max_hp),
@@ -94,6 +128,13 @@ class Player(Entity):
             "fat": round(self.fatigue),
             "mfat": round(C.MAX_FATIGUE),
             "s": self.state,
+            "x": self.x,
+            "y": self.y,
+            "spd": self.speed,
+            "ack": self.ack,
+            "skills": self.skills,
+            "cd": {sid: round(t, 2) for sid, t in self.cooldowns.items() if t > 0},
+            "ef": [{"id": eid, "t": round(a.remaining, 1)} for eid, a in self.effects.items()],
             "stats": {
                 n: {"lv": s.level, "xp": int(s.xp), "next": s.xp_to_next()} for n, s in self.stats.items()
             },
@@ -132,31 +173,50 @@ class Player(Entity):
 
 @dataclass(eq=False)
 class Enemy(Entity):
+    defn: EnemyDef | None = None
     home_x: float = 0.0
     home_y: float = 0.0
-    base_hp: float = C.ENEMY_HP
-    damage: float = C.ENEMY_DAMAGE
     target_id: int | None = None
     wander_dir: tuple[float, float] = (0.0, 0.0)
     wander_timer: float = 0.0
+    detour_side: int = 1  # lado (+1/-1) para contornar obstáculos ao perseguir
+    detour_timer: float = 0.0  # enquanto > 0, continua contornando em vez de ir reto
 
     kind: ClassVar[str] = "enemy"
 
     @property
     def max_hp(self) -> float:
-        return self.base_hp
+        return self.defn.hp
+
+    @property
+    def base_speed(self) -> float:
+        return self.defn.speed
+
+    def snapshot(self) -> dict:
+        snap = super().snapshot()
+        snap["t"] = self.defn.id  # tipo, para o cliente escolher a aparência
+        return snap
 
 
 @dataclass(eq=False)
 class Projectile:
     id: int
     owner_id: int
+    skill_id: str
     x: float
     y: float
     vx: float
     vy: float
     damage: float
     ttl: float
+    radius: float
 
     def snapshot(self) -> dict:
-        return {"id": self.id, "x": round(self.x, 1), "y": round(self.y, 1), "vx": self.vx, "vy": self.vy}
+        return {
+            "id": self.id,
+            "s": self.skill_id,
+            "x": round(self.x, 1),
+            "y": round(self.y, 1),
+            "vx": round(self.vx, 1),
+            "vy": round(self.vy, 1),
+        }

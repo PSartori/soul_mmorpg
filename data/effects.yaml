@@ -1,0 +1,40 @@
+# Efeitos de status. Aplicados por skills (campo effects/self_effects) com uma duração.
+#
+# Campos:
+#   name       nome exibido
+#   color      cor usada pelo cliente (anel em volta do personagem e lista no HUD)
+#   modifiers  multiplicadores enquanto o efeito durar:
+#                speed         velocidade de movimento
+#                damage        dano causado
+#                damage_taken  dano recebido
+#                energy_regen  regeneração de energia
+#   flags      stunned   não anda nem usa skills
+#              silenced  anda, mas não usa skills
+#   tick       efeito periódico: every (segundos), damage e/ou heal por tick
+#
+# Reaplicar um efeito que já está ativo só renova a duração (não acumula).
+
+lento:
+  name: Lento
+  color: "#7cc4ff"
+  modifiers: { speed: 0.5 }
+
+atordoado:
+  name: Atordoado
+  color: "#ffd65a"
+  flags: [stunned]
+
+veneno:
+  name: Veneno
+  color: "#7bd65a"
+  tick: { every: 1.0, damage: 3 }
+
+foco:
+  name: Foco
+  color: "#ff9a5a"
+  modifiers: { damage: 1.3 }
+
+couraca:
+  name: Couraça
+  color: "#b9b9c8"
+  modifiers: { damage_taken: 0.6, speed: 0.8 }

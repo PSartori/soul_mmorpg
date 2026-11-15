@@ -1,0 +1,37 @@
+# Tipos de inimigo.
+#
+#   mark           caractere que marca o ponto de nascimento no mapa (data/maps/*.txt)
+#   hp, speed      vida e velocidade
+#   aggro_radius   distância em que começa a perseguir um jogador
+#   leash          distância máxima de casa antes de desistir
+#   wander_radius  raio de passeio em volta de casa quando não tem alvo
+#   respawn        segundos até renascer depois de morto
+#   kill_xp        XP de bônus para quem mata (vai para o atributo principal da skill usada)
+#   skills         skills que a IA usa (melee, projectile, area, self)
+#   color          cor do corpo no cliente
+
+espectro:
+  name: Espectro
+  mark: E
+  color: "#6d2f7d"
+  hp: 40
+  speed: 90
+  aggro_radius: 160
+  leash: 320
+  wander_radius: 96
+  respawn: 15
+  kill_xp: 10
+  skills: [garra]
+
+bruto:
+  name: Bruto
+  mark: B
+  color: "#8a4a2a"
+  hp: 110
+  speed: 70
+  aggro_radius: 140
+  leash: 280
+  wander_radius: 64
+  respawn: 30
+  kill_xp: 25
+  skills: [pancada, endurecer]

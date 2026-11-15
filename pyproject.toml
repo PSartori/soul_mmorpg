@@ -3,7 +3,7 @@ name = "rpg-online"
 version = "0.1.0"
 description = "Protótipo de RPG online 2D (servidor em Python, cliente no navegador)"
 requires-python = ">=3.11"
-dependencies = ["aiohttp>=3.9"]
+dependencies = ["aiohttp>=3.9", "pyyaml>=6.0"]
 
 [tool.uv]
 package = false

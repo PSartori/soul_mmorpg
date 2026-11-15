@@ -84,6 +84,7 @@ export class Renderer {
     this.canvas = canvas;
     this.ctx = canvas.getContext("2d");
     this.mapLayer = null;
+    this.defs = { skills: {}, effects: {}, enemies: {} }; // definições vindas do servidor
   }
 
   // O mapa é estático: desenha uma vez numa camada separada e só copia a cada frame
@@ -115,9 +116,11 @@ export class Renderer {
     ctx.translate(-camX, -camY);
     ctx.drawImage(mapLayer, 0, 0);
 
+    for (const t of state.trails) this.drawTrail(t, now);
     const ents = [...state.ents.values()].sort((a, b) => a.ry - b.ry);
     for (const e of ents) this.drawEntity(e, e.id === state.myId, now);
     for (const s of state.swings) this.drawSwing(s, state, now);
+    for (const r of state.rings) this.drawRing(r, now);
     for (const p of state.projs) this.drawProjectile(p, now - state.snapTime);
     for (const f of state.floaters) this.drawFloater(f, now);
     ctx.restore();
@@ -158,11 +161,22 @@ export class Renderer {
       ctx.beginPath(); ctx.arc(x, y, 17 + Math.sin(now / 180) * 3, 0, TAU); ctx.stroke();
     }
 
+    // efeitos de status: um anel tracejado girando por efeito, na cor dele
+    (e.ef ?? []).forEach((effectId, i) => {
+      const color = this.defs.effects[effectId]?.color ?? "#ffffff";
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.setLineDash([4, 4]);
+      ctx.lineDashOffset = -now / 40;
+      ctx.beginPath(); ctx.arc(x, y, 15 + i * 4, 0, TAU); ctx.stroke();
+      ctx.setLineDash([]);
+    });
+
     // corpo
     ctx.lineWidth = 2;
     if (e.k === "enemy") {
-      ctx.fillStyle = "#6d2f7d";
-      ctx.strokeStyle = "#2a0f30";
+      ctx.fillStyle = this.defs.enemies[e.t]?.color ?? "#6d2f7d";
+      ctx.strokeStyle = "rgba(0,0,0,0.6)";
       ctx.beginPath();
       for (let i = 0; i < 10; i++) {
         const a = (i / 10) * TAU + now / 900;
@@ -215,8 +229,28 @@ export class Renderer {
     ctx.strokeStyle = `rgba(255,255,255,${0.8 * (1 - t)})`;
     ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.arc(e.rx, e.ry, 22, a - 0.9 + t * 0.4, a + 0.9 + t * 0.4);
+    ctx.arc(e.rx, e.ry, s.r * 0.8, a - 0.9 + t * 0.4, a + 0.9 + t * 0.4);
     ctx.stroke();
+  }
+
+  drawRing(r, now) {
+    const t = (now - r.born) / r.ttl;
+    const { ctx } = this;
+    ctx.globalAlpha = Math.max(0, 1 - t);
+    ctx.strokeStyle = r.color;
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(r.x, r.y, r.r * (0.4 + 0.6 * t), 0, TAU); ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  drawTrail(tr, now) {
+    const t = (now - tr.born) / tr.ttl;
+    const { ctx } = this;
+    ctx.strokeStyle = `rgba(220,235,255,${0.5 * (1 - t)})`;
+    ctx.lineWidth = 14;
+    ctx.lineCap = "round";
+    ctx.beginPath(); ctx.moveTo(tr.x0, tr.y0); ctx.lineTo(tr.x1, tr.y1); ctx.stroke();
+    ctx.lineCap = "butt";
   }
 
   drawProjectile(p, msSinceSnap) {
@@ -224,11 +258,12 @@ export class Renderer {
     const t = Math.min(msSinceSnap, 100) / 1000;
     const x = p.x + p.vx * t;
     const y = p.y + p.vy * t;
+    const color = this.defs.skills[p.s]?.color ?? "#8cc8ff";
     const { ctx } = this;
     const glow = ctx.createRadialGradient(x, y, 0, x, y, 12);
-    glow.addColorStop(0, "rgba(200,235,255,1)");
-    glow.addColorStop(0.35, "rgba(110,180,255,0.9)");
-    glow.addColorStop(1, "rgba(80,140,255,0)");
+    glow.addColorStop(0, "#ffffff");
+    glow.addColorStop(0.35, color);
+    glow.addColorStop(1, "rgba(0,0,0,0)");
     ctx.fillStyle = glow;
     ctx.beginPath(); ctx.arc(x, y, 12, 0, TAU); ctx.fill();
   }

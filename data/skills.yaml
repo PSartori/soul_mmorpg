@@ -1,0 +1,137 @@
+# Skills (técnicas). Usadas por jogadores e por inimigos.
+#
+# Campos comuns:
+#   name          nome exibido
+#   type          melee | projectile | area | dash | self
+#   cooldown      segundos até poder usar de novo
+#   cost          { energy: N }
+#   damage        { base: N, scale: { atributo: N por nível } }
+#                 dano = (base + soma de scale × nível) × modificador "damage" de quem usa
+#   train         { atributo: XP } ganho por alvo atingido (dash/self: por uso)
+#   effects       [ { id: efeito, duration: segundos } ] aplicados em quem é atingido
+#   self_effects  [ { id: efeito, duration: segundos } ] aplicados em quem usa
+#   color         cor do efeito visual no cliente
+#
+# Campos por tipo:
+#   melee       reach (distância do centro do golpe), size (metade do lado da área)
+#   projectile  speed, ttl (segundos de vida), radius, count (quantos), spread (graus entre eles)
+#   area        radius (em volta de quem usa)
+#   dash        distance (avanço na direção em que olha)
+#   self        (nenhum: só self_effects)
+#
+# Atributos: strength, spirit, agility, vitality
+
+# ---------------------------------------------------------------- jogador
+
+golpe:
+  name: Golpe
+  type: melee
+  cooldown: 0.45
+  reach: 20
+  size: 14
+  damage: { base: 6, scale: { strength: 2 } }
+  train: { strength: 3 }
+
+rajada:
+  name: Rajada
+  type: projectile
+  color: "#8cc8ff"
+  cooldown: 0.8
+  cost: { energy: 10 }
+  speed: 380
+  ttl: 0.9
+  radius: 5
+  damage: { base: 8, scale: { spirit: 3 } }
+  train: { spirit: 2 }
+
+passo:
+  name: Passo veloz
+  type: dash
+  cooldown: 2.0
+  cost: { energy: 8 }
+  distance: 96
+  train: { agility: 2 }
+
+flecha_gelida:
+  name: Flecha gélida
+  type: projectile
+  color: "#bfe8ff"
+  cooldown: 1.2
+  cost: { energy: 8 }
+  speed: 440
+  ttl: 0.8
+  radius: 4
+  damage: { base: 4, scale: { spirit: 2 } }
+  effects: [ { id: lento, duration: 2.5 } ]
+  train: { spirit: 2 }
+
+dardo:
+  name: Dardo venenoso
+  type: projectile
+  color: "#8fe36b"
+  cooldown: 3.0
+  cost: { energy: 6 }
+  speed: 360
+  ttl: 0.8
+  radius: 4
+  damage: { base: 2 }
+  effects: [ { id: veneno, duration: 5 } ]
+  train: { spirit: 1, agility: 1 }
+
+leque:
+  name: Leque de energia
+  type: projectile
+  color: "#d0a8ff"
+  cooldown: 2.5
+  cost: { energy: 18 }
+  speed: 340
+  ttl: 0.7
+  radius: 5
+  count: 3
+  spread: 18
+  damage: { base: 5, scale: { spirit: 2 } }
+  train: { spirit: 2 }
+
+onda:
+  name: Onda de choque
+  type: area
+  color: "#ffe28a"
+  cooldown: 4.0
+  cost: { energy: 20 }
+  radius: 56
+  damage: { base: 6, scale: { spirit: 2 } }
+  effects: [ { id: atordoado, duration: 0.8 } ]
+  train: { spirit: 2 }
+
+foco:
+  name: Foco
+  type: self
+  cooldown: 20
+  cost: { energy: 15 }
+  self_effects: [ { id: foco, duration: 8 } ]
+  train: { spirit: 3 }
+
+# ---------------------------------------------------------------- inimigos
+
+garra:
+  name: Garra
+  type: melee
+  cooldown: 1.0
+  reach: 16
+  size: 14
+  damage: { base: 5 }
+
+pancada:
+  name: Pancada
+  type: melee
+  cooldown: 1.6
+  reach: 18
+  size: 16
+  damage: { base: 12 }
+  effects: [ { id: atordoado, duration: 0.6 } ]
+
+endurecer:
+  name: Endurecer
+  type: self
+  cooldown: 12
+  self_effects: [ { id: couraca, duration: 5 } ]

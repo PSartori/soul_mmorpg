@@ -1,4 +1,4 @@
-// Teclado: movimento é um estado (teclas seguradas); ações são eventos.
+// Teclado: movimento é amostrado a cada tick do cliente; skills e ações são eventos.
 
 const MOVE_KEYS = {
   KeyW: "up", ArrowUp: "up",
@@ -7,28 +7,27 @@ const MOVE_KEYS = {
   KeyD: "right", ArrowRight: "right",
 };
 
-// repeat: se segurar a tecla, repete a ação (o servidor limita pelo cooldown)
-const ACTION_KEYS = {
-  Space: { action: "attack", repeat: true },
-  KeyF: { action: "blast", repeat: true },
-  KeyM: { action: "meditate", repeat: false },
-  KeyR: { action: "rest", repeat: false },
+// Barra de skills: teclas 1–8; Espaço e F são atalhos para os slots 1 e 2
+const SLOT_KEYS = {
+  Space: 0, KeyF: 1,
+  Digit1: 0, Digit2: 1, Digit3: 2, Digit4: 3, Digit5: 4, Digit6: 5, Digit7: 6, Digit8: 7,
 };
+export const SLOT_LABELS = ["1 · Espaço", "2 · F", "3", "4", "5", "6", "7", "8"];
+
+const ACTION_KEYS = { KeyM: "meditate", KeyR: "rest" };
 
 export function isTypingInField() {
   const el = document.activeElement;
   return !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA");
 }
 
-export function setupInput({ onMove, onAction, onEnter, enabled }) {
+export function setupInput({ onSlot, onAction, onEnter, enabled }) {
   const held = { up: false, down: false, left: false, right: false };
-  const emit = () => onMove({ ...held });
+  // Toques rápidos (apertou e soltou entre dois ticks) ainda contam no próximo tick
+  const tapped = { up: false, down: false, left: false, right: false };
 
   function clear() {
-    if (Object.values(held).some(Boolean)) {
-      for (const k of Object.keys(held)) held[k] = false;
-      emit();
-    }
+    for (const k of Object.keys(held)) held[k] = tapped[k] = false;
   }
 
   window.addEventListener("keydown", (ev) => {
@@ -42,27 +41,38 @@ export function setupInput({ onMove, onAction, onEnter, enabled }) {
     const dir = MOVE_KEYS[ev.code];
     if (dir) {
       ev.preventDefault();
-      if (!held[dir]) {
-        held[dir] = true;
-        emit();
-      }
+      held[dir] = tapped[dir] = true;
       return;
     }
-    const binding = ACTION_KEYS[ev.code];
-    if (binding) {
+    if (ev.code in SLOT_KEYS) {
       ev.preventDefault();
-      if (!ev.repeat || binding.repeat) onAction(binding.action);
+      onSlot(SLOT_KEYS[ev.code]); // segurar repete; o cliente e o servidor respeitam o cooldown
+      return;
+    }
+    const action = ACTION_KEYS[ev.code];
+    if (action && !ev.repeat) {
+      ev.preventDefault();
+      onAction(action);
     }
   });
 
   window.addEventListener("keyup", (ev) => {
     const dir = MOVE_KEYS[ev.code];
-    if (dir && held[dir]) {
-      held[dir] = false;
-      emit();
-    }
+    if (dir) held[dir] = false;
   });
 
   window.addEventListener("blur", clear);
-  return { clear };
+
+  return {
+    clear,
+    // Estado das setas para este tick (seguradas ou tocadas desde o último)
+    sample() {
+      const keys = {};
+      for (const k of Object.keys(held)) {
+        keys[k] = held[k] || tapped[k];
+        tapped[k] = false;
+      }
+      return keys;
+    },
+  };
 }

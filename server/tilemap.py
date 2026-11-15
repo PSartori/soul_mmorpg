@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
@@ -15,10 +16,11 @@ GRASS = ","
 WATER = "~"
 SAFE = ":"  # zona segura: sem PvP, inimigos não entram
 TREE = "T"
-SPAWN_MARK = "S"  # vira SAFE ao carregar
-ENEMY_MARK = "E"  # vira FLOOR ao carregar
+SPAWN_MARK = "S"  # nascimento dos jogadores; vira SAFE ao carregar
+# Pontos de nascimento de inimigos usam o "mark" de cada tipo (data/enemies.yaml); viram FLOOR.
 
 TILES = frozenset({WALL, FLOOR, GRASS, WATER, SAFE, TREE})
+RESERVED_MARKS = TILES | {SPAWN_MARK, ";"}
 WALK_BLOCKERS = frozenset({WALL, WATER, TREE})
 SHOT_BLOCKERS = frozenset({WALL, TREE})  # projéteis passam por cima da água
 
@@ -33,7 +35,7 @@ class TileMap:
     rows: list[str]
     tile_size: int
     spawn: tuple[float, float]
-    enemy_spawns: list[tuple[float, float]] = field(default_factory=list)
+    enemy_spawns: list[tuple[str, float, float]] = field(default_factory=list)  # (mark, x, y)
 
     @property
     def width(self) -> int:
@@ -77,6 +79,9 @@ class TileMap:
         Se o passo bater num tile, a caixa encosta na borda dele e para naquele
         eixo; o outro eixo continua livre (efeito de "deslizar" na parede).
         Supõe passos menores que um tile, o que vale com 20 ticks/s.
+
+        ATENÇÃO: client/js/physics.js tem uma cópia desta lógica (previsão de
+        movimento). Se mudar aqui, mude lá também.
         """
         x = self._move_axis(x, y, half, dx, blocks, horizontal=True)
         y = self._move_axis(y, x, half, dy, blocks, horizontal=False)
@@ -105,8 +110,12 @@ class TileMap:
         return new
 
 
-def parse_map(text: str, name: str, tile_size: int = C.TILE_SIZE) -> TileMap:
-    """Converte o texto do mapa. Linhas vazias e linhas começando com ';' são ignoradas."""
+def parse_map(text: str, name: str, spawn_marks: Iterable[str] = (), tile_size: int = C.TILE_SIZE) -> TileMap:
+    """Converte o texto do mapa. Linhas vazias e linhas começando com ';' são ignoradas.
+
+    spawn_marks: caracteres que marcam nascimento de inimigos (vêm de data/enemies.yaml).
+    """
+    marks = set(spawn_marks)
     lines = [line.rstrip("\r\n") for line in text.splitlines()]
     lines = [line for line in lines if line.strip() and not line.startswith(";")]
     if not lines:
@@ -115,16 +124,16 @@ def parse_map(text: str, name: str, tile_size: int = C.TILE_SIZE) -> TileMap:
 
     rows: list[str] = []
     spawn: tuple[float, float] | None = None
-    enemy_spawns: list[tuple[float, float]] = []
+    enemy_spawns: list[tuple[str, float, float]] = []
     for ty, line in enumerate(lines):
         chars = []
         for tx, ch in enumerate(line.ljust(width, WALL)):
-            center = ((tx + 0.5) * tile_size, (ty + 0.5) * tile_size)
+            cx, cy = (tx + 0.5) * tile_size, (ty + 0.5) * tile_size
             if ch == SPAWN_MARK:
-                spawn = center
+                spawn = (cx, cy)
                 ch = SAFE
-            elif ch == ENEMY_MARK:
-                enemy_spawns.append(center)
+            elif ch in marks:
+                enemy_spawns.append((ch, cx, cy))
                 ch = FLOOR
             elif ch not in TILES:
                 raise ValueError(f"Mapa {name!r}: caractere desconhecido {ch!r} em ({tx}, {ty}).")
@@ -136,6 +145,6 @@ def parse_map(text: str, name: str, tile_size: int = C.TILE_SIZE) -> TileMap:
     return TileMap(name=name, rows=rows, tile_size=tile_size, spawn=spawn, enemy_spawns=enemy_spawns)
 
 
-def load_map(path: str | Path, tile_size: int = C.TILE_SIZE) -> TileMap:
+def load_map(path: str | Path, spawn_marks: Iterable[str] = (), tile_size: int = C.TILE_SIZE) -> TileMap:
     path = Path(path)
-    return parse_map(path.read_text(encoding="utf-8"), path.stem, tile_size)
+    return parse_map(path.read_text(encoding="utf-8"), path.stem, spawn_marks, tile_size)

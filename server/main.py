@@ -16,6 +16,7 @@ from pathlib import Path
 from aiohttp import WSMsgType, web
 
 from . import config as C
+from .content import Content
 from .db import Database
 from .tilemap import load_map
 from .world import World
@@ -110,9 +111,10 @@ async def game_loop(app: web.Application) -> None:
 
 
 def create_app(db_path: str | Path = C.DB_PATH, map_path: str | Path = C.DEFAULT_MAP) -> web.Application:
+    content = Content.load(C.DATA_DIR)  # erro no YAML derruba aqui, com a mensagem do campo
     app = web.Application()
     app[DB] = Database(db_path)
-    app[WORLD] = World(load_map(map_path), app[DB])
+    app[WORLD] = World(load_map(map_path, content.enemy_by_mark), app[DB], content)
     app[SESSIONS] = {}
 
     app.router.add_get("/", index)

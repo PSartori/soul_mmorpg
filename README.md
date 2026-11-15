@@ -29,52 +29,94 @@ sincronizar milhares de arquivos). O banco de dados fica em `var/game.db`.
 | Tecla | Ação |
 |---|---|
 | WASD / setas | andar |
-| Espaço | golpe corpo a corpo |
-| F | rajada de energia (gasta energia) |
+| 1–8 (Espaço = 1, F = 2) | skills da barra |
 | M | meditar (treina Espírito, gera cansaço) |
 | R | descansar (recupera cansaço e vida) |
 | Enter | chat (`/who` lista quem está online) |
 
+## Conteúdo (data/)
+
+Skills, efeitos e inimigos são **dados**, não código. Cada arquivo tem no topo a
+explicação de todos os campos.
+
+| Arquivo | O que define |
+|---|---|
+| `data/skills.yaml` | técnicas: tipo (melee, projectile, area, dash, self), custo, recarga, dano, efeitos, treino |
+| `data/effects.yaml` | efeitos de status: modificadores (velocidade, dano...), flags (atordoado, silenciado), dano/cura periódicos |
+| `data/enemies.yaml` | tipos de inimigo: vida, velocidade, alcance de perseguição, skills que a IA usa, letra no mapa |
+| `data/player.yaml` | skills iniciais (ordem da barra) |
+| `data/maps/inicio.txt` | mapa em texto (legenda no topo do arquivo) |
+
+Os arquivos são validados ao subir o servidor: campo com erro de digitação, tipo
+errado ou referência inexistente (ex.: skill que aplica um efeito que não existe)
+para o servidor com uma mensagem dizendo o arquivo, o item e o campo.
+
+Para criar uma skill nova basta adicioná-la em `skills.yaml` e na lista de
+`player.yaml`; só é preciso mexer em Python para criar um *tipo* novo de skill
+ou de efeito.
+
 ## Arquitetura
 
-O **servidor é a autoridade**: o cliente só envia intenções (teclas, ações, chat)
+O **servidor é a autoridade**: o cliente só envia intenções (movimento, skills, chat)
 e desenha o estado que recebe. Isso impede trapaça e deixa toda a regra do jogo em Python.
 
 ```
 server/              Python (aiohttp)
   main.py            HTTP + WebSocket, loop de 20 ticks/s, envio das mensagens
-  world.py           simulação: login, movimento, combate, treino, inimigos
-  entities.py        Player, Enemy, Projectile e atributos derivados
+  world.py           simulação: login, movimento, skills, efeitos, IA dos inimigos
+  content.py         carrega e valida data/*.yaml
+  entities.py        Player, Enemy, Projectile, efeitos ativos e atributos derivados
   stats.py           atributos treináveis (nível + XP)
   tilemap.py         mapa ASCII e colisão de caixas com tiles
   db.py              SQLite: personagens e senhas (PBKDF2)
-  config.py          TODOS os números de balanceamento
+  config.py          números de regra do motor (o resto está em data/)
 client/              JavaScript puro, sem build
   index.html, style.css
-  js/main.js         estado, HUD, chat, loop de desenho
+  js/main.js         estado, previsão de movimento, HUD, barra de skills, chat
+  js/physics.js      cópia da colisão/movimento do servidor (previsão)
   js/render.js       desenho no canvas (arte provisória com formas)
   js/input.js        teclado
   js/net.js          WebSocket
-data/maps/inicio.txt mapa editável em texto (legenda no topo do arquivo)
+data/                conteúdo do jogo (veja acima)
 tests/               testes das regras do servidor (unittest)
 ```
 
 `World` não conhece rede: tudo que precisa sair vai para uma caixa de saída
 (`drain_outbox`), que o `main.py` envia. Por isso dá para testar as regras sem servidor.
 
+### Previsão de movimento
+
+O cliente manda um comando de movimento numerado por tick (20/s) e já move o
+próprio personagem na hora, com a mesma física do servidor (`physics.js`). O
+servidor executa um comando por tick e devolve no snapshot a posição oficial e o
+número do último comando executado (`ack`). O cliente parte dessa posição e
+reaplica os comandos ainda não confirmados. Como a física é idêntica, o resultado
+bate e não há "puxões"; o teste `tests/test_physics_parity.py` garante isso
+comparando os dois lados (precisa do Node instalado).
+
+**Se mudar `move_box` em `tilemap.py` ou `_move_player` em `world.py`, mude
+`physics.js` também** — o teste de paridade acusa se esquecer.
+
+Para depurar no console do navegador: `__game.state`, `__game.pred`, `__game.pending`.
+
 ### Protocolo (JSON pelo WebSocket, campo `t` = tipo)
 
-Cliente → servidor: `login {name, password}`, `input {up, down, left, right}`,
-`attack`, `blast`, `meditate`, `rest`, `chat {text}`.
+Cliente → servidor: `login {name, password}`, `move {seq, up, down, left, right}`,
+`skill {id, f}`, `meditate`, `rest`, `chat {text}`.
 
-Servidor → cliente: `welcome {id, map, stat_labels}`, `error {msg}`,
-`snap {ents, projs, fx, you}` (20×/s), `chat {from, text}`, `sys {text}`.
+Servidor → cliente: `welcome {id, map, skills, effects, enemies, stat_labels, ...}`,
+`error {msg}`, `snap {ents, projs, fx, you}` (20×/s), `chat {from, text}`, `sys {text}`.
 
 ### Regras atuais
 
-- **Atributos**: Força (golpe), Espírito (energia e rajada), Agilidade (velocidade),
-  Vitalidade (vida). Cada um sobe com o uso: andar → Agilidade, acertar golpes → Força,
-  acertar rajadas e meditar → Espírito, levar dano → Vitalidade. Matar dá bônus.
+- **Atributos**: Força, Espírito (energia), Agilidade (velocidade), Vitalidade (vida).
+  Cada um sobe com o uso: andar → Agilidade, meditar → Espírito, levar dano →
+  Vitalidade, e cada skill treina o que estiver no campo `train`. Matar dá bônus
+  ao atributo principal da skill que deu o golpe final.
+- **Efeitos**: reaplicar renova a duração (não acumula); efeitos diferentes se
+  multiplicam; morrer limpa todos.
+- **Inimigos** perseguem em linha reta e contornam obstáculos simples pelo lado
+  (não é pathfinding: labirintos ainda os prendem).
 - **Meditação** gera cansaço; ao chegar a 100 para sozinha, e só volta com cansaço
   abaixo de 75, o que obriga a descansar.
 - **Zona segura** (piso de pedra): sem PvP e inimigos não entram.
@@ -83,8 +125,8 @@ Servidor → cliente: `welcome {id, map, stat_labels}`, `error {msg}`,
 
 ## Pendências conhecidas
 
-- Sem previsão de movimento no cliente: com ping alto o próprio personagem vai
-  parecer "atrasado". Resolver quando hospedar na VPS.
+- Por enquanto todo personagem recebe todas as skills de `player.yaml` (raças e classes: fase 2).
+- Outros jogadores são desenhados com suavização simples, não interpolação com atraso fixo.
 - Login sem HTTPS: na VPS, colocar atrás de um proxy com TLS (ex.: Caddy) antes de abrir ao público.
 - O hash de senha roda no loop do servidor (~0,1 s por login); ok para poucos jogadores.
 - Arte provisória (formas geométricas).
