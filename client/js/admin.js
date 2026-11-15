@@ -38,6 +38,12 @@ export class AdminUI {
     }
   }
 
+  openFor(name) {
+    this.selected = name;
+    if (!this.isOpen) this.toggle(true);
+    else this.render();
+  }
+
   op(op, extra = {}) {
     this.send({ t: "admin", op, ...extra });
   }

@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from . import config as C
 from .content import OrgDef, RankDef
@@ -139,6 +139,79 @@ class OrgSystem:
         handler()
         return True
 
+    def handle_op(self, p: Player, data: dict) -> None:
+        """Pedidos da janela da organização / do menu do jogador: {"t": "org", "op": ...}."""
+        op = data.get("op")
+        target = data.get("target") if isinstance(data.get("target"), str) else ""
+        org_id = data.get("org") if isinstance(data.get("org"), str) else ""
+        rank_id = data.get("rank") if isinstance(data.get("rank"), str) else ""
+        actions = {
+            "info": lambda: None,
+            "join": lambda: self.join(p, org_id),
+            "leave": lambda: self.leave(p),
+            "claim": lambda: self.claim(p, rank_id),
+            "dispute": lambda: self.dispute(p, target),
+            "promote": lambda: self.promote(p, target, rank_id),
+            "demote": lambda: self.demote(p, target),
+            "expel": lambda: self.expel(p, target),
+        }
+        if op not in actions:
+            return
+        actions[op]()
+        self.world._outbox.append((p.id, self.window_data(p)))
+
+    def window_data(self, p: Player) -> dict:
+        """Tudo o que a janela da organização mostra, já com o que p pode fazer."""
+        w = self.world
+        m = self.of(p)
+        level = total_level(p)
+        orgs = []
+        for o in self.content.orgs.values():
+            reason = None
+            if o.races and p.race_id not in o.races:
+                reason = f"não aceita {p.race_def.name if p.race_def else 'sua raça'}"
+            elif level < o.min_total_level:
+                reason = f"exige nível total {o.min_total_level}"
+            orgs.append({"id": o.id, "can_join": m is None and reason is None, "reason": reason})
+        data: dict[str, Any] = {"t": "org_data", "total_level": level, "orgs": orgs, "mine": None}
+        if m is None:
+            return data
+        org, rank = self.org_rank(m)
+        my_index = org.rank_index(rank.id)
+        wait = max(0.0, self.dispute_cooldowns.get(p.name.lower(), 0.0) - w.time)
+        ranks = []
+        for i, r in enumerate(org.ranks):
+            holders = sorted(self.holders(org.id, r.id), key=lambda h: (h.seat or 0, h.name.lower()))
+            ranks.append({
+                "id": r.id,
+                "holders": [{"name": h.name, "seat": h.seat, "online": self._online(h.name) is not None}
+                            for h in holders],
+                "can_claim": (r.promotion == "challenge" and i < my_index and level >= r.min_total_level
+                              and self.next_seat(org.id, r) is not None),
+            })
+        members = []
+        for other in sorted((x for x in self.members.values() if x.org == org.id), key=lambda x: x.name.lower()):
+            index = org.rank_index(other.rank)
+            other_rank = org.rank(other.rank)
+            online = self._online(other.name)
+            below = index > my_index
+            leader = rank.leader and below
+            members.append({
+                "name": other.name,
+                "title": self.title(other),
+                "online": online is not None,
+                "me": other.name.lower() == p.name.lower(),
+                "promote_to": [x.id for x in org.ranks if leader and x.promotion == "appointment"
+                               and org.rank_index(x.id) > my_index and x.id != other.rank] if online else [],
+                "can_demote": leader and other.rank != org.default_rank,
+                "can_expel": leader,
+                "can_dispute": (other_rank is not None and other_rank.promotion == "challenge" and index < my_index
+                                and online is not None and level >= other_rank.min_total_level and wait <= 0),
+            })
+        data["mine"] = {"org": org.id, "rank": rank.id, "title": self.title(m), "leader": rank.leader,
+                        "ranks": ranks, "members": members, "dispute_wait": round(wait)}
+        return data
+
     def _usage(self, p: Player, usage: str) -> None:
         self.world._private(p, f"Use: {usage}")
 
@@ -169,9 +242,9 @@ class OrgSystem:
         org = self.content.orgs.get(org_id)
         current = self.of(p)
         if org is None:
-            w._private(p, f"Organização desconhecida: {org_id}. Veja /org.")
+            w._private(p, f"Organização desconhecida: {org_id}.")
         elif current:
-            w._private(p, f"Você já faz parte de {self.content.orgs[current.org].name}. Use /sair antes.")
+            w._private(p, f"Você já faz parte de {self.content.orgs[current.org].name}. Saia dela antes.")
         elif org.races and p.race_id not in org.races:
             w._private(p, f"{org.name} não aceita {p.race_def.name if p.race_def else 'sua raça'}.")
         elif total_level(p) < org.min_total_level:
@@ -228,7 +301,7 @@ class OrgSystem:
         else:
             seat = self.next_seat(org.id, rank)
             if seat is None:
-                w._private(p, f"Não há vaga de {rank.name}. Para tomar uma, /disputar com quem a ocupa.")
+                w._private(p, f"Não há vaga de {rank.name}. Para tomar uma, dispute com quem a ocupa.")
                 return
             self._set(p.name, org.id, rank.id, seat, "claim")
             self._tell_org(org.id, f"{p.name} assumiu o cargo de {self.title(self.of(p))}.")  # type: ignore[arg-type]

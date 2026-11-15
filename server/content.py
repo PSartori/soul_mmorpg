@@ -186,8 +186,12 @@ class OrgDef:
         return next(i for i, r in enumerate(self.ranks) if r.id == rank_id)
 
     def client_info(self) -> dict:
-        return {"name": self.name, "color": self.color,
-                "ranks": {r.id: {"name": r.name, "numbered": r.numbered} for r in self.ranks}}
+        return {"name": self.name, "color": self.color, "description": self.description,
+                "races": list(self.races), "min": self.min_total_level, "default_rank": self.default_rank,
+                # na ordem da hierarquia (do mais alto para o mais baixo)
+                "ranks": {r.id: {"name": r.name, "numbered": r.numbered, "promotion": r.promotion,
+                                 "leader": r.leader, "seats": r.seats, "min": r.min_total_level}
+                          for r in self.ranks}}
 
 
 @dataclass(frozen=True)

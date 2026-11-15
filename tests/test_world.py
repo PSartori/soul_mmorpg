@@ -1901,5 +1901,110 @@ class AdminCliTests(unittest.TestCase):
         finally:
             shutil.rmtree(tmp)
 
+
+class InterfaceMessageTests(unittest.TestCase):
+    """Duelos e organizações pela interface (sem digitar comandos)."""
+
+    def setUp(self):
+        self.world = make_world()
+        self.world.enemies.clear()
+        self.a, _ = self.world.login("Aaa", "1234", "humano")
+        self.b, _ = self.world.login("Bbb", "1234", "humano")
+        for p in (self.a, self.b):
+            p.x, p.y = tile_center(2, 2)
+        self.b.x += 20
+
+    def send(self, p, **msg):
+        self.world.handle_message(p, msg)
+
+    def snap_of(self, p):
+        self.world.step(DT)
+        return [m for t, m in self.world.drain_outbox() if t == p.id and m["t"] == "snap"][-1]
+
+    def org_data(self, p, **msg):
+        self.world.drain_outbox()
+        self.send(p, t="org", **msg)
+        return next(m for t, m in self.world.drain_outbox() if t == p.id and m["t"] == "org_data")
+
+    def test_duel_flow_with_buttons(self):
+        self.send(self.a, t="duel", op="challenge", target="Bbb")
+        invite = self.snap_of(self.b)["you"]["invite"]
+        self.assertEqual(invite["from"], "Aaa")
+        self.assertIsNone(invite["prize"])
+        self.assertGreater(invite["left"], 0)
+        self.send(self.b, t="duel", op="accept")
+        self.assertIsNotNone(self.world.duels.duel_of(self.a))
+        self.assertIsNone(self.snap_of(self.b)["you"]["invite"])
+        self.send(self.a, t="duel", op="forfeit")
+        self.assertIsNone(self.world.duels.duel_of(self.a))
+
+    def test_decline_button(self):
+        self.send(self.a, t="duel", op="challenge", target="Bbb")
+        self.send(self.b, t="duel", op="decline")
+        self.assertIsNone(self.snap_of(self.b)["you"]["invite"])
+
+    def test_bad_duel_messages_are_ignored(self):
+        for msg in ({"op": "challenge"}, {"op": "challenge", "target": 5}, {"op": "voar"}):
+            self.send(self.a, t="duel", **msg)
+        self.world.step(DT)
+
+    def test_org_window_join_and_reasons(self):
+        ghost, _ = self.world.login("Fantasma", "1234", "humano")
+        self.world._set_class(ghost, CONTENT.classes["assombracao"])
+        data = self.org_data(ghost, op="info")
+        by_id = {o["id"]: o for o in data["orgs"]}
+        self.assertFalse(by_id["vigilia"]["can_join"])
+        self.assertIn("Espectral", by_id["vigilia"]["reason"])
+        self.assertTrue(by_id["coro_sombrio"]["can_join"])
+        data = self.org_data(ghost, op="join", org="coro_sombrio")
+        self.assertEqual(data["mine"]["org"], "coro_sombrio")
+        self.assertFalse(any(o["can_join"] for o in data["orgs"]))  # já é membro
+
+    def test_org_window_leader_actions(self):
+        boss, mid = self.a, self.b
+        boss.stats = {n: Stat(level=10) for n in boss.stats}
+        mid.stats = {n: Stat(level=6) for n in mid.stats}
+        for p in (boss, mid):
+            self.send(p, t="org", op="join", org="vigilia")
+        data = self.org_data(boss, op="claim", rank="comandante")
+        self.assertEqual(data["mine"]["rank"], "comandante")
+        member = next(x for x in data["mine"]["members"] if x["name"] == "Bbb")
+        self.assertEqual(member["promote_to"], ["tenente", "veterano"])
+        self.assertTrue(member["can_expel"])
+        data = self.org_data(boss, op="promote", target="Bbb", rank="tenente")
+        member = next(x for x in data["mine"]["members"] if x["name"] == "Bbb")
+        self.assertEqual(member["title"], "Tenente")
+        self.assertTrue(member["can_demote"])
+        # visão do Bbb: o comandante está acima e o cargo é por disputa, mas ele não tem nível 40
+        data = self.org_data(mid, op="info")
+        boss_row = next(x for x in data["mine"]["members"] if x["name"] == "Aaa")
+        self.assertFalse(boss_row["can_dispute"])
+        self.assertFalse(boss_row["can_expel"])
+        self.org_data(boss, op="expel", target="Bbb")
+        self.assertIsNone(self.world.orgs.of(mid))
+
+    def test_org_window_claim_flags(self):
+        self.a.stats = {n: Stat(level=10) for n in self.a.stats}
+        self.send(self.a, t="org", op="join", org="vigilia")
+        data = self.org_data(self.a, op="info")
+        ranks = {r["id"]: r for r in data["mine"]["ranks"]}
+        self.assertTrue(ranks["comandante"]["can_claim"])
+        self.assertFalse(ranks["tenente"]["can_claim"])  # por nomeação
+
+    def test_org_chat_channel(self):
+        for p in (self.a, self.b):
+            self.send(p, t="org", op="join", org="vigilia")
+        c, _ = self.world.login("Ccc", "1234", "humano")
+        self.world.drain_outbox()
+        self.send(self.a, t="chat", text="só a Vigília", ch="org")
+        receivers = {t for t, m in self.world.drain_outbox() if m["t"] == "chat"}
+        self.assertEqual(receivers, {self.a.id, self.b.id})
+
+    def test_client_gets_rank_details(self):
+        ranks = CONTENT.client_payload()["orgs"]["vigilia"]["ranks"]
+        self.assertEqual(list(ranks), ["comandante", "tenente", "veterano", "sentinela"])  # ordem da hierarquia
+        self.assertEqual(ranks["tenente"]["promotion"], "appointment")
+        self.assertTrue(ranks["comandante"]["leader"])
+
 if __name__ == "__main__":
     unittest.main()

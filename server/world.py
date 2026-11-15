@@ -358,8 +358,14 @@ class World:
                 player.actions.append(("item", op, slot))
         elif kind == "chat":
             text = str(data.get("text", ""))[: C.CHAT_MAX_LEN].strip()
-            if text:
+            if text and data.get("ch") == "org":
+                self.orgs.chat(player, text)
+            elif text:
                 self._chat(player, text)
+        elif kind == "duel":
+            self.duels.handle_op(player, data)
+        elif kind == "org":
+            self.orgs.handle_op(player, data)
         elif kind == "admin":
             self.admin.handle(player, data)
 
@@ -464,6 +470,7 @@ class World:
             zone = tilemap.zone_at(px, py)
             you["zone"] = {"t": zone.type, "n": zone.name, "m": tilemap.title or tilemap.name}
             you["duel"] = self.duels.client_info(player)
+            you["invite"] = self.duels.invite_for(player)  # desafio esperando resposta
             you["staff"] = player.staff_role.id if player.staff_role else None
             if player.inventory.dirty:  # inventário só vai quando muda
                 you["inv"] = player.inventory.client_info()

@@ -15,7 +15,7 @@ const SLOT_KEYS = {
 export const SLOT_LABELS = ["1 · Espaço", "2 · F", "3", "4", "5", "6", "7", "8"];
 
 const ACTION_KEYS = { KeyM: "meditate", KeyR: "rest" };
-const LOCAL_KEYS = { KeyI: "inventory", KeyG: "admin", Escape: "escape" }; // só mexem na interface
+const LOCAL_KEYS = { KeyI: "inventory", KeyO: "org", KeyG: "admin", Escape: "escape" }; // só mexem na interface
 
 export function isTypingInField() {
   const el = document.activeElement;

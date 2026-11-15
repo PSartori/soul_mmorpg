@@ -106,16 +106,14 @@ lutadores ficam parados, então alcance e esquiva não contam.
 | R | descansar (recupera cansaço e vida) |
 | I | inventário (clique: usar/equipar · Shift + clique: largar · clique no equipado: tirar) |
 | G | janela de administração (só para a equipe) |
-| Enter | chat (`/who` lista quem está online) |
-| `/duelo Nome` | desafia alguém por perto para um duelo |
-| `/aceitar`, `/recusar` | responde a um desafio |
-| `/render` | desiste do duelo |
-| `/org [id]` | mostra sua organização (cargos e ocupantes) ou lista as organizações |
-| `/entrar id`, `/sair` | entra / sai de uma organização |
-| `/o texto` | fala só com os membros online da sua organização |
-| `/assumir cargo` | assume um cargo de disputa que esteja vago |
-| `/disputar Nome` | desafia o ocupante de um cargo acima do seu para um duelo valendo o cargo |
-| `/promover Nome cargo`, `/rebaixar Nome`, `/expulsar Nome` | comandos de líder, para quem está abaixo |
+| O | janela da organização: entrar, sair, cargos e ocupantes, assumir vaga, disputar, promover, rebaixar, expulsar |
+| Enter | chat; o seletor ao lado escolhe o canal (Geral ou Organização) |
+| **Clique num jogador** | menu: desafiar para duelo, disputar o cargo dele e, para líderes, promover, rebaixar e expulsar |
+
+Um desafio recebido aparece na tela com **Aceitar** e **Recusar**; durante o duelo o
+painel mostra **Desistir**. Os antigos comandos de chat (`/duelo`, `/aceitar`,
+`/recusar`, `/render`, `/org`, `/entrar`, `/sair`, `/o`, `/assumir`, `/disputar`,
+`/promover`, `/rebaixar`, `/expulsar`, `/who`) continuam funcionando como atalho.
 
 ## Conteúdo (data/)
 
@@ -201,6 +199,7 @@ client/              JavaScript puro, sem build
   js/render.js       desenho no canvas (arte provisória com formas)
   js/inventory.js    janela de inventário
   js/admin.js        janela de administração
+  js/social.js       menu do jogador, aviso de desafio e janela da organização
   js/input.js        teclado
   js/net.js          WebSocket
 data/                conteúdo do jogo (veja acima)
@@ -235,11 +234,12 @@ Para depurar no console do navegador: `__game.state`, `__game.pred`, `__game.pen
 HTTP: `GET /api/races` lista as raças da tela de criação.
 
 Cliente → servidor: `login {name, password, race}`, `move {seq, up, down, left, right}`,
-`skill {id, f}`, `admin {op, ...}` (equipe), `item {op: use|drop, slot: n}`, `item {op: unequip, slot: weapon|armor|accessory}`,
+`skill {id, f}`, `duel {op: challenge|accept|decline|forfeit, target}`,
+`org {op: info|join|leave|claim|dispute|promote|demote|expel, ...}`, `chat {text, ch}`, `admin {op, ...}` (equipe), `item {op: use|drop, slot: n}`, `item {op: unequip, slot: weapon|armor|accessory}`,
 `meditate`, `rest`, `chat {text}`.
 
 Servidor → cliente: `welcome {id, map, skills, effects, enemies, stat_labels, ...}`,
-`map {map, x, y}` (atravessou um portal), `announce {text, by}`, `kick {text}` (antes de
+`map {map, x, y}` (atravessou um portal), `org_data` (janela da organização), `announce {text, by}`, `kick {text}` (antes de
 desconectar), `admin_data`/`admin_result` (equipe), `error {msg}`, `snap {ents, projs, drops, fx, you}`
 (20×/s, só o que está perto; `you.inv` só vem quando o inventário muda), `chat {from, text}`, `sys {text}`.
 

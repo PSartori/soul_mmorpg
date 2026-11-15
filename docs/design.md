@@ -181,7 +181,7 @@ em texto (`./mapas.sh para-tiled`).
 
 **Roteiro original concluído (bases 1–11).** Próximos passos naturais, fora do
 roteiro: liberações (estágios 1 e 2), NPCs com diálogo/lojas/missões, trocar os
-comandos de chat restantes por interface (seção 10), inimigos para níveis altos,
+inimigos para níveis altos,
 contas separadas de personagens, hospedagem na VPS (HTTPS) e arte/som.
 
 Ainda a decidir sobre a hierarquia (seção 6): limite de recusas de desafio de
@@ -190,7 +190,10 @@ alguns cargos devem ser por torneio ou pontos de contribuição.
 
 ## 10. Pendências de interface
 
-- **Trocar os comandos de chat por interface.** Hoje duelos (`/duelo`, `/aceitar`,
+- ~~**Trocar os comandos de chat por interface.**~~ **Feito:** menu ao clicar num
+  jogador, aviso de desafio com botões, botão de desistir, janela da organização
+  (tecla O) e canal no chat. Os comandos ficaram só como atalho.
+- (registro original) **Trocar os comandos de chat por interface.** Hoje duelos (`/duelo`, `/aceitar`,
   `/recusar`, `/render`) e organizações (`/org`, `/entrar`, `/sair`, `/o`,
   `/assumir`, `/disputar`, `/promover`, `/rebaixar`, `/expulsar`) dependem de digitar
   comandos — decisão: isso precisa virar interface. Ideias: menu ao clicar num

@@ -3,7 +3,8 @@
 import { Connection, gameSocketUrl } from "./net.js";
 import { SLOT_LABELS, setupInput } from "./input.js";
 import { Physics } from "./physics.js";
-import { Renderer, rankTitle } from "./render.js";
+import { Renderer, rankTitle, screenToWorld } from "./render.js";
+import { InvitePanel, OrgWindow, PlayerMenu } from "./social.js";
 import { InventoryUI, RARITY_COLORS } from "./inventory.js";
 import { AdminUI } from "./admin.js";
 
@@ -76,6 +77,10 @@ function handleMessage(msg) {
     case "content":
       applyContent(msg);
       break;
+    case "org_data":
+      orgWindow.update(msg);
+      $("chat-channel").querySelector('option[value="org"]').hidden = !msg.mine;
+      break;
     case "admin_data":
       adminUI.update(msg);
       break;
@@ -147,6 +152,8 @@ function handleClose() {
   inGame = false;
   clearInterval(tickTimer);
   adminUI.toggle(false);
+  orgWindow.toggle(false);
+  invitePanel.update(null);
   $("overlay").classList.remove("hidden");
   $("login-error").textContent = kickText ?? "Conexão perdida. Entre de novo.";
   conn = null;
@@ -294,10 +301,15 @@ function updateHud() {
   if (you.duel) {
     const { with: rival, starts_in: startsIn, left } = you.duel;
     const clock = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`;
-    duelEl.textContent = startsIn > 0
+    $("me-duel-text").textContent = startsIn > 0
       ? `Duelo contra ${rival} começa em ${Math.ceil(startsIn)}…`
       : `Duelo contra ${rival} · ${clock}`;
   }
+  invitePanel.update(you.invite);
+  // canal "Organização" no chat só para quem é de uma
+  const orgOption = $("chat-channel").querySelector('option[value="org"]');
+  orgOption.hidden = !me.o;
+  if (!me.o && $("chat-channel").value === "org") $("chat-channel").value = "";
   setBar("bar-hp", you.hp, you.mhp, "Vida");
   setBar("bar-energy", you.en, you.men, "Energia");
   setBar("bar-fatigue", you.fat, you.mfat, "Cansaço");
@@ -442,7 +454,7 @@ chatInput.addEventListener("keydown", (ev) => {
   ev.stopPropagation(); // não deixa as teclas do chat moverem o personagem
   if (ev.key === "Enter") {
     const text = chatInput.value.trim();
-    if (text && conn) conn.send({ t: "chat", text });
+    if (text && conn) conn.send({ t: "chat", text, ch: $("chat-channel").value || undefined });
     chatInput.value = "";
     chatInput.blur();
   } else if (ev.key === "Escape") {
@@ -457,8 +469,55 @@ $("admin-open").addEventListener("click", (ev) => {
   ev.currentTarget.blur();
 });
 $("inv-open").addEventListener("click", (ev) => {
-  inventoryUI.toggle();
+  toggleInventory();
   ev.currentTarget.blur();
+});
+
+const orgWindow = new OrgWindow({ getDefs: () => state.defs, send: (msg) => conn?.send(msg) });
+// Inventário e organização ocupam o mesmo canto: abrir um fecha o outro
+function toggleOrg() {
+  orgWindow.toggle();
+  if (orgWindow.isOpen) inventoryUI.toggle(false);
+}
+function toggleInventory() {
+  inventoryUI.toggle();
+  if (inventoryUI.isOpen) orgWindow.toggle(false);
+}
+$("org-open").addEventListener("click", (ev) => {
+  toggleOrg();
+  ev.currentTarget.blur();
+});
+const invitePanel = new InvitePanel({ root: $("invite"), send: (msg) => conn?.send(msg) });
+$("duel-forfeit").addEventListener("click", (ev) => {
+  if (window.confirm("Desistir do duelo? Conta como derrota.")) conn?.send({ t: "duel", op: "forfeit" });
+  ev.currentTarget.blur();
+});
+const playerMenu = new PlayerMenu({
+  container: $("viewport"),
+  getDefs: () => state.defs,
+  getMe: () => state.ents.get(state.myId),
+  getYou: () => state.you,
+  send: (msg) => conn?.send(msg),
+  openAdmin: (name) => adminUI.openFor(name),
+});
+
+// Clique num jogador (no mapa): abre o menu com o que dá para fazer com ele
+$("canvas").addEventListener("click", (ev) => {
+  if (!inGame) return;
+  const { x, y } = screenToWorld(renderer, ev);
+  let target = null;
+  let best = 22; // tolerância em px
+  for (const e of state.ents.values()) {
+    if (e.k !== "player" || e.id === state.myId || e.s === "dead") continue;
+    const d = Math.hypot(e.rx - x, e.ry - y);
+    if (d < best) {
+      best = d;
+      target = e;
+    }
+  }
+  if (!target) return;
+  const box = $("viewport").getBoundingClientRect();
+  playerMenu.open(target, ev.clientX - box.left, ev.clientY - box.top);
 });
 
 const input = setupInput({
@@ -466,11 +525,14 @@ const input = setupInput({
   onSlot: useSlot,
   onAction: (action) => conn?.send({ t: action }),
   onLocal: (name) => {
-    if (name === "inventory") inventoryUI.toggle();
+    if (name === "inventory") toggleInventory();
+    else if (name === "org") toggleOrg();
     else if (name === "admin" && state.you?.staff) adminUI.toggle();
     else if (name === "escape") {
       inventoryUI.toggle(false);
       adminUI.toggle(false);
+      orgWindow.toggle(false);
+      playerMenu.close();
     }
   },
   onEnter: () => chatInput.focus(),

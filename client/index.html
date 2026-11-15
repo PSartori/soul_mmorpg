@@ -31,6 +31,14 @@
           <div id="admin-body"></div>
         </section>
         <div id="announce" hidden></div>
+        <div id="invite" hidden></div>
+        <section id="org" hidden aria-label="Organização">
+          <header>
+            <h3 id="org-title">Organização</h3>
+            <button type="button" id="org-close" aria-label="Fechar">✕</button>
+          </header>
+          <div id="org-body"></div>
+        </section>
       </div>
       <div id="hotbar" aria-label="Skills"></div>
     </main>
@@ -41,7 +49,7 @@
         <p id="me-class"></p>
         <p id="me-org" hidden></p>
         <p id="me-zone"></p>
-        <p id="me-duel" hidden></p>
+        <div id="me-duel" hidden><span id="me-duel-text"></span><button type="button" id="duel-forfeit">Desistir</button></div>
         <div class="bar hp" id="bar-hp"><span class="fill"></span><span class="label"></span></div>
         <div class="bar energy" id="bar-energy"><span class="fill"></span><span class="label"></span></div>
         <div class="bar fatigue" id="bar-fatigue"><span class="fill"></span><span class="label"></span></div>
@@ -50,13 +58,20 @@
         <div id="status-footer">
           <span id="gold">0 moedas</span>
           <button type="button" id="inv-open">Inventário (I)</button>
+          <button type="button" id="org-open">Organização (O)</button>
           <button type="button" id="admin-open" hidden>Administração (G)</button>
         </div>
       </section>
 
       <section id="chat">
         <div id="chat-log" aria-live="polite"></div>
-        <input id="chat-input" maxlength="200" placeholder="Enter para conversar" autocomplete="off">
+        <div id="chat-send">
+          <select id="chat-channel" aria-label="Canal">
+            <option value="">Geral</option>
+            <option value="org" hidden>Organização</option>
+          </select>
+          <input id="chat-input" maxlength="200" placeholder="Enter para conversar" autocomplete="off">
+        </div>
       </section>
 
       <section id="help">
@@ -65,10 +80,9 @@
         <b>M</b> meditar ·
         <b>R</b> descansar ·
         <b>I</b> inventário ·
+        <b>O</b> organização ·
         <b>Enter</b> chat
-        <br>Duelo: <b>/duelo Nome</b> · <b>/aceitar</b> · <b>/recusar</b> · <b>/render</b>
-        <br>Organização: <b>/org</b> · <b>/entrar id</b> · <b>/o texto</b> · <b>/assumir cargo</b> ·
-        <b>/disputar Nome</b> · <b>/sair</b>
+        <br><b>Clique num jogador</b> para desafiar, disputar cargo ou (líderes) promover e expulsar.
       </section>
     </aside>
   </div>

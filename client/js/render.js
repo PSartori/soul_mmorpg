@@ -171,6 +171,8 @@ export class Renderer {
       size <= view ? (size - view) / 2 : Math.min(Math.max(center - view / 2, 0), size - view);
     const camX = Math.round(cam(me ? me.rx : 0, canvas.width, mapLayer.width));
     const camY = Math.round(cam(me ? me.ry : 0, canvas.height, mapLayer.height));
+    this.camX = camX;
+    this.camY = camY;
 
     ctx.save();
     ctx.translate(-camX, -camY);
@@ -398,4 +400,12 @@ export class Renderer {
     ctx.fillText(f.text, f.x, f.y - 30 - t * 28);
     ctx.globalAlpha = 1;
   }
+}
+
+// Converte um clique na tela para coordenadas do mundo (o canvas pode estar redimensionado pelo CSS)
+export function screenToWorld(renderer, ev) {
+  const rect = renderer.canvas.getBoundingClientRect();
+  const sx = (ev.clientX - rect.left) * (renderer.canvas.width / rect.width);
+  const sy = (ev.clientY - rect.top) * (renderer.canvas.height / rect.height);
+  return { x: sx + (renderer.camX ?? 0), y: sy + (renderer.camY ?? 0) };
 }

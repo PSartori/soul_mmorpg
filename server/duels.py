@@ -92,6 +92,30 @@ class DuelSystem:
             "left": round(max(0.0, duel.ends_at - now)),
         }
 
+    def invite_for(self, p: Player) -> dict | None:
+        """Desafio que p recebeu e ainda não respondeu (para o aviso com botões no cliente)."""
+        challenge = self.challenges.get(p.id)
+        challenger = self.world.players.get(challenge.challenger_id) if challenge else None
+        if challenge is None or challenger is None:
+            return None
+        return {
+            "from": challenger.name,
+            "prize": self._stake_name(challenge.stake) or None,
+            "left": round(max(0.0, challenge.expires_at - self.world.time)),
+        }
+
+    def handle_op(self, p: Player, data: dict) -> None:
+        """Pedidos da interface: {"t": "duel", "op": "challenge" | "accept" | "decline" | "forfeit"}."""
+        op = data.get("op")
+        if op == "challenge" and isinstance(data.get("target"), str):
+            self.challenge(p, data["target"])
+        elif op == "accept":
+            self.accept(p)
+        elif op == "decline":
+            self.decline(p)
+        elif op == "forfeit":
+            self.forfeit(p)
+
     # ------------------------------------------------------------ comandos
 
     def challenge(self, p: Player, target_name: str, stake: Stake | None = None) -> None:
@@ -113,7 +137,7 @@ class DuelSystem:
             self.challenges[target.id] = Challenge(p.id, target.id, w.time + C.DUEL_CHALLENGE_SECONDS, stake)
             what = f"pelo seu cargo de {self._stake_name(stake)}" if stake else "para um duelo"
             w._private(p, f"Você desafiou {target.name} {'pelo cargo' if stake else 'para um duelo'}. Aguardando resposta…")
-            w._private(target, f"{p.name} te desafiou {what}. Digite /aceitar ou /recusar.")
+            w._private(target, f"{p.name} te desafiou {what}. Responda no aviso na tela.")
 
     def accept(self, p: Player) -> None:
         w = self.world
@@ -137,7 +161,7 @@ class DuelSystem:
             prize = f" pelo cargo de {self._stake_name(duel.stake)}" if duel.stake else ""
             w._system(f"{challenger.name} e {p.name} vão duelar{prize}!")
             for who in (challenger, p):
-                w._private(who, f"O duelo começa em {C.DUEL_COUNTDOWN:g} segundos. /render para desistir.")
+                w._private(who, f"O duelo começa em {C.DUEL_COUNTDOWN:g} segundos. Para desistir, use o botão Desistir.")
 
     def decline(self, p: Player) -> None:
         w = self.world
