@@ -150,8 +150,13 @@ material), inventário com equipamento e moedas (save v3), saque no chão com
 exclusividade para quem matou, e ações de regra para dar itens e dar/tirar
 moedas. Lojas ficam para quando houver NPCs.
 
-**Próximo passo sugerido:** base 7 (ferramenta de balanceamento), agora que há
-classes, skills, equipamentos e inimigos para comparar.
+**Base 7 (concluída):** `./balance.sh` gera `docs/balanceamento.md` com classes,
+rotação, PvE, PvP e equipamentos por nível, mais alertas automáticos. Primeiros
+achados com o conteúdo de exemplo: o golpe básico domina o dano no começo (as
+skills de energia pesam pouco), e os inimigos atuais deixam de ser desafio a partir
+do nível 10 — faltam inimigos por faixa de nível.
+
+**Próximo passo sugerido:** base 8 (organizações e cargos).
 
 ## 10. Perguntas em aberto
 

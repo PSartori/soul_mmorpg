@@ -28,6 +28,23 @@ backups automáticos em `var/backups/` (um ao ligar o servidor e outro a cada 6 
 guarda os 28 mais recentes). Para restaurar, pare o servidor e copie um backup
 por cima de `var/game.db`.
 
+## Balanceamento
+
+```bash
+./balance.sh --out docs/balanceamento.md
+```
+
+Gera um relatório (Markdown) com vida, energia e dano por segundo de cada classe,
+de onde vem o dano de cada uma, quanto tempo cada classe leva para matar cada
+inimigo (e o contrário), a matriz de PvP e o ganho de cada equipamento — por
+nível, mais uma lista de **alertas** (classe muito acima/abaixo da média, skill
+que quase não rende, inimigo fácil ou difícil demais, item que não muda nada).
+
+As lutas rodam no próprio motor do jogo, então os números acompanham qualquer
+mudança nos YAML. Opções: `--levels 1 20 50`, `--seconds 60`,
+`--equip espada_curta,gibao_de_couro` (todos lutam equipados). Limitação: os
+lutadores ficam parados, então alcance e esquiva não contam.
+
 ## Controles
 
 | Tecla | Ação |
@@ -120,7 +137,10 @@ client/              JavaScript puro, sem build
   js/input.js        teclado
   js/net.js          WebSocket
 data/                conteúdo do jogo (veja acima)
-tests/               testes das regras do servidor (unittest)
+tools/               ferramentas de desenvolvimento
+  simulator.py       lutas simuladas no motor do jogo
+  balance.py         relatório de balanceamento (./balance.sh)
+tests/               testes do servidor e das ferramentas (unittest)
 ```
 
 `World` não conhece rede: tudo que precisa sair vai para uma caixa de saída
