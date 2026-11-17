@@ -24,6 +24,8 @@ EVENT_FIELDS: dict[str, tuple[str, ...]] = {
     "duel_end": ("race", "class", "result", "reason", "opponent_race", "opponent_class"),
     # o cargo do personagem numa organização mudou (entrou, subiu, caiu, saiu...)
     "rank_change": ("race", "class", "org", "rank", "old_rank", "cause"),
+    # o personagem concluiu uma missão (data/quests.yaml)
+    "quest_complete": ("race", "class", "quest"),
 }
 # Todo evento também recebe a organização e o cargo atuais de quem disparou
 EVENT_FIELDS = {
@@ -34,7 +36,7 @@ EVENT_FIELDS = {
 SPECIAL_CONDITIONS = ("chance", "flags", "not_flags")
 
 ACTIONS = ("message", "broadcast", "lose_xp", "gain_xp", "set_class", "set_race",
-           "set_flag", "clear_flag", "add_effect", "give_item", "give_gold", "lose_gold")
+           "set_flag", "clear_flag", "add_effect", "give_item", "give_gold", "lose_gold", "start_quest")
 
 KILLER_KINDS = ("player", "enemy", "none")  # "none": morreu sem autor (ex.: veneno de quem já saiu)
 VICTIM_KINDS = ("player", "enemy")

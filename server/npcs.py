@@ -5,7 +5,9 @@ NPC fica vem do mapa. Fluxo, tudo por botões no cliente ({"t": "npc", "op": ...
 
   talk {id}             começa a conversa com o NPC (precisa estar perto)
   choose {i}            escolhe a opção i do nó atual: roda as ações dela e vai
-                        para o próximo nó, abre a loja ou encerra
+                        para o próximo nó, abre a loja ou encerra. Opções de
+                        missão (server/quests.py) têm i em texto: "missao:id",
+                        "aceitar:id", "entregar:id" e "voltar"
   buy {item, qty}       compra da loja aberta
   sell {slot, qty}      vende para a loja aberta um item da bolsa
   close                 encerra
@@ -22,7 +24,6 @@ from typing import TYPE_CHECKING
 
 from . import config as C
 from .entities import Npc
-from .orgs import total_level
 from .rules import rule_matches
 
 if TYPE_CHECKING:
@@ -34,8 +35,9 @@ if TYPE_CHECKING:
 @dataclass
 class Conversation:
     npc_id: int  # id da entidade do NPC
-    node: str | None  # nó atual do diálogo (None com a loja aberta)
+    node: str | None  # nó atual do diálogo (None com a loja aberta ou vendo uma missão)
     shop: str | None = None  # loja aberta
+    offer: str | None = None  # missão sendo oferecida (esperando Aceitar)
 
 
 def _qty(value: object) -> int | None:
@@ -105,12 +107,18 @@ class NpcSystem:
         if not self._near(p, npc, C.NPC_TALK_RANGE):
             self.world._private(p, f"Chegue mais perto de {npc.name} para conversar.")
             return
+        self.world.quests.on_talk(p, npc.defn.id)  # antes de montar as opções: pode deixar uma missão pronta
         self.talks[p.id] = Conversation(npc_id=npc.id, node=npc.defn.start)
         self._send_node(p, npc, npc.defn.start)
 
     def choose(self, p: Player, index: object) -> None:
         talk, npc = self._current(p)
-        if talk is None or talk.node is None or isinstance(index, bool) or not isinstance(index, int):
+        if talk is None:
+            return
+        if isinstance(index, str):
+            self._quest_choice(p, npc, talk, index[:80])
+            return
+        if talk.node is None or isinstance(index, bool) or not isinstance(index, int):
             return
         node = npc.defn.nodes[talk.node]
         if not node.options:  # nó sem opções: o único botão é encerrar
@@ -119,7 +127,7 @@ class NpcSystem:
         if not 0 <= index < len(node.options):
             return
         option = node.options[index]
-        ctx = self._context(p)
+        ctx = self.world._player_context(p)
         if not rule_matches(option.rule, ctx, p.flags, self.world.rng):
             return  # a opção não está disponível (o cliente mostrou algo velho)
         for name, args in option.rule.actions:
@@ -186,30 +194,54 @@ class NpcSystem:
             return None, None
         return talk, npc
 
-    def _context(self, p: Player) -> dict:
-        """O que as condições ("if") das opções de diálogo podem consultar."""
-        membership = self.world.orgs.of(p)
-        return {
-            "race": p.race_id,
-            "class": p.class_id,
-            "org": membership.org if membership else None,
-            "rank": membership.rank if membership else None,
-            "gold": p.inventory.gold,
-            "total_level": total_level(p),
-        }
+    def _quest_choice(self, p: Player, npc: Npc, talk: Conversation, choice: str) -> None:
+        """Opções de missão que entram sozinhas na conversa (não estão em npcs.yaml)."""
+        quests = self.world.quests
+        op, _, quest_id = choice.partition(":")
+        quest = self.world.content.quests.get(quest_id)
+        if op == "voltar":
+            self._back_to_start(p, npc, talk)
+        elif op == "missao" and quest and quest.giver == npc.defn.id and quests.available(p, quest):
+            talk.node, talk.offer = None, quest.id
+            self._send(p, npc, quests.offer_text(p, quest), [
+                {"i": f"aceitar:{quest.id}", "text": "Aceitar"},
+                {"i": "voltar", "text": "Agora não"},
+            ], quest=quest.id)
+        elif op == "aceitar" and quest and talk.offer == quest.id:
+            if quests.start(p, quest.id):
+                self._back_to_start(p, npc, talk)
+        elif op == "entregar" and quest and quest.turn_in == npc.defn.id and quests.complete(p, quest.id):
+            if p.id in self.talks:
+                talk.node, talk.offer = None, None
+                self._send(p, npc, self.world._format(quest.complete_text, p, {}),
+                           [{"i": "voltar", "text": "Continuar"}])
+
+    def _back_to_start(self, p: Player, npc: Npc, talk: Conversation) -> None:
+        talk.node, talk.offer, talk.shop = npc.defn.start, None, None
+        self._send_node(p, npc, npc.defn.start)
 
     def _send_node(self, p: Player, npc: Npc, node_id: str) -> None:
         node: DialogNode = npc.defn.nodes[node_id]
-        ctx = self._context(p)
-        options = [
+        ctx = self.world._player_context(p)
+        options = []
+        if node_id == npc.defn.start:  # missões aparecem no começo da conversa
+            quests = self.world.quests
+            options += [{"i": f"entregar:{q.id}", "text": f"Entregar: {q.name}", "kind": "turn_in"}
+                        for q in quests.turn_ins(p, npc.defn.id)]
+            options += [{"i": f"missao:{q.id}", "text": f"Missão: {q.name}", "kind": "offer"}
+                        for q in quests.offers(p, npc.defn.id)]
+        options += [
             {"i": i, "text": self.world._format(opt.text, p, ctx)}
             for i, opt in enumerate(node.options)
             if rule_matches(opt.rule, ctx, p.flags, self.world.rng)
         ]
+        self._send(p, npc, self.world._format(node.text, p, ctx), options)
+
+    def _send(self, p: Player, npc: Npc, text: str, options: list[dict], quest: str | None = None) -> None:
         self.world._outbox.append((p.id, {
-            "t": "dialog", **self._header(npc),
-            "text": self.world._format(node.text, p, ctx),
+            "t": "dialog", **self._header(npc), "text": text,
             "options": options,  # vazio: o cliente mostra só "Encerrar"
+            "quest": quest,  # missão sendo oferecida: o cliente mostra objetivos e recompensas
         }))
 
     def _open_shop(self, p: Player, npc: Npc, shop: ShopDef) -> None:

@@ -8,6 +8,7 @@ import { InvitePanel, OrgWindow, PlayerMenu } from "./social.js";
 import { InventoryUI, RARITY_COLORS } from "./inventory.js";
 import { AdminUI } from "./admin.js";
 import { DialogBox, ShopWindow } from "./npc.js";
+import { QuestLog } from "./quests.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -22,7 +23,10 @@ const state = {
   trails: [], // dashes
   floaters: [],
   you: null,
-  defs: { skills: {}, effects: {}, enemies: {}, races: {}, classes: {}, items: {}, orgs: {}, roles: {}, npcs: {} },
+  defs: {
+    skills: {}, effects: {}, enemies: {}, races: {}, classes: {}, items: {}, orgs: {}, roles: {}, npcs: {}, quests: {},
+  },
+  questMarks: {}, // id do NPC -> "!" (tem missão) ou "?" (missão pronta para entregar)
   statLabels: {},
 };
 
@@ -53,7 +57,7 @@ function handleMessage(msg) {
       state.statLabels = msg.stat_labels;
       state.defs = {
         skills: msg.skills, effects: msg.effects, enemies: msg.enemies, races: msg.races, classes: msg.classes,
-        items: msg.items, orgs: msg.orgs, roles: msg.roles, npcs: msg.npcs,
+        items: msg.items, orgs: msg.orgs, roles: msg.roles, npcs: msg.npcs, quests: msg.quests,
       };
       npcRange = msg.npc_range ?? npcRange;
       kickText = null;
@@ -86,8 +90,9 @@ function handleMessage(msg) {
       break;
     case "shop":
       dialogBox.hide();
-      inventoryUI.toggle(false); // a loja ocupa o mesmo canto do inventário e da organização
+      inventoryUI.toggle(false); // a loja ocupa o mesmo canto do inventário, organização e diário
       orgWindow.toggle(false);
+      questLog.toggle(false);
       shopWindow.show(msg);
       break;
     case "npc_close":
@@ -129,9 +134,10 @@ function handleMessage(msg) {
 function applyContent(msg) {
   state.defs = {
     skills: msg.skills, effects: msg.effects, enemies: msg.enemies, races: msg.races, classes: msg.classes,
-    items: msg.items, orgs: msg.orgs, roles: msg.roles, npcs: msg.npcs,
+    items: msg.items, orgs: msg.orgs, roles: msg.roles, npcs: msg.npcs, quests: msg.quests,
   };
   renderer.defs = state.defs;
+  questLog.refresh();
   lastHotbarKey = "";
   lastStatsKey = "";
   inventoryUI.lastKey = "";
@@ -206,6 +212,10 @@ function applySnapshot(msg) {
   reconcile(msg.you);
   inventoryUI.update(msg.you.inv, msg.you.icd);
   shopWindow.refresh();
+  if (msg.you.q) {
+    questLog.update(msg.you.q);
+    state.questMarks = msg.you.q.marks ?? {};
+  }
   updateHud();
 }
 
@@ -237,6 +247,11 @@ function handleFx(fx, now) {
       break;
     case "lvl":
       state.floaters.push({ x: fx.x, y: fx.y - 12, text: "Nível +1", color: "#ffd65a", born: now, ttl: 1400 });
+      break;
+    case "quest":
+      if (fx.id === state.myId) {
+        state.floaters.push({ x: fx.x, y: fx.y - 18, text: "Missão concluída!", color: "#ffe9b0", born: now, ttl: 2000 });
+      }
       break;
     case "swing":
       state.swings.push({ id: fx.id, r: fx.r ?? 30, born: now, ttl: 160 });
@@ -489,7 +504,8 @@ $("admin-open").addEventListener("click", (ev) => {
   ev.currentTarget.blur();
 });
 
-const dialogBox = new DialogBox({ send: (msg) => conn?.send(msg) });
+const dialogBox = new DialogBox({ getDefs: () => state.defs, send: (msg) => conn?.send(msg) });
+const questLog = new QuestLog({ getDefs: () => state.defs, send: (msg) => conn?.send(msg) });
 const shopWindow = new ShopWindow({
   getDefs: () => state.defs,
   getInventory: () => inventoryUI.inv,
@@ -522,21 +538,20 @@ $("inv-open").addEventListener("click", (ev) => {
 });
 
 const orgWindow = new OrgWindow({ getDefs: () => state.defs, send: (msg) => conn?.send(msg) });
-// Inventário, organização e loja ocupam o mesmo canto: abrir um fecha os outros
-function toggleOrg() {
-  orgWindow.toggle();
-  if (orgWindow.isOpen) {
-    inventoryUI.toggle(false);
-    if (shopWindow.isOpen) closeNpc();
-  }
+// Inventário, organização, diário e loja ocupam o mesmo canto: abrir um fecha os outros
+function openInCorner(win) {
+  win.toggle();
+  if (!win.isOpen) return;
+  for (const other of [inventoryUI, orgWindow, questLog]) if (other !== win) other.toggle(false);
+  if (shopWindow.isOpen) closeNpc();
 }
-function toggleInventory() {
-  inventoryUI.toggle();
-  if (inventoryUI.isOpen) {
-    orgWindow.toggle(false);
-    if (shopWindow.isOpen) closeNpc();
-  }
-}
+const toggleOrg = () => openInCorner(orgWindow);
+const toggleInventory = () => openInCorner(inventoryUI);
+const toggleQuests = () => openInCorner(questLog);
+$("quests-open").addEventListener("click", (ev) => {
+  toggleQuests();
+  ev.currentTarget.blur();
+});
 $("org-open").addEventListener("click", (ev) => {
   toggleOrg();
   ev.currentTarget.blur();
@@ -596,10 +611,12 @@ const input = setupInput({
     else if (name === "org") toggleOrg();
     else if (name === "admin" && state.you?.staff) adminUI.toggle();
     else if (name === "talk") talkToNearest();
+    else if (name === "quests") toggleQuests();
     else if (name === "escape") {
       inventoryUI.toggle(false);
       adminUI.toggle(false);
       orgWindow.toggle(false);
+      questLog.toggle(false);
       playerMenu.close();
       closeNpc();
     }

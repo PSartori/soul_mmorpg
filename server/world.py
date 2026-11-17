@@ -25,7 +25,8 @@ from .admin import AdminSystem
 from .db import Database
 from .duels import DuelSystem
 from .npcs import NpcSystem
-from .orgs import OrgSystem
+from .orgs import OrgSystem, total_level
+from .quests import QuestSystem
 from .entities import (
     DIRECTIONS, MOVE_KEYS, ActiveEffect, Enemy, Entity, GroundItem, MoveKeys, Player, Projectile,
 )
@@ -111,6 +112,7 @@ class World:
         self.orgs = OrgSystem(self)
         self.admin = AdminSystem(self)
         self.npcs = NpcSystem(self)  # personagens do mundo: conversas e lojas
+        self.quests = QuestSystem(self)  # missões (data/quests.yaml)
 
         self._spawn_enemies()
         self.npcs.spawn()
@@ -169,6 +171,8 @@ class World:
             elif drop.item:
                 drop.item = content.items[drop.item.id]
         notes += self.orgs.revalidate()
+        for p in self.players.values():
+            self.quests.normalize(p)  # missões removidas saem; objetivos mudados são ajustados
 
         # primeiro as definições novas, depois os mapas (o cliente redesenha com elas)
         self._outbox.append((None, {"t": "content", **content.client_payload()}))
@@ -282,6 +286,7 @@ class World:
             player.x, player.y = tilemap.spawn
 
         self.admin.load_player(player)
+        self.quests.normalize(player)
         self.players[player.id] = player
         self._system(f"{player.name} entrou no jogo.")
         if is_new:
@@ -376,6 +381,8 @@ class World:
             self.admin.handle(player, data)
         elif kind == "npc":
             self.npcs.handle_op(player, data)
+        elif kind == "quest":
+            self.quests.handle_op(player, data)
 
     def save_all(self) -> None:
         for player in self.players.values():
@@ -438,6 +445,7 @@ class World:
             self._update_player(player, dt)
         self.duels.update()
         self.npcs.update()
+        self.quests.update()
         for enemy in list(self.enemies.values()):
             self._update_enemy(enemy, dt)
         self._update_projectiles(dt)
@@ -484,6 +492,8 @@ class World:
             if player.inventory.dirty:  # inventário só vai quando muda
                 you["inv"] = player.inventory.client_info()
                 player.inventory.dirty = False
+            if (quests := self.quests.snapshot_for(player)) is not None:  # diário também
+                you["q"] = quests
             self._outbox.append((player.id, {
                 "t": "snap", "ents": near(ents), "projs": near(all_projs), "drops": near(all_drops),
                 "fx": near(all_fx), "you": you,
@@ -673,6 +683,22 @@ class World:
             gold = p.inventory.gold
             lost = int(gold * args["percent"] / 100) if "percent" in args else min(gold, args["amount"])
             p.inventory.add_gold(-lost)
+        elif name == "start_quest":
+            self.quests.start(p, args)
+
+    def _player_context(self, p: Player) -> dict:
+        """O que as condições de diálogos e missões podem consultar sobre o personagem."""
+        membership = self.orgs.of(p)
+        return {
+            "race": p.race_id,
+            "class": p.class_id,
+            "org": membership.org if membership else None,
+            "rank": membership.rank if membership else None,
+            "gold": p.inventory.gold,
+            "total_level": total_level(p),
+            "quest_done": set(p.quests_done),
+            "quest_active": set(p.quests),
+        }
 
     @staticmethod
     def _lose_xp(p: Player, percent: float, which: str) -> None:
@@ -939,6 +965,8 @@ class World:
             # Bônus de abate vai para o atributo principal (o primeiro de "train") da skill usada
             if isinstance(killer, Player) and skill and skill.train:
                 self._train(killer, next(iter(skill.train)), target.defn.kill_xp)
+            if isinstance(killer, Player):
+                self.quests.on_kill(killer, target.defn.id)
 
         if isinstance(killer, Player):
             victim_player = target if isinstance(target, Player) else None

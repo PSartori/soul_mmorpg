@@ -192,6 +192,13 @@ primeiro escoamento de moedas. NPCs ficam no `.yaml` do mapa ou no Tiled. Conver
 pela interface: clique no NPC ou tecla E. Ficou para depois: missões (entregar itens,
 contar abates), treinadores, estoque limitado e preços que variam.
 
+**Missões (concluído):** `data/quests.yaml` com quem oferece (`giver`) e a quem entregar
+(`turn_in`), condições, objetivos (derrotar, trazer itens, falar com NPC, chegar a um
+lugar, ter uma marca), recompensas com as ações das regras e repetição com intervalo.
+O NPC oferece e recebe sozinho na conversa, com **!** e **?** sobre a cabeça; diário na
+tecla J e acompanhamento no painel lateral. Save v5. Evento `quest_complete` e ação
+`start_quest` nas regras. Cinco missões de exemplo encadeadas (Vó Celeste → Bruno).
+
 Ainda a decidir sobre a hierarquia (seção 6): limite de recusas de desafio de
 cargo (hoje pode recusar sempre), cargo vago por inatividade do ocupante, e se
 alguns cargos devem ser por torneio ou pontos de contribuição.
@@ -218,3 +225,40 @@ alguns cargos devem ser por torneio ou pontos de contribuição.
 - Formato da disputa por cargos (seção 6).
 - Mundo aberto ou portais (seção 8).
 - Quantos jogadores simultâneos queremos suportar.
+
+## 12. Roteiro dos próximos sistemas
+
+Combinado em 17/11/2026. A ordem pode mudar conforme as decisões em aberto.
+
+**Fase 1 — o que fazer no dia a dia (PvE)**
+- ~~Missões~~ (feito).
+- Inimigos por faixa de nível (10–50), elites e chefes com fases.
+- IA com caminho de verdade (A*); hoje labirintos prendem os inimigos.
+- Treinadores e skills aprendidas com requisitos; escolher as 8 da barra.
+- Criação de itens: receitas em YAML que transformam materiais em itens.
+- Grupos: chat, divisão de XP e saque, missões em grupo.
+
+**Fase 2 — alfa fechado**
+- Contas com vários personagens; ban por conta e IP; troca e recuperação de senha.
+- Proteções: limite de mensagens, de tentativas de senha, hash de senha fora do loop.
+- Hospedagem na VPS: HTTPS (Caddy), reinício automático, backup fora da máquina, logs.
+- Tutorial dos primeiros minutos (pode ser uma sequência de missões).
+- Botão de relatar bug, com mapa, posição e hora.
+
+**Fase 3 — identidade do jogo** (depende das decisões das seções 4, 5 e 11)
+- Liberações (estágios 1 e 2), provavelmente com uma provação feita como missão/chefe.
+- Teto de progressão.
+- Árvore de raças e classes e transformações reais.
+- Penalidades de morte reais.
+
+**Fase 4 — mundo vivo e social**
+- Ferramentas de roleplay: fala local em balão, /me, mensagem privada, ignorar, perfil.
+- Invasões e eventos em ondas, iniciados pela equipe ou por agenda.
+- Hierarquia sem abuso: limite de recusas, cargo vago por inatividade, torneios.
+- Fama e ranking (abates, mortes, chefes).
+- Troca entre jogadores e banco.
+- Controle da economia: moedas em circulação e mais escoamentos.
+
+**Em paralelo:** arte e som (sprites, animações, aparência do personagem), desempenho
+(busca espacial, snapshots só com o que mudou, interpolação), interface (minimapa,
+teclas configuráveis, barra personalizável).

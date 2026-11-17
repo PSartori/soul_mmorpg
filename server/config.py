@@ -74,6 +74,7 @@ NPC_TALK_RANGE = 80.0  # distância (centro a centro) para começar a conversar 
 NPC_LEAVE_RANGE = 128.0  # afastou-se mais que isso: a conversa (e a loja) fecha
 SHOP_BUY_RATE = 0.4  # padrão do buy_rate: a loja paga 40% do valor do item
 SHOP_MAX_QTY = 999  # máximo de unidades numa compra ou venda
+MAX_ACTIVE_QUESTS = 10  # missões em andamento ao mesmo tempo (data/quests.yaml)
 
 # --- Duelos (server/duels.py) -------------------------------------------------
 DUEL_CHALLENGE_RANGE = 256.0  # distância máxima para desafiar/aceitar (8 tiles)

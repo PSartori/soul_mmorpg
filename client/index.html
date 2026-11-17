@@ -31,6 +31,13 @@
           <div id="admin-body"></div>
         </section>
         <section id="shop" hidden aria-label="Loja"></section>
+        <section id="quests" hidden aria-label="Diário de missões">
+          <header>
+            <h3>Missões</h3>
+            <button type="button" id="quests-close" aria-label="Fechar">✕</button>
+          </header>
+          <div id="quests-body"></div>
+        </section>
         <section id="dialog" hidden aria-label="Conversa"></section>
         <div id="announce" hidden></div>
         <div id="invite" hidden></div>
@@ -61,9 +68,12 @@
           <span id="gold">0 moedas</span>
           <button type="button" id="inv-open">Inventário (I)</button>
           <button type="button" id="org-open">Organização (O)</button>
+          <button type="button" id="quests-open">Missões (J)</button>
           <button type="button" id="admin-open" hidden>Administração (G)</button>
         </div>
       </section>
+
+      <section id="tracker" hidden aria-label="Missões em andamento"></section>
 
       <section id="chat">
         <div id="chat-log" aria-live="polite"></div>
@@ -83,6 +93,7 @@
         <b>R</b> descansar ·
         <b>I</b> inventário ·
         <b>O</b> organização ·
+        <b>J</b> missões ·
         <b>E</b> conversar ·
         <b>Enter</b> chat
         <br><b>Clique num jogador</b> para desafiar, disputar cargo ou (líderes) promover e expulsar.

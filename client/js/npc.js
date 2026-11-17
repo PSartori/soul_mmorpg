@@ -1,6 +1,7 @@
 // Conversa com NPCs e janela de loja. Só mostra e envia pedidos ({t: "npc", op: ...});
 // quem decide o que aparece, o preço e se a compra/venda vale é o servidor.
 import { RARITY_COLORS, describe } from "./inventory.js";
+import { questOfferBlock } from "./quests.js";
 
 const el = (tag, className, text) => {
   const node = document.createElement(tag);
@@ -32,7 +33,8 @@ function npcHeading(msg) {
 // ------------------------------------------------------------------ fala do NPC
 
 export class DialogBox {
-  constructor({ send }) {
+  constructor({ getDefs, send }) {
+    this.getDefs = getDefs;
     this.send = send;
     this.root = document.getElementById("dialog");
     this.root.hidden = true;
@@ -42,7 +44,7 @@ export class DialogBox {
     return !this.root.hidden;
   }
 
-  // msg: {npc, name, title, color, text, options: [{i, text}]}
+  // msg: {npc, name, title, color, text, options: [{i, text, kind?}], quest?}
   show(msg) {
     const close = button("✕", () => this.send({ t: "npc", op: "close" }), "close");
     close.setAttribute("aria-label", "Encerrar conversa");
@@ -52,9 +54,12 @@ export class DialogBox {
     const options = el("div", "options");
     const choices = msg.options.length ? msg.options : [{ i: 0, text: "Encerrar" }];
     choices.forEach((opt, n) => {
-      options.append(button(`${n + 1}. ${opt.text}`, () => this.send({ t: "npc", op: "choose", i: opt.i })));
+      // opções de missão ("offer" / "turn_in") ganham destaque
+      const b = button(`${n + 1}. ${opt.text}`, () => this.send({ t: "npc", op: "choose", i: opt.i }), opt.kind ?? "");
+      options.append(b);
     });
-    this.root.replaceChildren(header, el("p", "text", msg.text), options);
+    const quest = msg.quest ? this.getDefs().quests?.[msg.quest] : null;
+    this.root.replaceChildren(header, el("p", "text", msg.text), ...(quest ? [questOfferBlock(quest)] : []), options);
     this.root.hidden = false;
   }
 

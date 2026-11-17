@@ -65,13 +65,14 @@ loja:
 """
 
 
-def make_content(npcs: str = NPCS_YAML, shops: str = SHOPS_YAML) -> Content:
+def make_content(npcs: str = NPCS_YAML, shops: str = SHOPS_YAML, quests: str = "") -> Content:
     tmp = Path(tempfile.mkdtemp())
     try:
         for path in C.DATA_DIR.glob("*.yaml"):
             shutil.copy(path, tmp / path.name)
         (tmp / "npcs.yaml").write_text(npcs, encoding="utf-8")
         (tmp / "shops.yaml").write_text(shops, encoding="utf-8")
+        (tmp / "quests.yaml").write_text(quests, encoding="utf-8")  # as missões reais citam outros NPCs
         return dataclasses.replace(Content.load(tmp), rules=())
     finally:
         shutil.rmtree(tmp)
@@ -322,10 +323,10 @@ class NpcContentTests(unittest.TestCase):
         tmp = Path(tempfile.mkdtemp())
         try:
             for path in C.DATA_DIR.glob("*.yaml"):
-                if path.name not in ("npcs.yaml", "shops.yaml"):
+                if path.name not in ("npcs.yaml", "shops.yaml", "quests.yaml"):
                     shutil.copy(path, tmp / path.name)
             content = Content.load(tmp)
-            self.assertEqual((content.npcs, content.shops), ({}, {}))
+            self.assertEqual((content.npcs, content.shops, content.quests), ({}, {}, {}))
         finally:
             shutil.rmtree(tmp)
 

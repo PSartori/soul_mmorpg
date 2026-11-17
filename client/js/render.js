@@ -182,6 +182,7 @@ export class Renderer {
     for (const d of state.drops) this.drawDrop(d, now);
     for (const t of state.trails) this.drawTrail(t, now);
     const ents = [...state.ents.values()].sort((a, b) => a.ry - b.ry);
+    this.questMarks = state.questMarks ?? {};
     for (const e of ents) this.drawEntity(e, e.id === state.myId, now);
     for (const s of state.swings) this.drawSwing(s, state, now);
     for (const r of state.rings) this.drawRing(r, now);
@@ -217,17 +218,30 @@ export class Renderer {
     ctx.fillStyle = "rgba(255,255,255,0.9)";
     ctx.beginPath(); ctx.arc(x, y + 4, 2.5, 0, TAU); ctx.fill(); // olha para baixo
 
-    // balão de fala, flutuando devagar
-    const bx = x + 13;
-    const by = y - 22 + Math.sin(now / 400 + e.id) * 1.5;
-    ctx.fillStyle = "rgba(255, 248, 220, 0.95)";
-    ctx.strokeStyle = "rgba(0,0,0,0.55)";
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.ellipse(bx, by, 8, 6, 0, 0, TAU);
-    ctx.fill(); ctx.stroke();
-    ctx.fillStyle = "#4a3b10";
-    for (let i = -1; i <= 1; i++) ctx.fillRect(bx + i * 3 - 1, by - 1, 2, 2);
+    const mark = this.questMarks?.[e.id];
+    if (mark) {
+      // missão: "!" amarelo (tem missão para você) ou "?" (pronta para entregar), pulsando acima da cabeça
+      const my = y - (def.title ? 50 : 40) + Math.sin(now / 250) * 2;
+      ctx.font = "bold 18px system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = "rgba(0,0,0,0.8)";
+      ctx.strokeText(mark, x, my);
+      ctx.fillStyle = mark === "?" ? "#7ee07e" : "#ffd84a";
+      ctx.fillText(mark, x, my);
+    } else {
+      // balão de fala, flutuando devagar
+      const bx = x + 13;
+      const by = y - 22 + Math.sin(now / 400 + e.id) * 1.5;
+      ctx.fillStyle = "rgba(255, 248, 220, 0.95)";
+      ctx.strokeStyle = "rgba(0,0,0,0.55)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.ellipse(bx, by, 8, 6, 0, 0, TAU);
+      ctx.fill(); ctx.stroke();
+      ctx.fillStyle = "#4a3b10";
+      for (let i = -1; i <= 1; i++) ctx.fillRect(bx + i * 3 - 1, by - 1, 2, 2);
+    }
 
     ctx.textAlign = "center";
     ctx.font = "bold 11px system-ui, sans-serif";

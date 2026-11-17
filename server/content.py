@@ -18,7 +18,7 @@ from . import config as C
 from .rules import (
     ACTIONS, DUEL_END_REASONS, DUEL_RESULTS, EVENT_FIELDS, KILLER_KINDS, RANK_CAUSES, VICTIM_KINDS, ZONES, Rule,
 )
-from .stats import STAT_NAMES
+from .stats import STAT_LABELS, STAT_NAMES
 from .tilemap import RESERVED_MARKS
 
 SKILL_TYPES = ("melee", "projectile", "area", "dash", "self")
@@ -33,8 +33,9 @@ RARITIES = ("common", "uncommon", "rare", "epic")
 PROMOTIONS = ("default", "appointment", "challenge")
 PERMISSIONS = ("kick", "mute", "ban", "announce", "teleport", "give", "set_role", "log", "reload")
 ID_RE = re.compile(r"[a-z0-9_]+")
-# Campos que as condições ("if") das opções de diálogo podem usar
-DIALOG_FIELDS = ("race", "class", "org", "rank", "gold", "total_level")
+# Campos que as condições ("if") das opções de diálogo e das missões podem usar
+DIALOG_FIELDS = ("race", "class", "org", "rank", "gold", "total_level", "quest_done", "quest_active")
+OBJECTIVE_KINDS = ("kill", "collect", "talk", "reach", "flag")
 DEFAULT_BUY_RATE = C.SHOP_BUY_RATE
 
 _REQUIRED = object()
@@ -288,6 +289,34 @@ class NpcDef:
 
 
 @dataclass(frozen=True)
+class QuestObjective:
+    kind: str  # kill | collect | talk | reach | flag
+    target: str  # inimigo, item, NPC, mapa ou marca
+    count: int = 1  # quantos (kill e collect)
+    area: tuple[int, int, int, int] | None = None  # reach: área em tiles (None = o mapa todo)
+    label: str = ""  # texto do objetivo; vazio = gerado (ex.: "Derrotar Espectro")
+
+    @property
+    def live(self) -> bool:
+        """Progresso medido na hora (itens na bolsa, marca) em vez de contado."""
+        return self.kind in ("collect", "flag")
+
+
+@dataclass(frozen=True)
+class QuestDef:
+    id: str
+    name: str
+    description: str
+    objectives: tuple[QuestObjective, ...]
+    rule: Rule  # condições para a missão aparecer e recompensas (ações) ao concluir
+    giver: str | None  # NPC que oferece (None = só por ação start_quest)
+    turn_in: str | None  # NPC a quem se entrega (None = conclui sozinha quando os objetivos terminam)
+    complete_text: str
+    repeatable: bool
+    cooldown: float  # segundos (horário real) até poder repetir
+
+
+@dataclass(frozen=True)
 class Content:
     effects: dict[str, EffectDef]
     skills: dict[str, SkillDef]
@@ -301,6 +330,7 @@ class Content:
     roles: dict[str, RoleDef] = field(default_factory=dict)
     shops: dict[str, ShopDef] = field(default_factory=dict)
     npcs: dict[str, NpcDef] = field(default_factory=dict)
+    quests: dict[str, QuestDef] = field(default_factory=dict)
 
     @property
     def enemy_by_mark(self) -> dict[str, EnemyDef]:
@@ -328,7 +358,57 @@ class Content:
             "orgs": {o.id: o.client_info() for o in self.orgs.values()},
             "roles": {r.id: r.client_info() for r in self.roles.values()},
             "npcs": {n.id: n.client_info() for n in self.npcs.values()},
+            "quests": {q.id: self.quest_client_info(q) for q in self.quests.values()},
         }
+
+    def objective_label(self, obj: QuestObjective) -> str:
+        if obj.label:
+            return obj.label
+        # .get: um conteúdo montado à mão (testes) pode não ter passado pela validação
+        if obj.kind == "kill":
+            return f"Derrotar {getattr(self.enemies.get(obj.target), 'name', obj.target)}"
+        if obj.kind == "collect":
+            return f"Conseguir {getattr(self.items.get(obj.target), 'name', obj.target)}"
+        return f"Falar com {getattr(self.npcs.get(obj.target), 'name', obj.target)}"  # reach/flag têm label
+
+    def reward_labels(self, quest: QuestDef) -> list[str]:
+        """Recompensas que dá para mostrar ao jogador (itens, moedas, XP)."""
+        labels = []
+        for name, args in quest.rule.actions:
+            if name == "give_item":
+                item_name = getattr(self.items.get(args["id"]), "name", args["id"])
+                labels.append(f"{args['qty']}× {item_name}" if args["qty"] > 1 else item_name)
+            elif name == "give_gold":
+                labels.append(f"{args} moedas")
+            elif name == "gain_xp":
+                labels.append(f"{args['amount']:g} XP de {STAT_LABELS[args['stat']]}")
+        return labels
+
+    def quest_client_info(self, q: QuestDef) -> dict:
+        npc_name = lambda npc_id: getattr(self.npcs.get(npc_id), "name", npc_id) if npc_id else None  # noqa: E731
+        return {
+            "name": q.name, "description": q.description, "giver": npc_name(q.giver),
+            "turn_in": npc_name(q.turn_in), "repeatable": q.repeatable,
+            "objectives": [{"label": self.objective_label(o), "count": o.count, "kind": o.kind}
+                           for o in q.objectives],
+            "rewards": self.reward_labels(q),
+        }
+
+    def check_maps(self, maps: dict) -> None:
+        """Confere o que o conteúdo diz sobre mapas (objetivos reach) contra os mapas carregados."""
+        for q in self.quests.values():
+            for i, obj in enumerate(q.objectives):
+                if obj.kind != "reach":
+                    continue
+                where = f"quests.yaml > {q.id}.objectives[{i}]"
+                tilemap = maps.get(obj.target)
+                if tilemap is None:
+                    raise ContentError(f"{where}: mapa {obj.target!r} não existe (mapas: {', '.join(maps)})")
+                if obj.area:
+                    x0, y0, x1, y1 = obj.area
+                    if not (0 <= x0 <= x1 < tilemap.width and 0 <= y0 <= y1 < tilemap.height):
+                        raise ContentError(f"{where}: area {list(obj.area)} fora do mapa {obj.target} "
+                                           f"({tilemap.width}×{tilemap.height}) ou invertida")
 
     @classmethod
     def load(cls, data_dir: str | Path) -> Content:
@@ -346,17 +426,20 @@ class Content:
         default_race = player.text("default_race")
         player.done()
 
-        # Regras por último: as condições e ações são conferidas contra todo o resto
+        # Regras, missões e NPCs por último: condições e ações são conferidas contra todo o resto.
+        # Missões, NPCs e regras se referem umas às outras, então os ids das missões vêm antes.
+        quests_raw = _load_yaml(data_dir / "quests.yaml", True)
         refs = _RuleRefs(effects=effects, skills=skills, enemies=enemies, races=races, classes=classes, items=items,
-                         orgs=orgs)
+                         orgs=orgs, quests=tuple(quests_raw))
         rules = tuple(_parse_rule(i, raw, refs) for i, raw in _load_yaml(data_dir / "rules.yaml").items())
-        # lojas e NPCs são opcionais (o arquivo pode não existir)
+        # lojas, NPCs e missões são opcionais (o arquivo pode não existir)
         shops = {i: _parse_shop(i, raw, items) for i, raw in _load_yaml(data_dir / "shops.yaml", True).items()}
         npcs = {i: _parse_npc(i, raw, refs) for i, raw in _load_yaml(data_dir / "npcs.yaml", True).items()}
+        quests = {i: _parse_quest(i, raw, refs) for i, raw in quests_raw.items()}
 
         content = cls(effects=effects, skills=skills, enemies=enemies, races=races, classes=classes,
                       rules=rules, default_race=default_race, items=items, orgs=orgs, roles=roles,
-                      shops=shops, npcs=npcs)
+                      shops=shops, npcs=npcs, quests=quests)
         content.check_references()
         return content
 
@@ -419,6 +502,17 @@ class Content:
                         raise ContentError(f"npcs.yaml > {npc.id}.dialogue > {node.id}.options[{i}]: "
                                            f"loja {opt.shop!r} não existe em shops.yaml")
         self._check_shop_prices()
+        for q in self.quests.values():
+            where = f"quests.yaml > {q.id}"
+            for field_name in ("giver", "turn_in"):
+                npc_id = getattr(q, field_name)
+                if npc_id and npc_id not in self.npcs:
+                    raise ContentError(f"{where}: {field_name} {npc_id!r} não existe em npcs.yaml")
+            for i, obj in enumerate(q.objectives):
+                table = {"kill": (self.enemies, "enemies.yaml"), "collect": (self.items, "items.yaml"),
+                         "talk": (self.npcs, "npcs.yaml")}.get(obj.kind)
+                if table and obj.target not in table[0]:
+                    raise ContentError(f"{where}.objectives[{i}]: {obj.target!r} não existe em {table[1]}")
 
     def _check_shop_prices(self) -> None:
         """Nenhuma loja pode comprar um item por mais do que outra o vende (seria dinheiro infinito)."""
@@ -782,6 +876,7 @@ class _RuleRefs:
     classes: dict[str, ClassDef]
     items: dict[str, ItemDef] = field(default_factory=dict)
     orgs: dict[str, OrgDef] = field(default_factory=dict)
+    quests: tuple[str, ...] = ()  # só os ids (missões e regras se referem umas às outras)
 
     def rank_ids(self) -> tuple[str, ...]:
         return tuple(dict.fromkeys(r.id for o in self.orgs.values() for r in o.ranks))
@@ -797,6 +892,7 @@ class _RuleRefs:
             "zone": ZONES, "killer": KILLER_KINDS, "victim": VICTIM_KINDS, "stat": STAT_NAMES,
             "duel": bool, "level": float, "gold": float, "total_level": float,
             "org": self.orgs, "rank": self.rank_ids(), "old_rank": self.rank_ids(), "cause": RANK_CAUSES,
+            "quest": self.quests, "quest_done": self.quests, "quest_active": self.quests,
         }
         value = table.get(field)
         return tuple(value) if isinstance(value, (dict, tuple)) else value
@@ -864,6 +960,10 @@ def _check_action(where: str, when: str, name: str, args: Any, refs: _RuleRefs) 
         return result
     if name in ("set_flag", "clear_flag"):
         return flag_name(args)
+    if name == "start_quest":
+        if args not in refs.quests:
+            raise ContentError(f"{where}: missão {args!r} não existe em quests.yaml")
+        return args
     if name == "set_class":
         if args not in refs.classes:
             raise ContentError(f"{where}: classe {args!r} não existe em classes.yaml")
@@ -931,11 +1031,11 @@ def _parse_conditions(cond: _Fields, fields: tuple[str, ...], refs: _RuleRefs, c
     return tuple(conditions)
 
 
-def _parse_actions(f: _Fields, when: str, refs: _RuleRefs) -> tuple[tuple[str, Any], ...]:
-    """Lê uma lista "do" de ações."""
+def _parse_actions(f: _Fields, when: str, refs: _RuleRefs, key: str = "do") -> tuple[tuple[str, Any], ...]:
+    """Lê uma lista de ações ("do" nas regras e diálogos, "rewards" nas missões)."""
     actions = []
-    for i, item in enumerate(f.list("do")):
-        item_where = f"{f.where}.do[{i}]"
+    for i, item in enumerate(f.list(key)):
+        item_where = f"{f.where}.{key}[{i}]"
         if not isinstance(item, dict) or len(item) != 1:
             raise ContentError(f"{item_where}: cada ação é um item com uma única chave (ex.: - message: texto)")
         ((name, args),) = item.items()
@@ -959,7 +1059,8 @@ def _parse_rule(rid: str, raw: Any, refs: _RuleRefs) -> Rule:
 def parse_rules(raw: dict, content: Content) -> tuple[Rule, ...]:
     """Valida regras avulsas contra um conteúdo já carregado (usado nos testes)."""
     refs = _RuleRefs(effects=content.effects, skills=content.skills, enemies=content.enemies,
-                     races=content.races, classes=content.classes, items=content.items, orgs=content.orgs)
+                     races=content.races, classes=content.classes, items=content.items, orgs=content.orgs,
+                     quests=tuple(content.quests))
     return tuple(_parse_rule(i, r, refs) for i, r in raw.items())
 
 
@@ -1076,12 +1177,7 @@ def _parse_npc(nid: str, raw: Any, refs: _RuleRefs) -> NpcDef:
         options = []
         for i, opt_raw in enumerate(n.list("options")):
             o = _Fields(f"{n.where}.options[{i}]", opt_raw)
-            conditions = tuple(
-                # número sozinho em gold/total_level quer dizer "pelo menos"
-                (key, {"min": value} if key in ("gold", "total_level") and not isinstance(value, dict) else value)
-                for key, value in _parse_conditions(o.sub("if"), DIALOG_FIELDS, refs, "nas condições de diálogo",
-                                                    chance=False)
-            )
+            conditions = _dialog_conditions(o, refs, "nas condições de diálogo")
             goto, shop = o.text("goto", None), o.text("shop", None)
             if goto and shop:
                 raise ContentError(f"{o.where}: use goto OU shop, não os dois")
@@ -1109,3 +1205,66 @@ def _parse_npc(nid: str, raw: Any, refs: _RuleRefs) -> NpcDef:
     )
     f.done()
     return npc
+
+
+def _dialog_conditions(f: _Fields, refs: _RuleRefs, context: str) -> tuple[tuple[str, Any], ...]:
+    """Condições de diálogo/missão: sem chance; número sozinho em gold/total_level quer dizer "pelo menos"."""
+    return tuple(
+        (key, {"min": value} if key in ("gold", "total_level") and not isinstance(value, dict) else value)
+        for key, value in _parse_conditions(f.sub("if"), DIALOG_FIELDS, refs, context, chance=False)
+    )
+
+
+def _parse_objective(where: str, raw: Any) -> QuestObjective:
+    f = _Fields(where, raw)
+    kinds = [k for k in OBJECTIVE_KINDS if k in f.raw]
+    if len(kinds) != 1:
+        raise ContentError(f"{where}: cada objetivo tem exatamente um tipo: {', '.join(OBJECTIVE_KINDS)}")
+    kind = kinds[0]
+    target = f.text(kind)
+    count, area = 1, None
+    if kind in ("kill", "collect"):
+        count = f.int("count", 1, minimum=1)
+    if kind == "reach" and "area" in f.raw:
+        f.used.add("area")
+        value = f.raw["area"]
+        if not (isinstance(value, list) and len(value) == 4
+                and all(isinstance(v, int) and not isinstance(v, bool) for v in value)):
+            raise ContentError(f"{where}: area deve ser [x0, y0, x1, y1] em tiles")
+        area = (value[0], value[1], value[2], value[3])
+    if kind == "flag" and not ID_RE.fullmatch(target):
+        raise ContentError(f"{where}: flag precisa de um nome de marca (letras minúsculas, números e _)")
+    label = f.text("label", "")
+    if kind in ("reach", "flag") and not label:
+        raise ContentError(f"{where}: objetivo {kind} precisa de 'label' (o texto que o jogador vê)")
+    f.done()
+    return QuestObjective(kind=kind, target=target, count=count, area=area, label=label)
+
+
+def _parse_quest(qid: str, raw: Any, refs: _RuleRefs) -> QuestDef:
+    f = _Fields(f"quests.yaml > {qid}", raw)
+    objectives_raw = f.list("objectives")
+    if not objectives_raw:
+        raise ContentError(f"{f.where}: 'objectives' precisa de pelo menos um objetivo")
+    objectives = tuple(_parse_objective(f"{f.where}.objectives[{i}]", o) for i, o in enumerate(objectives_raw))
+    giver = f.text("giver", None)
+    turn_in = f.text("turn_in", None) if "turn_in" in f.raw else giver
+    repeatable = f.flag("repeatable", False)
+    cooldown = f.num("cooldown", 0.0)
+    if cooldown and not repeatable:
+        raise ContentError(f"{f.where}: 'cooldown' só vale para missões com repeatable: true")
+    quest = QuestDef(
+        id=qid,
+        name=f.text("name"),
+        description=f.text("description", ""),
+        objectives=objectives,
+        rule=Rule(id=qid, when="quest_complete", conditions=_dialog_conditions(f, refs, "nas condições de missão"),
+                  actions=_parse_actions(f, "quest_complete", refs, key="rewards")),
+        giver=giver,
+        turn_in=turn_in,
+        complete_text=f.text("complete_text", "Muito bem. Aqui está sua recompensa."),
+        repeatable=repeatable,
+        cooldown=cooldown,
+    )
+    f.done()
+    return quest

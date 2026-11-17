@@ -15,7 +15,9 @@ const SLOT_KEYS = {
 export const SLOT_LABELS = ["1 · Espaço", "2 · F", "3", "4", "5", "6", "7", "8"];
 
 const ACTION_KEYS = { KeyM: "meditate", KeyR: "rest" };
-const LOCAL_KEYS = { KeyI: "inventory", KeyO: "org", KeyG: "admin", KeyE: "talk", Escape: "escape" }; // tratadas no cliente
+const LOCAL_KEYS = {
+  KeyI: "inventory", KeyO: "org", KeyJ: "quests", KeyG: "admin", KeyE: "talk", Escape: "escape",
+}; // tratadas no cliente
 
 export function isTypingInField() {
   const el = document.activeElement;

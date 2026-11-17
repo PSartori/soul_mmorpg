@@ -446,7 +446,7 @@ button:hover { background: #3a6c9c; }
 #dialog header .npc-name { flex: 1; }
 .npc-name { font-size: 14px; }
 .npc-title { color: var(--muted); font-size: 12px; }
-#dialog .text { margin: 6px 0 10px; font-size: 14px; line-height: 1.5; }
+#dialog .text { margin: 6px 0 10px; font-size: 14px; line-height: 1.5; white-space: pre-line; }
 #dialog .options { display: flex; flex-direction: column; gap: 4px; }
 #dialog .options button {
   text-align: left;
@@ -492,3 +492,50 @@ button:hover { background: #3a6c9c; }
 .shop-info { min-height: 48px; padding: 6px 8px; font-size: 12px; background: var(--panel-2); border-radius: 5px; }
 .shop-info .name { font-weight: 700; color: var(--rarity); }
 .shop-info .meta { color: var(--muted); }
+
+/* ---------------------------------------------------------------- missões */
+#dialog .options button.offer { border-color: #b8962e; color: #ffe08a; }
+#dialog .options button.turn_in { border-color: #4f9a4f; color: #a8f0a8; }
+.quest-offer { margin: -2px 0 10px; padding: 6px 10px; background: rgba(255, 220, 120, .06); border-left: 3px solid #b8962e; border-radius: 4px; font-size: 13px; }
+.quest-offer .quest-name { font-weight: 700; color: #ffe08a; }
+.quest-offer .label { margin-top: 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.quest-offer .rewards { color: var(--r-gold); }
+.quest-offer .hint { margin-top: 4px; font-size: 12px; color: var(--muted); }
+ul.objectives { margin: 2px 0; padding-left: 16px; }
+ul.objectives li.done { color: #7bd65a; list-style: none; margin-left: -14px; }
+
+#quests {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: min(360px, calc(100% - 24px));
+  max-height: calc(100% - 24px);
+  overflow-y: auto;
+  padding: 10px 12px;
+  background: rgba(22, 24, 30, .97);
+  border: 1px solid #353946;
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, .5);
+  font-size: 13px;
+}
+#quests[hidden] { display: none; }
+#quests header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+#quests h3 { margin: 0; font-size: 15px; flex: 1; color: #ffe08a; }
+#quests-close { padding: 2px 8px; background: var(--panel-2); border-color: #353946; }
+#quests .hint { margin: 2px 0; font-size: 12px; color: var(--muted); }
+.quest-card { margin-bottom: 8px; padding: 8px; background: var(--panel-2); border-radius: 6px; }
+.quest-card .head { display: flex; align-items: center; gap: 6px; }
+.quest-card .head b { flex: 1; color: #ffe08a; }
+.quest-card .ready { font-size: 11px; font-weight: 700; color: #7bd65a; }
+.quest-card .desc { margin: 4px 0; color: var(--text); }
+.quest-card .rewards { margin: 4px 0; color: var(--r-gold); font-size: 12px; }
+.quest-card button.small { padding: 2px 8px; font-size: 11px; margin-top: 4px; }
+.quest-card button.danger { background: #8a2f2f; border-color: #a33c3c; }
+.quest-card.done b { color: var(--muted); }
+
+#side #tracker { padding: 8px 12px; font-size: 12px; max-height: 180px; overflow-y: auto; }
+#tracker[hidden] { display: none; }
+#tracker .track + .track { margin-top: 6px; }
+#tracker .name { font-weight: 700; color: #ffe08a; }
+#tracker .ready { font-weight: 600; color: #7bd65a; }
+#tracker ul.objectives { padding-left: 14px; }

@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-SAVE_VERSION = 4
+SAVE_VERSION = 5
 
 
 class SaveVersionError(ValueError):
@@ -45,10 +45,17 @@ def _v3_to_v4(data: dict) -> dict:
     return data
 
 
+def _v4_to_v5(data: dict) -> dict:
+    """v5: missões em andamento (progresso) e concluídas, começando vazias."""
+    data.setdefault("quests", {"active": {}, "done": {}})
+    return data
+
+
 MIGRATIONS: dict[int, Callable[[dict], dict]] = {
     1: _v1_to_v2,
     2: _v2_to_v3,
     3: _v3_to_v4,
+    4: _v4_to_v5,
 }
 
 

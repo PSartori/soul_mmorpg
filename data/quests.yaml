@@ -1,0 +1,91 @@
+# Missões.
+#
+# O NPC que dá a missão (giver) a oferece sozinho na conversa ("Missão: nome"), sem
+# precisar escrever diálogo; quando os objetivos terminam, o NPC de entrega (turn_in)
+# mostra "Entregar: nome". O progresso aparece no diário (tecla J) e no canto da tela.
+#
+#   name, description
+#   giver          NPC que oferece (data/npcs.yaml). Sem giver, a missão só começa pela
+#                  ação start_quest (num diálogo ou numa regra).
+#   turn_in        NPC a quem se entrega (padrão: o próprio giver). Sem giver nem
+#                  turn_in, a missão termina sozinha quando os objetivos se cumprem.
+#   if             condições para a missão ser oferecida, como nas opções de diálogo:
+#                    race, class, org, rank, gold, total_level, flags, not_flags,
+#                    quest_done: outra_missao, quest_active: outra_missao
+#   objectives     todos precisam se cumprir (em qualquer ordem):
+#                    - { kill: espectro, count: 5 }              derrotar inimigos
+#                    - { collect: couro_grosso, count: 3 }       ter os itens na bolsa;
+#                                                                são entregues ao concluir
+#                    - { talk: cacador }                         conversar com um NPC
+#                    - { reach: bosque, area: [x0, y0, x1, y1], label: Entrar no bosque }
+#                                                                chegar a um lugar (sem area:
+#                                                                o mapa todo); label obrigatório
+#                    - { flag: marca, label: Texto }             ter uma marca de progressão
+#                  Todo objetivo aceita "label" para trocar o texto gerado.
+#   rewards        ações ao concluir, as mesmas de rules.yaml (give_item, give_gold,
+#                  gain_xp, set_flag, set_class, start_quest...)
+#   complete_text  o que o NPC diz na entrega
+#   repeatable     true = pode fazer de novo depois de concluir
+#   cooldown       segundos até poder repetir (horário real; só com repeatable)
+#
+# Ao concluir, o evento quest_complete das regras dispara (campo quest = id).
+# Nomes, textos e números provisórios.
+
+primeiros_passos:
+  name: Primeiros passos
+  giver: ancia
+  description: "Os espectros rondam os campos perto da cidade. Mostre que sabe se defender: derrote três deles."
+  objectives:
+    - { kill: espectro, count: 3 }
+  rewards:
+    - give_gold: 15
+    - give_item: { id: pocao_vida, qty: 2 }
+  complete_text: "Nada mal para quem acabou de chegar. Fique com isto."
+
+noticias_do_bosque:
+  name: Notícias do bosque
+  giver: ancia
+  if: { quest_done: primeiros_passos }
+  description: "Faz dias que Bruno não aparece. Vá até o Bosque Sombrio, pelo portal a nordeste, e veja se ele está bem."
+  objectives:
+    - { reach: bosque, label: Entrar no Bosque Sombrio }
+    - { talk: cacador }
+  rewards:
+    - give_gold: 25
+    - gain_xp: { stat: agility, amount: 60 }
+  complete_text: "Ele está vivo, então. Teimoso como sempre... Obrigada, {name}."
+
+fragmentos_para_hilda:
+  name: Fragmentos para a mercearia
+  giver: mercadora
+  description: "Fragmentos espectrais dão um bom pó para poções. Traga cinco e pago melhor do que no balcão."
+  objectives:
+    - { collect: fragmento_espectral, count: 5 }
+  rewards:
+    - give_gold: 12
+  complete_text: "Perfeitos. Volte quando tiver mais."
+  repeatable: true
+  cooldown: 1800
+
+couro_para_otto:
+  name: Couro para a forja
+  giver: ferreiro
+  if: { quest_done: primeiros_passos }
+  description: "Preciso de couro grosso para reforçar gibões. Os Brutos dos campos têm de sobra."
+  objectives:
+    - { collect: couro_grosso, count: 3 }
+  rewards:
+    - give_item: gibao_de_couro
+  complete_text: "Ótimo couro. Tome, este gibão é seu."
+
+caca_ao_devorador:
+  name: Caça ao Devorador
+  giver: cacador
+  if: { quest_done: noticias_do_bosque }
+  description: "Os Devoradores estão se aproximando do meu acampamento. Derrube dois e eu recompenso bem."
+  objectives:
+    - { kill: devorador, count: 2 }
+  rewards:
+    - give_gold: 40
+    - give_item: tonico_veloz
+  complete_text: "Dois a menos. Você leva jeito para a caça."

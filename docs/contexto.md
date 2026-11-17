@@ -1,6 +1,6 @@
 # Contexto geral do projeto
 
-Resumo de tudo o que foi conversado e construído até 15/11/2026 (atualizado com NPCs e lojas): de onde o projeto
+Resumo de tudo o que foi conversado e construído até 15/11/2026 (atualizado com NPCs, lojas e missões): de onde o projeto
 veio, como trabalhamos, o que foi decidido, o que existe hoje e o que vem a seguir.
 Para detalhes técnicos, veja o `README.md`; para a visão do jogo e as decisões em
 aberto, o `docs/design.md`; para números de balanceamento, o `docs/balanceamento.md`.
@@ -36,9 +36,9 @@ Desperto, Espectral, Vigília, Coro Sombrio, Espectro, Devorador...) são
   comandos no chat; toda funcionalidade nova já nasce com menus, botões e janelas.
   Comandos podem existir só como atalho.
 - **Conteúdo é dado, não código.** Skills, efeitos, itens, inimigos, raças, classes,
-  regras, organizações, papéis da equipe, NPCs, lojas e mapas ficam em `data/`, validados ao
+  regras, organizações, papéis da equipe, NPCs, lojas, missões e mapas ficam em `data/`, validados ao
   carregar (um erro de digitação aponta arquivo, item e campo).
-- **Cada etapa termina testada**: testes automáticos (hoje 284) e verificação no
+- **Cada etapa termina testada**: testes automáticos (hoje 303) e verificação no
   navegador, e só então commit.
 
 ---
@@ -76,7 +76,8 @@ Desperto, Espectral, Vigília, Coro Sombrio, Espectro, Devorador...) são
 | `abc99f6` | Base 10 | Administração |
 | `c9a094c` | Base 11 | Recarregar conteúdo ao vivo e mapas no Tiled |
 | `ceb9c05` | Interface | Duelos e organizações por menus e botões, no lugar dos comandos |
-| — | NPCs e lojas | NPCs com diálogo (condições e ações), lojas de compra e venda |
+| `2f9d345` | NPCs e lojas | NPCs com diálogo (condições e ações), lojas de compra e venda |
+| — | Missões | Oferta e entrega pelos NPCs, objetivos, diário, recompensas, save v5 |
 
 ### Sistemas prontos
 
@@ -102,6 +103,10 @@ Desperto, Espectral, Vigília, Coro Sombrio, Espectro, Devorador...) são
   nível total e marcas, e que podem dar itens, marcar progressão ou trocar
   raça/classe; lojas (`data/shops.yaml`) que vendem com estoque infinito e compram por
   uma fração do valor — o primeiro escoamento de moedas.
+- **Missões**: oferecidas e recebidas pelos NPCs na conversa (com **!** e **?** sobre a
+  cabeça), objetivos de derrotar, trazer itens, falar com NPC, chegar a um lugar ou ter
+  uma marca; recompensas com as ações das regras; repetíveis com intervalo; diário (J)
+  e acompanhamento no painel lateral.
 - **Administração**: papéis da equipe, janela de administração (expulsar, silenciar,
   banir, teleporte, dar itens, anúncios, registro de tudo).
 - **Ferramentas**: relatório de balanceamento (`./balance.sh`), administração pelo
@@ -115,6 +120,8 @@ Desperto, Espectral, Vigília, Coro Sombrio, Espectro, Devorador...) são
 - **Organizações**: Vigília (Humanos e Despertos) e Coro Sombrio (Espectrais).
 - **NPCs**: Hilda (mercadora), Otto (ferreiro) e Vó Celeste (dá 3 poções uma vez) nos
   Campos de Início; Bruno (caçador, paga melhor por materiais) no Bosque Sombrio.
+- **Missões**: Primeiros passos → Notícias do bosque → Caça ao Devorador (Vó Celeste e
+  Bruno), Couro para a forja (Otto) e Fragmentos para a mercearia (Hilda, repetível).
 - **Inimigos**: Espectro, Bruto, Devorador. **Itens**: 11, entre poções, materiais e
   equipamentos.
 - **Regras de exemplo**: Humano morto por Espectro vira Espectral; Espectral morto
@@ -160,21 +167,22 @@ Do `docs/balanceamento.md` (lutas simuladas no próprio motor):
   conta/IP; recuperação de senha.
 - **Hospedagem na VPS**: HTTPS, reinício automático, backup fora da máquina.
 - **Proteções**: limite de mensagens por segundo, tentativas de senha.
-- **Missões** (entregar itens, contar abates) e treinadores, em cima dos NPCs; lojas
-  com estoque limitado ou preço variável; eventos iniciados pela equipe (ex.: invasões).
+- Treinadores, criação de itens e grupos (missões em grupo); lojas com estoque
+  limitado ou preço variável; eventos iniciados pela equipe (ex.: invasões).
 - **Arte e som** (hoje tudo são formas geométricas); tutorial dos primeiros minutos.
 
 ---
 
 ## 7. Próximos passos recomendados
 
-1. **Liberações** — é o que mais define o jogo; depende das respostas acima.
-2. **Missões** — os NPCs já têm diálogo com condições e ações; faltam objetivos
-   (entregar itens, matar X inimigos) e recompensas.
-3. **Alfa fechado na VPS** — contas, proteções e hospedagem, para o dono e alguns
+O roteiro completo, por fases, está em `docs/design.md` (seção 12).
+
+1. **Alfa fechado na VPS** — contas, proteções e hospedagem, para o dono e alguns
    amigos jogarem de verdade.
-4. **Inimigos para níveis altos** e ajustes que o balanceamento apontar.
-5. Arte e som em paralelo, a qualquer momento.
+2. **Liberações e teto de progressão** — é o que mais define o jogo; depende das
+   decisões em aberto.
+3. **Inimigos para níveis altos** e ajustes que o balanceamento apontar.
+4. Arte e som em paralelo, a qualquer momento.
 
 ---
 

@@ -21,6 +21,7 @@ def load_game_data(data_dir: str | Path = C.DATA_DIR, maps_dir: str | Path = C.M
     maps = load_maps(maps_dir, content.enemy_by_mark, enemy_ids=content.enemies, npc_ids=content.npcs)
     if not maps:
         raise ValueError(f"Nenhum mapa em {maps_dir}")
+    content.check_maps(maps)  # objetivos de missão que apontam para mapas
     return content, maps
 
 

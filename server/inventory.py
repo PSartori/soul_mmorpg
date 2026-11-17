@@ -62,6 +62,18 @@ class Inventory:
         self.dirty = True
         return ItemStack(stack.item, moved)
 
+    def remove_item(self, item_id: str, qty: int) -> int:
+        """Tira até qty unidades do item, de quaisquer espaços (os últimos primeiro). Devolve quantas tirou."""
+        removed = 0
+        for i in reversed(range(self.size)):
+            stack = self.slots[i]
+            if removed >= qty:
+                break
+            if stack and stack.item.id == item_id:
+                taken = self.take(i, qty - removed)
+                removed += taken.qty if taken else 0
+        return removed
+
     def room_for(self, item: ItemDef) -> int:
         """Quantas unidades do item ainda cabem (completando pilhas e em espaços vazios)."""
         partial = sum(item.stack - s.qty for s in self.slots if s and s.item.id == item.id and s.qty < item.stack)

@@ -106,6 +106,7 @@ lutadores ficam parados, então alcance e esquiva não contam.
 | R | descansar (recupera cansaço e vida) |
 | I | inventário (clique: usar/equipar · Shift + clique: largar · clique no equipado: tirar) |
 | E | conversar com o NPC mais próximo (também dá para clicar nele) |
+| J | diário de missões: em andamento (objetivos, recompensa, a quem entregar, abandonar) e concluídas |
 | G | janela de administração (só para a equipe) |
 | O | janela da organização: entrar, sair, cargos e ocupantes, assumir vaga, disputar, promover, rebaixar, expulsar |
 | Enter | chat; o seletor ao lado escolhe o canal (Geral ou Organização) |
@@ -132,6 +133,7 @@ Cada arquivo tem no topo a explicação de todos os campos.
 | `data/roles.yaml` | papéis da equipe: selo, nível na hierarquia e permissões |
 | `data/npcs.yaml` | NPCs: nome, título, cor e diálogo em nós (opções com condições, ações, `goto` e `shop`) |
 | `data/shops.yaml` | lojas: o que vendem (preço = `value` do item ou próprio) e o que compram (`buys`, `buy_rate`) |
+| `data/quests.yaml` | missões: quem oferece e a quem entregar, condições, objetivos (kill, collect, talk, reach, flag), recompensas, repetição |
 | `data/races.yaml` | raças: se aparecem na criação, classe inicial, bônus de vida/energia/velocidade |
 | `data/classes.yaml` | classes: raça, skills da barra, multiplicador de treino por atributo |
 | `data/rules.yaml` | regras "quando X, se Y, faça Z": morte, abates, subida de nível (veja abaixo) |
@@ -186,6 +188,7 @@ server/              Python (aiohttp)
   rules.py           vocabulário das regras (eventos, campos, ações) e comparação
   duels.py           desafios e duelos
   npcs.py            NPCs: conversa (nós de diálogo) e lojas (compra e venda)
+  quests.py          missões: progresso, entrega, recompensas e marcadores ! / ?
   inventory.py       inventário: espaços que empilham, equipamento e moedas
   orgs.py            organizações, cargos e disputas (vínculos na tabela memberships)
   admin.py           equipe, sanções (ban/silêncio) e registro de ações
@@ -206,6 +209,7 @@ client/              JavaScript puro, sem build
   js/admin.js        janela de administração
   js/social.js       menu do jogador, aviso de desafio e janela da organização
   js/npc.js          conversa com NPCs e janela da loja
+  js/quests.js       diário de missões, acompanhamento no painel e oferta na conversa
   js/input.js        teclado
   js/net.js          WebSocket
 data/                conteúdo do jogo (veja acima)
@@ -242,14 +246,14 @@ HTTP: `GET /api/races` lista as raças da tela de criação.
 Cliente → servidor: `login {name, password, race}`, `move {seq, up, down, left, right}`,
 `skill {id, f}`, `duel {op: challenge|accept|decline|forfeit, target}`,
 `org {op: info|join|leave|claim|dispute|promote|demote|expel, ...}`,
-`npc {op: talk|choose|buy|sell|close, id|i|item|slot, qty}`, `chat {text, ch}`, `admin {op, ...}` (equipe), `item {op: use|drop, slot: n}`, `item {op: unequip, slot: weapon|armor|accessory}`,
+`npc {op: talk|choose|buy|sell|close, id|i|item|slot, qty}`, `quest {op: abandon, id}`, `chat {text, ch}`, `admin {op, ...}` (equipe), `item {op: use|drop, slot: n}`, `item {op: unequip, slot: weapon|armor|accessory}`,
 `meditate`, `rest`, `chat {text}`.
 
 Servidor → cliente: `welcome {id, map, skills, effects, enemies, stat_labels, ...}`,
 `map {map, x, y}` (atravessou um portal), `org_data` (janela da organização),
 `dialog {npc, name, title, text, options}` / `shop {npc, shop, sells, buys}` / `npc_close` (NPCs), `announce {text, by}`, `kick {text}` (antes de
 desconectar), `admin_data`/`admin_result` (equipe), `error {msg}`, `snap {ents, projs, drops, fx, you}`
-(20×/s, só o que está perto; `you.inv` só vem quando o inventário muda), `chat {from, text}`, `sys {text}`.
+(20×/s, só o que está perto; `you.inv` e `you.q` — diário e marcadores das missões — só vêm quando mudam), `chat {from, text}`, `sys {text}`.
 
 ### Regras atuais
 
@@ -297,6 +301,14 @@ desconectar), `admin_data`/`admin_result` (equipe), `error {msg}`, `snap {ents, 
   da loja) e vende por uma fração dele (`buy_rate`, padrão 40%, no mínimo 1 moeda).
   Compra só sai se houver moedas e espaço para tudo. O servidor recusa conteúdo em
   que uma loja compra um item por mais do que outra o vende.
+- **Missões**: o NPC que dá a missão mostra **!** e a oferece na conversa ("Missão: …",
+  com objetivos e recompensa); quando os objetivos se cumprem, o NPC de entrega mostra
+  **?** e a opção "Entregar: …". Abates e conversas são contados quando acontecem; lugar
+  (`reach`) é conferido a cada tick; itens (`collect`) e marcas (`flag`) são medidos na
+  hora — vender os itens desfaz o "pronta". Itens de `collect` são entregues ao
+  concluir. Sem NPC de entrega, a missão conclui sozinha. Até 10 em andamento
+  (`MAX_ACTIVE_QUESTS`); repetíveis esperam o `cooldown` (horário real). Concluir
+  dispara o evento `quest_complete` das regras. Progresso fica no save (v5).
 - **Mapas**: `inicio` (Campos de Início, onde nascem personagens novos) e `bosque`
   (Bosque Sombrio, mais perigoso, com Devoradores), ligados por portais. Cada mapa
   tem seus inimigos, saque e projéteis; o mapa onde o personagem está é salvo.
@@ -311,7 +323,8 @@ desconectar), `admin_data`/`admin_result` (equipe), `error {msg}`, `snap {ents, 
 
 - Trocar de raça/classe por escolha já é possível por NPC (ação `set_race`/`set_class`
   num diálogo), mas o conteúdo atual não tem nenhum NPC assim.
-- Lojas com estoque infinito e preço fixo; missões (entregar itens a um NPC) ainda não existem.
+- Lojas com estoque infinito e preço fixo.
+- Missões só individuais (grupos ainda não existem); sem missões com tempo limite ou que falham.
 - Outros jogadores são desenhados com suavização simples, não interpolação com atraso fixo.
 - Login sem HTTPS: na VPS, colocar atrás de um proxy com TLS (ex.: Caddy) antes de abrir ao público.
 - O hash de senha roda no loop do servidor (~0,1 s por login); ok para poucos jogadores.

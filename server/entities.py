@@ -98,6 +98,10 @@ class Player(Entity):
     race_def: RaceDef | None = None
     class_def: ClassDef | None = None
     flags: set[str] = field(default_factory=set)  # marcas de progressão (data/rules.yaml)
+    quests: dict[str, list[int]] = field(default_factory=dict)  # missões em andamento -> progresso por objetivo
+    quests_done: dict[str, list] = field(default_factory=dict)  # missões concluídas -> [vezes, horário da última]
+    quests_ready: set[str] = field(default_factory=set)  # já avisou que está pronta (não vai para o save)
+    quests_sent: str = ""  # último diário enviado ao cliente (só manda quando muda)
     inventory: Inventory = field(default_factory=Inventory)
     item_cooldowns: dict[str, float] = field(default_factory=dict)  # item -> segundos restantes
     portal_lock: bool = False  # acabou de atravessar um portal: só usa outro depois de sair dele
@@ -186,6 +190,8 @@ class Player(Entity):
             "race": self.race_id,
             "class": self.class_id,
             "flags": sorted(self.flags),
+            "quests": {"active": {qid: list(p) for qid, p in self.quests.items()},
+                       "done": {qid: {"n": d[0], "at": d[1]} for qid, d in self.quests_done.items()}},
             "inventory": self.inventory.to_dict(),
             "map": self.map_id,
             "x": self.x,
@@ -206,6 +212,18 @@ class Player(Entity):
         flags = data.get("flags")
         if isinstance(flags, list):
             self.flags = {f for f in flags if isinstance(f, str)}
+        quests = data.get("quests") if isinstance(data.get("quests"), dict) else {}
+        active = quests.get("active") if isinstance(quests.get("active"), dict) else {}
+        self.quests = {
+            qid: [max(0, v) for v in prog] for qid, prog in active.items()
+            if isinstance(qid, str) and isinstance(prog, list)
+            and all(isinstance(v, int) and not isinstance(v, bool) for v in prog)
+        }
+        done = quests.get("done") if isinstance(quests.get("done"), dict) else {}
+        self.quests_done = {
+            qid: [d["n"], float(d["at"])] for qid, d in done.items()
+            if isinstance(d, dict) and isinstance(d.get("n"), int) and isinstance(d.get("at"), (int, float))
+        }
         for key in ("x", "y", "hp", "energy", "fatigue"):
             value = data.get(key)
             if isinstance(value, (int, float)):
