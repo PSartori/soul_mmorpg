@@ -1,0 +1,103 @@
+# Personagens do mundo (NPCs): conversam, abrem lojas e podem dar coisas ou mudar o
+# personagem, com as mesmas ações das regras (data/rules.yaml).
+#
+# Onde cada NPC fica é definido no mapa:
+#   mapas em texto: no .yaml do mapa,  npcs: - { id: mercadora, at: [x, y] }   (tile)
+#   mapas do Tiled: ponto na camada "pontos" com tipo = npc e npc = id
+#
+#   name       nome exibido
+#   title      aparece abaixo do nome (opcional; ex.: Ferreiro)
+#   color      cor do corpo no cliente
+#   dialogue   nós da conversa; a conversa começa no PRIMEIRO nó
+#     <nó>:
+#       text      o que o NPC diz. Aceita {name}, {race} e {class} de quem conversa.
+#       options   botões de resposta, de cima para baixo:
+#         - text: Texto do botão
+#           if:   condições para a opção aparecer (todas precisam valer):
+#                   race, class, org, rank     (como nas regras; um valor ou lista)
+#                   gold: 50                   (tem pelo menos 50 moedas; ou { min, max })
+#                   total_level: 20            (soma dos níveis dos atributos, pelo menos 20)
+#                   flags / not_flags          (marcas de progressão)
+#           do:   ações ao escolher (as mesmas de rules.yaml: message, give_item,
+#                 give_gold, lose_gold, set_flag, clear_flag, gain_xp, add_effect,
+#                 set_class, set_race...)
+#           goto: nó seguinte          | shop: abre a loja (data/shops.yaml)
+#                 (sem goto nem shop, a conversa termina depois das ações)
+#       Nó sem opções mostra só um botão para encerrar.
+#
+# Para algo acontecer uma vez só, use uma marca: if { not_flags: [x] } + do [ set_flag: x ].
+# Para conversar: clicar no NPC ou apertar E perto dele.
+# Nomes e falas provisórios.
+
+mercadora:
+  name: Hilda
+  title: Mercadora
+  color: "#d9a84a"
+  dialogue:
+    inicio:
+      text: "Bem-vindo, {name}! Poções, tônicos... e compro o que você trouxer dos campos."
+      options:
+        - text: Mostre o que você tem.
+          shop: mercearia
+        - text: O que você compra?
+          goto: compra
+        - text: Até mais.
+    compra:
+      text: "Restos de criaturas e poções que sobrarem. Não pago muito, mas pago na hora."
+      options:
+        - text: Então vamos negociar.
+          shop: mercearia
+        - text: Entendi.
+          goto: inicio
+
+ferreiro:
+  name: Otto
+  title: Ferreiro
+  color: "#b0703a"
+  dialogue:
+    inicio:
+      text: "Lâmina boa não faz guerreiro bom, mas ajuda. Quer ver?"
+      options:
+        - text: Quero ver as armas e armaduras.
+          shop: armeiro
+        - text: Agora não.
+
+ancia:
+  name: Vó Celeste
+  title: Anciã
+  color: "#a9b8d6"
+  dialogue:
+    inicio:
+      text: "Mais um {race} começando a jornada... Os campos são perigosos para quem não se prepara."
+      options:
+        - text: Tem algum conselho?
+          goto: conselho
+        - text: Pode me ajudar com alguma coisa?
+          if: { not_flags: [presente_celeste] }
+          goto: presente
+        - text: Até logo, vó.
+    conselho:
+      text: "Medite quando estiver cansado de lutar e descanse quando estiver cansado de meditar. O resto vem com o tempo."
+      options:
+        - text: Obrigado.
+          goto: inicio
+    presente:
+      text: "Leve estas poções. Não conte para a Hilda que eu dei de graça."
+      options:
+        - text: Obrigado, vó!
+          do:
+            - give_item: { id: pocao_vida, qty: 3 }
+            - set_flag: presente_celeste
+            - message: "Vó Celeste lhe deu 3 poções de vida."
+
+cacador:
+  name: Bruno
+  title: Caçador
+  color: "#7a9a4a"
+  dialogue:
+    inicio:
+      text: "Cuidado com os Devoradores. Se trouxer presas e couro, pago melhor que a cidade."
+      options:
+        - text: Vamos negociar.
+          shop: posto_de_caca
+        - text: Até mais.

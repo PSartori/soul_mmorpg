@@ -15,6 +15,8 @@
 #   portals       áreas que levam a outro mapa: quem pisa aparece no tile "at" do mapa "to"
 #                   - { area: [x0, y0, x1, y1], to: outro_mapa, at: [x, y] }
 #                 (o servidor confere se o mapa existe e se o tile de chegada é livre)
+#   npcs          onde ficam os personagens do mundo (data/npcs.yaml), em tiles:
+#                   - { id: mercadora, at: [x, y] }
 #
 # Duelos (/duelo Nome) valem em qualquer zona, inclusive na segura.
 
@@ -30,3 +32,8 @@ zones:
     name: Ermo do Sudeste
     type: pvp
     area: [25, 17, 38, 28]
+
+npcs:
+  - { id: mercadora, at: [2, 2] }
+  - { id: ferreiro, at: [8, 2] }
+  - { id: ancia, at: [3, 6] }

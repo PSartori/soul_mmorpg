@@ -18,7 +18,7 @@ WATCHED_PATTERNS = ("*.yaml", "maps/*.txt", "maps/*.yaml", "maps/*.tmj", "maps/*
 
 def load_game_data(data_dir: str | Path = C.DATA_DIR, maps_dir: str | Path = C.MAPS_DIR) -> tuple[Content, dict[str, TileMap]]:
     content = Content.load(data_dir)
-    maps = load_maps(maps_dir, content.enemy_by_mark, enemy_ids=content.enemies)
+    maps = load_maps(maps_dir, content.enemy_by_mark, enemy_ids=content.enemies, npc_ids=content.npcs)
     if not maps:
         raise ValueError(f"Nenhum mapa em {maps_dir}")
     return content, maps

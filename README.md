@@ -54,8 +54,8 @@ Isso cria `data/maps/inicio.tmj` (abre no Tiled), o conjunto de tiles
 `data/maps/antigos/`. No Tiled, o mapa tem a camada de tiles **terreno** e as
 camadas de objetos **zonas** (retângulos com propriedade `tipo` = pve/pvp),
 **portais** (retângulos com `destino`, `chegada_x`, `chegada_y`) e **pontos**
-(pontos com `tipo` = nascimento ou inimigo, e `inimigo` = id do inimigo). As
-propriedades do mapa dão o nome e a zona padrão. Salve como JSON (`.tmj`). Detalhes
+(pontos com `tipo` = nascimento, inimigo — com `inimigo` = id do inimigo — ou
+**npc** (com `npc` = id do NPC). As propriedades do mapa dão o nome e a zona padrão. Salve como JSON (`.tmj`). Detalhes
 em `server/tiled.py`. Mapas em texto continuam funcionando; cada mapa usa um
 formato só. `./mapas.sh verificar` confere todos.
 
@@ -105,10 +105,12 @@ lutadores ficam parados, então alcance e esquiva não contam.
 | M | meditar (treina Espírito, gera cansaço) |
 | R | descansar (recupera cansaço e vida) |
 | I | inventário (clique: usar/equipar · Shift + clique: largar · clique no equipado: tirar) |
+| E | conversar com o NPC mais próximo (também dá para clicar nele) |
 | G | janela de administração (só para a equipe) |
 | O | janela da organização: entrar, sair, cargos e ocupantes, assumir vaga, disputar, promover, rebaixar, expulsar |
 | Enter | chat; o seletor ao lado escolhe o canal (Geral ou Organização) |
 | **Clique num jogador** | menu: desafiar para duelo, disputar o cargo dele e, para líderes, promover, rebaixar e expulsar |
+| **Clique num NPC** | conversa; as respostas são botões, e alguns abrem a loja (comprar e vender) |
 
 Um desafio recebido aparece na tela com **Aceitar** e **Recusar**; durante o duelo o
 painel mostra **Desistir**. Os antigos comandos de chat (`/duelo`, `/aceitar`,
@@ -128,12 +130,14 @@ Cada arquivo tem no topo a explicação de todos os campos.
 | `data/items.yaml` | itens: equipamento (slot, bônus, restrição de raça/classe), consumível (cura, energia, efeitos), material |
 | `data/organizations.yaml` | organizações: raças aceitas, nível mínimo, cargos em ordem (vagas, numerados, líder, como se conquista) |
 | `data/roles.yaml` | papéis da equipe: selo, nível na hierarquia e permissões |
+| `data/npcs.yaml` | NPCs: nome, título, cor e diálogo em nós (opções com condições, ações, `goto` e `shop`) |
+| `data/shops.yaml` | lojas: o que vendem (preço = `value` do item ou próprio) e o que compram (`buys`, `buy_rate`) |
 | `data/races.yaml` | raças: se aparecem na criação, classe inicial, bônus de vida/energia/velocidade |
 | `data/classes.yaml` | classes: raça, skills da barra, multiplicador de treino por atributo |
 | `data/rules.yaml` | regras "quando X, se Y, faça Z": morte, abates, subida de nível (veja abaixo) |
 | `data/player.yaml` | raça padrão para personagens antigos |
 | `data/maps/<mapa>.txt` | terreno de cada mapa em texto (legenda no topo de `inicio.txt`); todo `.txt` da pasta vira um mapa |
-| `data/maps/<mapa>.yaml` | nome do mapa, zonas (padrão e áreas PvE/PvP) e portais para outros mapas |
+| `data/maps/<mapa>.yaml` | nome do mapa, zonas (padrão e áreas PvE/PvP), portais para outros mapas e onde ficam os NPCs |
 
 ### Regras (data/rules.yaml)
 
@@ -181,6 +185,7 @@ server/              Python (aiohttp)
   content.py         carrega e valida data/*.yaml
   rules.py           vocabulário das regras (eventos, campos, ações) e comparação
   duels.py           desafios e duelos
+  npcs.py            NPCs: conversa (nós de diálogo) e lojas (compra e venda)
   inventory.py       inventário: espaços que empilham, equipamento e moedas
   orgs.py            organizações, cargos e disputas (vínculos na tabela memberships)
   admin.py           equipe, sanções (ban/silêncio) e registro de ações
@@ -200,6 +205,7 @@ client/              JavaScript puro, sem build
   js/inventory.js    janela de inventário
   js/admin.js        janela de administração
   js/social.js       menu do jogador, aviso de desafio e janela da organização
+  js/npc.js          conversa com NPCs e janela da loja
   js/input.js        teclado
   js/net.js          WebSocket
 data/                conteúdo do jogo (veja acima)
@@ -235,11 +241,13 @@ HTTP: `GET /api/races` lista as raças da tela de criação.
 
 Cliente → servidor: `login {name, password, race}`, `move {seq, up, down, left, right}`,
 `skill {id, f}`, `duel {op: challenge|accept|decline|forfeit, target}`,
-`org {op: info|join|leave|claim|dispute|promote|demote|expel, ...}`, `chat {text, ch}`, `admin {op, ...}` (equipe), `item {op: use|drop, slot: n}`, `item {op: unequip, slot: weapon|armor|accessory}`,
+`org {op: info|join|leave|claim|dispute|promote|demote|expel, ...}`,
+`npc {op: talk|choose|buy|sell|close, id|i|item|slot, qty}`, `chat {text, ch}`, `admin {op, ...}` (equipe), `item {op: use|drop, slot: n}`, `item {op: unequip, slot: weapon|armor|accessory}`,
 `meditate`, `rest`, `chat {text}`.
 
 Servidor → cliente: `welcome {id, map, skills, effects, enemies, stat_labels, ...}`,
-`map {map, x, y}` (atravessou um portal), `org_data` (janela da organização), `announce {text, by}`, `kick {text}` (antes de
+`map {map, x, y}` (atravessou um portal), `org_data` (janela da organização),
+`dialog {npc, name, title, text, options}` / `shop {npc, shop, sells, buys}` / `npc_close` (NPCs), `announce {text, by}`, `kick {text}` (antes de
 desconectar), `admin_data`/`admin_result` (equipe), `error {msg}`, `snap {ents, projs, drops, fx, you}`
 (20×/s, só o que está perto; `you.inv` só vem quando o inventário muda), `chat {from, text}`, `sys {text}`.
 
@@ -279,6 +287,16 @@ desconectar), `admin_data`/`admin_result` (equipe), `error {msg}`, `snap {ents, 
   do vencedor; quem perde espera 5 min para disputar de novo). Os vínculos ficam no
   banco e valem com o ocupante offline. Se a raça mudar para uma que a organização
   não aceita, o personagem sai.
+- **NPCs**: ficam parados, não lutam e não podem ser feridos. Conversa começa a até
+  80 px (`NPC_TALK_RANGE`) e fecha ao se afastar mais de 128 px, morrer, mudar de mapa
+  ou recarregar o conteúdo. As opções do diálogo aparecem conforme as condições
+  (`if`: raça, classe, organização, cargo, moedas, nível total, marcas) e rodam as
+  mesmas ações das regras (`do`) — dá para dar itens, marcar progressão e até trocar
+  raça/classe por um NPC.
+- **Lojas**: estoque infinito; o jogador compra pelo `value` do item (ou pelo `price`
+  da loja) e vende por uma fração dele (`buy_rate`, padrão 40%, no mínimo 1 moeda).
+  Compra só sai se houver moedas e espaço para tudo. O servidor recusa conteúdo em
+  que uma loja compra um item por mais do que outra o vende.
 - **Mapas**: `inicio` (Campos de Início, onde nascem personagens novos) e `bosque`
   (Bosque Sombrio, mais perigoso, com Devoradores), ligados por portais. Cada mapa
   tem seus inimigos, saque e projéteis; o mapa onde o personagem está é salvo.
@@ -291,7 +309,9 @@ desconectar), `admin_data`/`admin_result` (equipe), `error {msg}`, `snap {ents, 
 
 ## Pendências conhecidas
 
-- Ainda não há como trocar de raça/classe por escolha (NPC, item); hoje só por regras.
+- Trocar de raça/classe por escolha já é possível por NPC (ação `set_race`/`set_class`
+  num diálogo), mas o conteúdo atual não tem nenhum NPC assim.
+- Lojas com estoque infinito e preço fixo; missões (entregar itens a um NPC) ainda não existem.
 - Outros jogadores são desenhados com suavização simples, não interpolação com atraso fixo.
 - Login sem HTTPS: na VPS, colocar atrás de um proxy com TLS (ex.: Caddy) antes de abrir ao público.
 - O hash de senha roda no loop do servidor (~0,1 s por login); ok para poucos jogadores.

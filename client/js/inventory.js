@@ -25,7 +25,7 @@ function signed(n) {
 }
 
 // Linhas de descrição de um item (bônus, uso, restrições...)
-function describe(def, defs) {
+export function describe(def, defs) {
   const lines = [];
   const kind = [RARITY_NAMES[def.rarity], TYPE_NAMES[def.type], SLOT_NAMES[def.slot]].filter(Boolean).join(" · ");
   lines.push(["meta", kind]);

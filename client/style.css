@@ -426,3 +426,69 @@ button:hover { background: #3a6c9c; }
 .org-member .actions { display: flex; gap: 4px; margin-left: auto; flex-wrap: wrap; }
 #org button.small, #org select { padding: 2px 6px; font-size: 11px; }
 #org button.danger { background: #8a2f2f; border-color: #a33c3c; }
+
+/* ---------------------------------------------------------------- NPCs e lojas */
+#dialog {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3;
+  width: min(560px, calc(100% - 24px));
+  padding: 10px 14px 12px;
+  background: rgba(26, 23, 18, .97);
+  border: 1px solid #8a7440;
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, .55);
+}
+#dialog[hidden] { display: none; }
+#dialog header, #shop header { display: flex; align-items: flex-start; gap: 8px; }
+#dialog header .npc-name { flex: 1; }
+.npc-name { font-size: 14px; }
+.npc-title { color: var(--muted); font-size: 12px; }
+#dialog .text { margin: 6px 0 10px; font-size: 14px; line-height: 1.5; }
+#dialog .options { display: flex; flex-direction: column; gap: 4px; }
+#dialog .options button {
+  text-align: left;
+  padding: 6px 10px;
+  font-size: 13px;
+  background: var(--panel-2);
+  border-color: #4a4232;
+}
+#dialog .options button:hover { background: #3a3220; border-color: #8a7440; }
+#dialog button.close, #shop button.close { padding: 2px 8px; background: var(--panel-2); border-color: #353946; }
+
+#shop {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 2;
+  width: min(380px, calc(100% - 24px));
+  max-height: calc(100% - 24px);
+  overflow-y: auto;
+  padding: 10px 12px;
+  background: rgba(22, 24, 30, .97);
+  border: 1px solid #8a7440;
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, .5);
+  font-size: 13px;
+}
+#shop[hidden] { display: none; }
+#shop header { margin-bottom: 8px; }
+#shop .shop-title { flex: 1; min-width: 0; }
+#shop h3 { margin: 0; font-size: 15px; color: #ffe9b0; }
+#shop .npc-name { font-size: 12px; }
+#shop .shop-gold { color: var(--r-gold); font-weight: 600; white-space: nowrap; }
+.shop-box { margin-bottom: 8px; padding: 6px 8px; background: var(--panel-2); border-radius: 6px; }
+.shop-box h4 { margin: 0 0 4px; font-size: 13px; }
+.shop-box .hint { margin: 2px 0; font-size: 12px; color: var(--muted); }
+.shop-row { display: flex; align-items: center; gap: 6px; padding: 3px 0; border-top: 1px solid #2c303b; }
+.shop-row:first-of-type { border-top: 0; }
+.shop-row .item { flex: 1; min-width: 0; font-weight: 600; }
+.shop-row .price { font-size: 11px; color: var(--r-gold); }
+.shop-row input { width: 52px; padding: 2px 4px; font-size: 12px; }
+.shop-row button.small { padding: 2px 8px; font-size: 11px; white-space: nowrap; }
+.shop-row button.poor { background: #4a3a3a; border-color: #5a4444; }
+.shop-info { min-height: 48px; padding: 6px 8px; font-size: 12px; background: var(--panel-2); border-radius: 5px; }
+.shop-info .name { font-weight: 700; color: var(--rarity); }
+.shop-info .meta { color: var(--muted); }

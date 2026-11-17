@@ -1,4 +1,4 @@
-"""Entidades do mundo: jogadores, inimigos e projéteis."""
+"""Entidades do mundo: jogadores, inimigos, NPCs e projéteis."""
 from __future__ import annotations
 
 from collections import deque
@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import ClassVar
 
 from . import config as C
-from .content import ClassDef, EffectDef, EnemyDef, ItemDef, RaceDef, RoleDef
+from .content import ClassDef, EffectDef, EnemyDef, ItemDef, NpcDef, RaceDef, RoleDef
 from .inventory import Inventory
 from .saves import SAVE_VERSION
 from .stats import STAT_NAMES, Stat
@@ -248,6 +248,27 @@ class Enemy(Entity):
         snap = super().snapshot()
         snap["t"] = self.defn.id  # tipo, para o cliente escolher a aparência
         return snap
+
+
+@dataclass(eq=False)
+class Npc(Entity):
+    """Personagem do mundo (data/npcs.yaml): fica parado, não luta e não pode ser ferido."""
+
+    defn: NpcDef | None = None
+
+    kind: ClassVar[str] = "npc"
+
+    @property
+    def max_hp(self) -> float:
+        return 1.0
+
+    @property
+    def base_speed(self) -> float:
+        return 0.0
+
+    def snapshot(self) -> dict:
+        return {"id": self.id, "k": self.kind, "n": self.name, "x": round(self.x), "y": round(self.y),
+                "f": self.facing, "s": "idle", "t": self.defn.id}
 
 
 @dataclass(eq=False)

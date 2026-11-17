@@ -69,6 +69,12 @@ LOOT_SCATTER = 14.0  # espalha os itens em volta de onde o inimigo morreu
 DROP_DISTANCE = 30.0  # item largado pelo jogador cai esta distância à frente dele
 DROP_PICKUP_DELAY = 3.0  # quem largou só pega de volta depois disso
 
+# --- NPCs e lojas (server/npcs.py; conteúdo em data/npcs.yaml e data/shops.yaml) ---
+NPC_TALK_RANGE = 80.0  # distância (centro a centro) para começar a conversar (2,5 tiles)
+NPC_LEAVE_RANGE = 128.0  # afastou-se mais que isso: a conversa (e a loja) fecha
+SHOP_BUY_RATE = 0.4  # padrão do buy_rate: a loja paga 40% do valor do item
+SHOP_MAX_QTY = 999  # máximo de unidades numa compra ou venda
+
 # --- Duelos (server/duels.py) -------------------------------------------------
 DUEL_CHALLENGE_RANGE = 256.0  # distância máxima para desafiar/aceitar (8 tiles)
 DUEL_CHALLENGE_SECONDS = 30.0  # o desafio expira

@@ -4,7 +4,7 @@
 #   name, description
 #   type       equipment | consumable | material
 #   rarity     common | uncommon | rare | epic   (cor do nome no cliente)
-#   value      valor em moedas (para lojas, no futuro)
+#   value      valor em moedas: preço padrão nas lojas (data/shops.yaml), que pagam uma fração dele
 #   stack      quantos cabem num espaço do inventário
 #              (padrão: consumível 10, material 50; equipamento sempre 1)
 #

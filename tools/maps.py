@@ -128,6 +128,9 @@ def to_tiled(name: str, maps_dir: Path, content: Content) -> Path:
     for mark, x, y in tilemap.enemy_spawns:
         enemy = content.enemy_by_mark[mark]
         points.append(obj(enemy.name, x, y, 0, 0, {"tipo": "inimigo", "inimigo": enemy.id}, point=True))
+    for npc_id, x, y in tilemap.npc_spawns:
+        npc = content.npcs.get(npc_id)
+        points.append(obj(npc.name if npc else npc_id, x, y, 0, 0, {"tipo": "npc", "npc": npc_id}, point=True))
 
     def objectgroup(layer_id: int, layer_name: str, objects: list[dict]) -> dict:
         return {"id": layer_id, "name": layer_name, "type": "objectgroup", "draworder": "topdown",
@@ -185,14 +188,14 @@ def main(argv: list[str] | None = None, maps_dir: Path = C.MAPS_DIR, data_dir: P
         elif args.cmd == "tileset":
             write_tileset(maps_dir)
             print(f"Conjunto de tiles gerado em {maps_dir / (TILESET_NAME + '.tsj')}.")
-        maps = load_maps(maps_dir, content.enemy_by_mark, enemy_ids=content.enemies)
+        maps = load_maps(maps_dir, content.enemy_by_mark, enemy_ids=content.enemies, npc_ids=content.npcs)
     except (ValueError, FileNotFoundError) as exc:
         print(f"Erro: {exc}", file=sys.stderr)
         return 1
     for tilemap in maps.values():
         fmt = "Tiled" if (maps_dir / f"{tilemap.name}.tmj").exists() else "texto"
         print(f"• {tilemap.name} ({fmt}): {tilemap.title or '—'}, {tilemap.width}×{tilemap.height}, "
-              f"{len(tilemap.enemy_spawns)} inimigos, {len(tilemap.zones)} zonas, "
+              f"{len(tilemap.enemy_spawns)} inimigos, {len(tilemap.npc_spawns)} NPCs, {len(tilemap.zones)} zonas, "
               f"portais para {', '.join(p.to for p in tilemap.portals) or 'nenhum'}")
     return 0
 

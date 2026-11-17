@@ -14,6 +14,7 @@ from typing import Any
 
 import yaml
 
+from . import config as C
 from .rules import (
     ACTIONS, DUEL_END_REASONS, DUEL_RESULTS, EVENT_FIELDS, KILLER_KINDS, RANK_CAUSES, VICTIM_KINDS, ZONES, Rule,
 )
@@ -32,6 +33,9 @@ RARITIES = ("common", "uncommon", "rare", "epic")
 PROMOTIONS = ("default", "appointment", "challenge")
 PERMISSIONS = ("kick", "mute", "ban", "announce", "teleport", "give", "set_role", "log", "reload")
 ID_RE = re.compile(r"[a-z0-9_]+")
+# Campos que as condições ("if") das opções de diálogo podem usar
+DIALOG_FIELDS = ("race", "class", "org", "rank", "gold", "total_level")
+DEFAULT_BUY_RATE = C.SHOP_BUY_RATE
 
 _REQUIRED = object()
 
@@ -232,6 +236,58 @@ class ClassDef:
 
 
 @dataclass(frozen=True)
+class ShopEntry:
+    item: str
+    price: int  # quanto o jogador paga
+
+
+@dataclass(frozen=True)
+class ShopDef:
+    id: str
+    name: str
+    sells: tuple[ShopEntry, ...]  # o que o jogador pode comprar (estoque infinito)
+    buys: tuple[str, ...]  # o que a loja compra do jogador: "all", tipos de item e/ou ids
+    buy_rate: float  # fração do valor (value) do item que a loja paga
+
+    def buy_price(self, item: ItemDef) -> int:
+        """Quanto a loja paga por uma unidade do item (0 = não compra)."""
+        if item.value <= 0 or not ("all" in self.buys or item.type in self.buys or item.id in self.buys):
+            return 0
+        return max(1, int(item.value * self.buy_rate))
+
+    def sell_price(self, item_id: str) -> int | None:
+        return next((e.price for e in self.sells if e.item == item_id), None)
+
+
+@dataclass(frozen=True)
+class DialogOption:
+    text: str
+    rule: Rule  # condições (quando a opção aparece) e ações (o que acontece ao escolher)
+    goto: str | None = None  # nó seguinte; sem goto nem shop, a conversa termina
+    shop: str | None = None  # abre esta loja
+
+
+@dataclass(frozen=True)
+class DialogNode:
+    id: str
+    text: str
+    options: tuple[DialogOption, ...]
+
+
+@dataclass(frozen=True)
+class NpcDef:
+    id: str
+    name: str
+    title: str  # aparece abaixo do nome (ex.: Ferreiro)
+    color: str
+    start: str  # nó onde a conversa começa (o primeiro do arquivo)
+    nodes: dict[str, DialogNode]
+
+    def client_info(self) -> dict:
+        return {"name": self.name, "title": self.title, "color": self.color}
+
+
+@dataclass(frozen=True)
 class Content:
     effects: dict[str, EffectDef]
     skills: dict[str, SkillDef]
@@ -243,6 +299,8 @@ class Content:
     items: dict[str, ItemDef] = field(default_factory=dict)
     orgs: dict[str, OrgDef] = field(default_factory=dict)
     roles: dict[str, RoleDef] = field(default_factory=dict)
+    shops: dict[str, ShopDef] = field(default_factory=dict)
+    npcs: dict[str, NpcDef] = field(default_factory=dict)
 
     @property
     def enemy_by_mark(self) -> dict[str, EnemyDef]:
@@ -269,6 +327,7 @@ class Content:
             "items": {i.id: i.client_info() for i in self.items.values()},
             "orgs": {o.id: o.client_info() for o in self.orgs.values()},
             "roles": {r.id: r.client_info() for r in self.roles.values()},
+            "npcs": {n.id: n.client_info() for n in self.npcs.values()},
         }
 
     @classmethod
@@ -291,9 +350,13 @@ class Content:
         refs = _RuleRefs(effects=effects, skills=skills, enemies=enemies, races=races, classes=classes, items=items,
                          orgs=orgs)
         rules = tuple(_parse_rule(i, raw, refs) for i, raw in _load_yaml(data_dir / "rules.yaml").items())
+        # lojas e NPCs são opcionais (o arquivo pode não existir)
+        shops = {i: _parse_shop(i, raw, items) for i, raw in _load_yaml(data_dir / "shops.yaml", True).items()}
+        npcs = {i: _parse_npc(i, raw, refs) for i, raw in _load_yaml(data_dir / "npcs.yaml", True).items()}
 
         content = cls(effects=effects, skills=skills, enemies=enemies, races=races, classes=classes,
-                      rules=rules, default_race=default_race, items=items, orgs=orgs, roles=roles)
+                      rules=rules, default_race=default_race, items=items, orgs=orgs, roles=roles,
+                      shops=shops, npcs=npcs)
         content.check_references()
         return content
 
@@ -349,12 +412,36 @@ class Content:
             raise ContentError(f"player.yaml: default_race '{self.default_race}' não existe em races.yaml")
         if not any(r.selectable for r in self.races.values()):
             raise ContentError("races.yaml: nenhuma raça com selectable: true (ninguém conseguiria criar personagem)")
+        for npc in self.npcs.values():
+            for node in npc.nodes.values():
+                for i, opt in enumerate(node.options):
+                    if opt.shop and opt.shop not in self.shops:
+                        raise ContentError(f"npcs.yaml > {npc.id}.dialogue > {node.id}.options[{i}]: "
+                                           f"loja {opt.shop!r} não existe em shops.yaml")
+        self._check_shop_prices()
+
+    def _check_shop_prices(self) -> None:
+        """Nenhuma loja pode comprar um item por mais do que outra o vende (seria dinheiro infinito)."""
+        for item in self.items.values():
+            selling = [(s.sell_price(item.id), s) for s in self.shops.values() if s.sell_price(item.id)]
+            if not selling:
+                continue
+            cheapest, seller = min(selling, key=lambda pair: pair[0])
+            for shop in self.shops.values():
+                paid = shop.buy_price(item)
+                if paid > cheapest:
+                    raise ContentError(
+                        f"shops.yaml > {shop.id}: compra {item.id} por {paid}, mas {seller.id} vende por {cheapest} "
+                        "(dá para comprar numa e vender na outra sem parar); baixe o buy_rate ou suba o preço"
+                    )
 
 
 # ============================================================== leitura
 
 
-def _load_yaml(path: Path) -> dict:
+def _load_yaml(path: Path, optional: bool = False) -> dict:
+    if optional and not path.exists():
+        return {}
     try:
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
     except yaml.YAMLError as exc:
@@ -708,7 +795,7 @@ class _RuleRefs:
             "killer_enemy": self.enemies, "victim_enemy": self.enemies,
             "skill": self.skills, "effect": self.effects, "effects": self.effects,
             "zone": ZONES, "killer": KILLER_KINDS, "victim": VICTIM_KINDS, "stat": STAT_NAMES,
-            "duel": bool, "level": float,
+            "duel": bool, "level": float, "gold": float, "total_level": float,
             "org": self.orgs, "rank": self.rank_ids(), "old_rank": self.rank_ids(), "cause": RANK_CAUSES,
         }
         value = table.get(field)
@@ -817,19 +904,15 @@ def _check_action(where: str, when: str, name: str, args: Any, refs: _RuleRefs) 
     return result
 
 
-def _parse_rule(rid: str, raw: Any, refs: _RuleRefs) -> Rule:
-    where = f"rules.yaml > {rid}"
-    f = _Fields(where, raw)
-    when = f.text("when")
-    if when not in EVENT_FIELDS:
-        raise ContentError(f"{where}: evento '{when}' desconhecido (válidos: {', '.join(EVENT_FIELDS)})")
-
-    cond = f.sub("if")
+def _parse_conditions(cond: _Fields, fields: tuple[str, ...], refs: _RuleRefs, context: str,
+                      chance: bool = True) -> tuple[tuple[str, Any], ...]:
+    """Lê um bloco "if". `fields` são os campos de contexto disponíveis; `context` aparece no erro."""
+    special = (("chance",) if chance else ()) + ("flags", "not_flags")
     conditions: list[tuple[str, Any]] = []
     for key in list(cond.raw):
         value = cond.raw[key]
         cond.used.add(key)
-        if key == "chance":
+        if key == "chance" and chance:
             value = cond.num("chance")
             if not 0 < value <= 1:
                 raise ContentError(f"{cond.where}: 'chance' deve estar entre 0 e 1 (ex.: 0.25 = 25%)")
@@ -837,25 +920,38 @@ def _parse_rule(rid: str, raw: Any, refs: _RuleRefs) -> Rule:
             value = [value] if isinstance(value, str) else value
             if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
                 raise ContentError(f"{cond.where}: '{key}' deve ser uma lista de marcas")
-        elif key in EVENT_FIELDS[when]:
+        elif key in fields:
             value = _check_condition(cond.where, key, value, refs)
         else:
             raise ContentError(
-                f"{cond.where}: campo '{key}' não existe no evento '{when}' "
-                f"(disponíveis: {', '.join(EVENT_FIELDS[when] + ('chance', 'flags', 'not_flags'))})"
+                f"{cond.where}: campo '{key}' não existe {context} (disponíveis: {', '.join(fields + special)})"
             )
         conditions.append((key, value))
     conditions.sort(key=lambda kv: kv[0] == "chance")  # sorteia só se o resto bater
+    return tuple(conditions)
 
+
+def _parse_actions(f: _Fields, when: str, refs: _RuleRefs) -> tuple[tuple[str, Any], ...]:
+    """Lê uma lista "do" de ações."""
     actions = []
     for i, item in enumerate(f.list("do")):
-        item_where = f"{where}.do[{i}]"
+        item_where = f"{f.where}.do[{i}]"
         if not isinstance(item, dict) or len(item) != 1:
             raise ContentError(f"{item_where}: cada ação é um item com uma única chave (ex.: - message: texto)")
         ((name, args),) = item.items()
         actions.append((name, _check_action(item_where, when, name, args, refs)))
+    return tuple(actions)
 
-    rule = Rule(id=rid, when=when, conditions=tuple(conditions), actions=tuple(actions), stop=f.flag("stop", False))
+
+def _parse_rule(rid: str, raw: Any, refs: _RuleRefs) -> Rule:
+    where = f"rules.yaml > {rid}"
+    f = _Fields(where, raw)
+    when = f.text("when")
+    if when not in EVENT_FIELDS:
+        raise ContentError(f"{where}: evento '{when}' desconhecido (válidos: {', '.join(EVENT_FIELDS)})")
+    conditions = _parse_conditions(f.sub("if"), EVENT_FIELDS[when], refs, f"no evento '{when}'")
+    rule = Rule(id=rid, when=when, conditions=conditions, actions=_parse_actions(f, when, refs),
+                stop=f.flag("stop", False))
     f.done()
     return rule
 
@@ -931,3 +1027,85 @@ def _parse_role(rid: str, raw: Any) -> RoleDef:
     )
     f.done()
     return role
+
+
+# ============================================================== lojas e NPCs
+
+
+def _parse_shop(sid: str, raw: Any, items: dict[str, ItemDef]) -> ShopDef:
+    f = _Fields(f"shops.yaml > {sid}", raw)
+    sells = []
+    for i, entry in enumerate(f.list("sells")):
+        e = _Fields(f"{f.where}.sells[{i}]", entry if isinstance(entry, dict) else {"item": entry})
+        item_id = e.text("item")
+        item = items.get(item_id)
+        if item is None:
+            raise ContentError(f"{e.where}: item {item_id!r} não existe em items.yaml")
+        price = e.int("price", item.value, minimum=1) if "price" in e.raw else item.value
+        if price < 1:
+            raise ContentError(f"{e.where}: {item_id} tem value 0 em items.yaml; dê um 'price' para vendê-lo")
+        e.done()
+        if any(s.item == item_id for s in sells):
+            raise ContentError(f"{e.where}: {item_id} aparece duas vezes na lista")
+        sells.append(ShopEntry(item=item_id, price=price))
+    buys = tuple(f.str_list("buys"))
+    for what in buys:
+        if what != "all" and what not in ITEM_TYPES and what not in items:
+            raise ContentError(f"{f.where}.buys: {what!r} não é 'all', um tipo de item "
+                               f"({', '.join(ITEM_TYPES)}) nem um item de items.yaml")
+    rate = f.num("buy_rate", DEFAULT_BUY_RATE)
+    if not 0 < rate <= 1:
+        raise ContentError(f"{f.where}: 'buy_rate' deve estar entre 0 e 1 (ex.: 0.4 = paga 40% do valor)")
+    shop = ShopDef(id=sid, name=f.text("name"), sells=tuple(sells), buys=buys, buy_rate=rate)
+    f.done()
+    if not sells and not buys:
+        raise ContentError(f"{f.where}: a loja não vende (sells) nem compra (buys) nada")
+    return shop
+
+
+def _parse_npc(nid: str, raw: Any, refs: _RuleRefs) -> NpcDef:
+    f = _Fields(f"npcs.yaml > {nid}", raw)
+    nodes_raw = f._get("dialogue", None)
+    if not isinstance(nodes_raw, dict) or not nodes_raw:
+        raise ContentError(f"{f.where}: 'dialogue' deve ter pelo menos um nó (o primeiro é onde a conversa começa)")
+    nodes: dict[str, DialogNode] = {}
+    for node_id, node_raw in nodes_raw.items():
+        if not isinstance(node_id, str) or not ID_RE.fullmatch(node_id):
+            raise ContentError(f"{f.where}.dialogue: id de nó inválido {node_id!r} (letras minúsculas, números e _)")
+        n = _Fields(f"{f.where}.dialogue > {node_id}", node_raw)
+        options = []
+        for i, opt_raw in enumerate(n.list("options")):
+            o = _Fields(f"{n.where}.options[{i}]", opt_raw)
+            conditions = tuple(
+                # número sozinho em gold/total_level quer dizer "pelo menos"
+                (key, {"min": value} if key in ("gold", "total_level") and not isinstance(value, dict) else value)
+                for key, value in _parse_conditions(o.sub("if"), DIALOG_FIELDS, refs, "nas condições de diálogo",
+                                                    chance=False)
+            )
+            goto, shop = o.text("goto", None), o.text("shop", None)
+            if goto and shop:
+                raise ContentError(f"{o.where}: use goto OU shop, não os dois")
+            options.append(DialogOption(
+                text=o.text("text"),
+                rule=Rule(id=f"{nid}.{node_id}[{i}]", when="talk", conditions=conditions,
+                          actions=_parse_actions(o, "talk", refs)),
+                goto=goto, shop=shop,
+            ))
+            o.done()
+        nodes[node_id] = DialogNode(id=node_id, text=n.text("text"), options=tuple(options))
+        n.done()
+    for node in nodes.values():
+        for i, opt in enumerate(node.options):
+            if opt.goto and opt.goto not in nodes:
+                raise ContentError(f"{f.where}.dialogue > {node.id}.options[{i}]: goto {opt.goto!r} "
+                                   f"não é um nó deste NPC (nós: {', '.join(nodes)})")
+    npc = NpcDef(
+        id=nid,
+        name=f.text("name"),
+        title=f.text("title", ""),
+        color=f.text("color", "#e0c070"),
+        start=next(iter(nodes)),
+        nodes=nodes,
+    )
+    f.done()
+    return npc

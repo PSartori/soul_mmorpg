@@ -24,6 +24,7 @@ from .content import EQUIP_SLOTS, ClassDef, Content, ContentError, EffectApplica
 from .admin import AdminSystem
 from .db import Database
 from .duels import DuelSystem
+from .npcs import NpcSystem
 from .orgs import OrgSystem
 from .entities import (
     DIRECTIONS, MOVE_KEYS, ActiveEffect, Enemy, Entity, GroundItem, MoveKeys, Player, Projectile,
@@ -109,8 +110,10 @@ class World:
         self.duels = DuelSystem(self)
         self.orgs = OrgSystem(self)
         self.admin = AdminSystem(self)
+        self.npcs = NpcSystem(self)  # personagens do mundo: conversas e lojas
 
         self._spawn_enemies()
+        self.npcs.spawn()
 
     def _spawn_enemies(self) -> None:
         """Cria os inimigos de todos os mapas, com vida cheia, nos pontos de nascimento."""
@@ -158,6 +161,7 @@ class World:
         self.orgs.content = content
         self.admin.roles = content.roles
         self._spawn_enemies()
+        self.npcs.spawn()  # encerra as conversas abertas (as falas podem ter mudado)
         self.projectiles.clear()
         for drop in list(self.drops.values()):
             if drop.map_id not in maps or (drop.item and drop.item.id not in content.items):
@@ -314,6 +318,7 @@ class World:
         if player.id not in self.players:
             return
         self.duels.on_logout(player)  # antes de sair da lista: o duelo termina com ele presente
+        self.npcs.on_logout(player)
         self.players.pop(player.id, None)
         self._save(player)
         self._system(f"{player.name} saiu do jogo.")
@@ -326,6 +331,7 @@ class World:
             "half": player.half,
             "map": self._map_payload(self._map(player)),
             "stat_labels": STAT_LABELS,
+            "npc_range": C.NPC_TALK_RANGE,  # distância para conversar com NPCs (tecla E)
             **self.content.client_payload(),
         }
 
@@ -368,6 +374,8 @@ class World:
             self.orgs.handle_op(player, data)
         elif kind == "admin":
             self.admin.handle(player, data)
+        elif kind == "npc":
+            self.npcs.handle_op(player, data)
 
     def save_all(self) -> None:
         for player in self.players.values():
@@ -429,6 +437,7 @@ class World:
         for player in list(self.players.values()):
             self._update_player(player, dt)
         self.duels.update()
+        self.npcs.update()
         for enemy in list(self.enemies.values()):
             self._update_enemy(enemy, dt)
         self._update_projectiles(dt)
@@ -445,7 +454,7 @@ class World:
         # Cada coisa vira (mapa, x, y, dados) uma vez; depois cada jogador recebe só o que
         # está no mesmo mapa e dentro de VIEW_RADIUS.
         ents = []
-        for e in chain(self.players.values(), self.enemies.values()):
+        for e in chain(self.players.values(), self.enemies.values(), self.npcs.entities.values()):
             snap = e.snapshot()
             if isinstance(e, Player) and (opponent := self.duels.opponent_id(e)) is not None:
                 snap["du"] = opponent  # em duelo com

@@ -184,6 +184,14 @@ roteiro: liberações (estágios 1 e 2), NPCs com diálogo/lojas/missões, troca
 inimigos para níveis altos,
 contas separadas de personagens, hospedagem na VPS (HTTPS) e arte/som.
 
+**NPCs e lojas (concluído):** NPCs em `data/npcs.yaml` com diálogo em nós; cada opção
+tem condições (raça, classe, organização, cargo, moedas, nível total, marcas) e ações
+(as mesmas das regras), e pode ir para outro nó ou abrir uma loja. Lojas em
+`data/shops.yaml` vendem com estoque infinito e compram por uma fração do valor — o
+primeiro escoamento de moedas. NPCs ficam no `.yaml` do mapa ou no Tiled. Conversa
+pela interface: clique no NPC ou tecla E. Ficou para depois: missões (entregar itens,
+contar abates), treinadores, estoque limitado e preços que variam.
+
 Ainda a decidir sobre a hierarquia (seção 6): limite de recusas de desafio de
 cargo (hoje pode recusar sempre), cargo vago por inatividade do ocupante, e se
 alguns cargos devem ser por torneio ou pontos de contribuição.

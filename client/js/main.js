@@ -7,6 +7,7 @@ import { Renderer, rankTitle, screenToWorld } from "./render.js";
 import { InvitePanel, OrgWindow, PlayerMenu } from "./social.js";
 import { InventoryUI, RARITY_COLORS } from "./inventory.js";
 import { AdminUI } from "./admin.js";
+import { DialogBox, ShopWindow } from "./npc.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -21,7 +22,7 @@ const state = {
   trails: [], // dashes
   floaters: [],
   you: null,
-  defs: { skills: {}, effects: {}, enemies: {}, races: {}, classes: {}, items: {}, orgs: {}, roles: {} },
+  defs: { skills: {}, effects: {}, enemies: {}, races: {}, classes: {}, items: {}, orgs: {}, roles: {}, npcs: {} },
   statLabels: {},
 };
 
@@ -34,6 +35,7 @@ let physics = null;
 let tickTimer = null;
 let entityHalf = 10;
 let tickRate = 20;
+let npcRange = 80; // distância para conversar com NPCs (vem do servidor)
 let seq = 0;
 let pending = []; // comandos enviados que o servidor ainda não confirmou
 let pred = null; // posição prevista {x, y, f}
@@ -51,8 +53,9 @@ function handleMessage(msg) {
       state.statLabels = msg.stat_labels;
       state.defs = {
         skills: msg.skills, effects: msg.effects, enemies: msg.enemies, races: msg.races, classes: msg.classes,
-        items: msg.items, orgs: msg.orgs, roles: msg.roles,
+        items: msg.items, orgs: msg.orgs, roles: msg.roles, npcs: msg.npcs,
       };
+      npcRange = msg.npc_range ?? npcRange;
       kickText = null;
       state.ents.clear();
       renderer.setMap(msg.map);
@@ -76,6 +79,20 @@ function handleMessage(msg) {
       break;
     case "content":
       applyContent(msg);
+      break;
+    case "dialog":
+      shopWindow.hide();
+      dialogBox.show(msg);
+      break;
+    case "shop":
+      dialogBox.hide();
+      inventoryUI.toggle(false); // a loja ocupa o mesmo canto do inventário e da organização
+      orgWindow.toggle(false);
+      shopWindow.show(msg);
+      break;
+    case "npc_close":
+      dialogBox.hide();
+      shopWindow.hide();
       break;
     case "org_data":
       orgWindow.update(msg);
@@ -112,7 +129,7 @@ function handleMessage(msg) {
 function applyContent(msg) {
   state.defs = {
     skills: msg.skills, effects: msg.effects, enemies: msg.enemies, races: msg.races, classes: msg.classes,
-    items: msg.items, orgs: msg.orgs, roles: msg.roles,
+    items: msg.items, orgs: msg.orgs, roles: msg.roles, npcs: msg.npcs,
   };
   renderer.defs = state.defs;
   lastHotbarKey = "";
@@ -153,6 +170,8 @@ function handleClose() {
   clearInterval(tickTimer);
   adminUI.toggle(false);
   orgWindow.toggle(false);
+  dialogBox.hide();
+  shopWindow.hide();
   invitePanel.update(null);
   $("overlay").classList.remove("hidden");
   $("login-error").textContent = kickText ?? "Conexão perdida. Entre de novo.";
@@ -186,6 +205,7 @@ function applySnapshot(msg) {
   state.you = msg.you;
   reconcile(msg.you);
   inventoryUI.update(msg.you.inv, msg.you.icd);
+  shopWindow.refresh();
   updateHud();
 }
 
@@ -468,20 +488,54 @@ $("admin-open").addEventListener("click", (ev) => {
   adminUI.toggle();
   ev.currentTarget.blur();
 });
+
+const dialogBox = new DialogBox({ send: (msg) => conn?.send(msg) });
+const shopWindow = new ShopWindow({
+  getDefs: () => state.defs,
+  getInventory: () => inventoryUI.inv,
+  send: (msg) => conn?.send(msg),
+});
+function closeNpc() {
+  if (dialogBox.isOpen || shopWindow.isOpen) conn?.send({ t: "npc", op: "close" });
+  dialogBox.hide();
+  shopWindow.hide();
+}
+// Tecla E: conversa com o NPC mais próximo, se houver um ao alcance
+function talkToNearest() {
+  if (!pred) return;
+  let best = null;
+  let bestDist = npcRange;
+  for (const e of state.ents.values()) {
+    if (e.k !== "npc") continue;
+    const d = Math.hypot(e.x - pred.x, e.y - pred.y);
+    if (d <= bestDist) {
+      best = e;
+      bestDist = d;
+    }
+  }
+  if (best) conn?.send({ t: "npc", op: "talk", id: best.id });
+  else addChatLine("Não há ninguém por perto para conversar.");
+}
 $("inv-open").addEventListener("click", (ev) => {
   toggleInventory();
   ev.currentTarget.blur();
 });
 
 const orgWindow = new OrgWindow({ getDefs: () => state.defs, send: (msg) => conn?.send(msg) });
-// Inventário e organização ocupam o mesmo canto: abrir um fecha o outro
+// Inventário, organização e loja ocupam o mesmo canto: abrir um fecha os outros
 function toggleOrg() {
   orgWindow.toggle();
-  if (orgWindow.isOpen) inventoryUI.toggle(false);
+  if (orgWindow.isOpen) {
+    inventoryUI.toggle(false);
+    if (shopWindow.isOpen) closeNpc();
+  }
 }
 function toggleInventory() {
   inventoryUI.toggle();
-  if (inventoryUI.isOpen) orgWindow.toggle(false);
+  if (inventoryUI.isOpen) {
+    orgWindow.toggle(false);
+    if (shopWindow.isOpen) closeNpc();
+  }
 }
 $("org-open").addEventListener("click", (ev) => {
   toggleOrg();
@@ -501,23 +555,36 @@ const playerMenu = new PlayerMenu({
   openAdmin: (name) => adminUI.openFor(name),
 });
 
-// Clique num jogador (no mapa): abre o menu com o que dá para fazer com ele
-$("canvas").addEventListener("click", (ev) => {
-  if (!inGame) return;
+// O que está sob o mouse: outro jogador ou um NPC (tolerância de 22 px)
+function clickableAt(ev) {
   const { x, y } = screenToWorld(renderer, ev);
   let target = null;
-  let best = 22; // tolerância em px
+  let best = 22;
   for (const e of state.ents.values()) {
-    if (e.k !== "player" || e.id === state.myId || e.s === "dead") continue;
+    if (e.id === state.myId || e.s === "dead" || (e.k !== "player" && e.k !== "npc")) continue;
     const d = Math.hypot(e.rx - x, e.ry - y);
     if (d < best) {
       best = d;
       target = e;
     }
   }
+  return target;
+}
+
+// Clique num NPC: conversa. Clique num jogador: menu com o que dá para fazer com ele.
+$("canvas").addEventListener("click", (ev) => {
+  if (!inGame) return;
+  const target = clickableAt(ev);
   if (!target) return;
+  if (target.k === "npc") {
+    conn?.send({ t: "npc", op: "talk", id: target.id });
+    return;
+  }
   const box = $("viewport").getBoundingClientRect();
   playerMenu.open(target, ev.clientX - box.left, ev.clientY - box.top);
+});
+$("canvas").addEventListener("mousemove", (ev) => {
+  $("canvas").style.cursor = inGame && clickableAt(ev) ? "pointer" : "";
 });
 
 const input = setupInput({
@@ -528,11 +595,13 @@ const input = setupInput({
     if (name === "inventory") toggleInventory();
     else if (name === "org") toggleOrg();
     else if (name === "admin" && state.you?.staff) adminUI.toggle();
+    else if (name === "talk") talkToNearest();
     else if (name === "escape") {
       inventoryUI.toggle(false);
       adminUI.toggle(false);
       orgWindow.toggle(false);
       playerMenu.close();
+      closeNpc();
     }
   },
   onEnter: () => chatInput.focus(),

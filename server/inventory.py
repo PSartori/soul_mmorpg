@@ -62,6 +62,11 @@ class Inventory:
         self.dirty = True
         return ItemStack(stack.item, moved)
 
+    def room_for(self, item: ItemDef) -> int:
+        """Quantas unidades do item ainda cabem (completando pilhas e em espaços vazios)."""
+        partial = sum(item.stack - s.qty for s in self.slots if s and s.item.id == item.id and s.qty < item.stack)
+        return partial + self.free_slots() * item.stack
+
     def count(self, item_id: str) -> int:
         return sum(s.qty for s in self.slots if s and s.item.id == item_id)
 

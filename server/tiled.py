@@ -7,8 +7,9 @@ O mapa precisa ter:
   - (opcional) camadas de objetos:
       "zonas"    retângulos; nome = nome da zona; propriedade "tipo" = pve | pvp
       "portais"  retângulos; propriedades "destino" (mapa), "chegada_x" e "chegada_y" (tile)
-      "pontos"   pontos; propriedade "tipo" = nascimento | inimigo; se inimigo,
-                 propriedade "inimigo" = id do inimigo (data/enemies.yaml)
+      "pontos"   pontos; propriedade "tipo" = nascimento | inimigo | npc; se inimigo,
+                 propriedade "inimigo" = id do inimigo (data/enemies.yaml); se npc,
+                 propriedade "npc" = id do NPC (data/npcs.yaml)
   - propriedades do mapa (opcionais): "nome" (nome exibido), "zona_padrao" (pve | pvp)
     e "nome_zona_padrao".
 
@@ -26,7 +27,7 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
-from .tilemap import AREA_ZONE_TYPES, SAFE, TILES, Portal, TileMap, Zone
+from .tilemap import AREA_ZONE_TYPES, SAFE, TILES, WALK_BLOCKERS, Portal, TileMap, Zone
 
 TILE_PROPERTY = "caractere"
 FLIP_FLAGS = 0xE0000000  # bits de espelhamento/rotação que o Tiled guarda no id do tile
@@ -165,6 +166,7 @@ def parse_tmj(path: str | Path, enemy_ids: Iterable[str] = (), tile_size: int | 
     known = set(enemy_ids)
     spawn = None
     enemy_spawns = []
+    npc_spawns = []
     for obj in objects("pontos"):
         props = _props(obj)
         px, py = obj.get("x", 0), obj.get("y", 0)
@@ -181,9 +183,16 @@ def parse_tmj(path: str | Path, enemy_ids: Iterable[str] = (), tile_size: int | 
             if known and enemy not in known:
                 raise TiledError(f"{where} > ponto em ({tx}, {ty}): inimigo {enemy!r} não existe em enemies.yaml")
             enemy_spawns.append((str(enemy), center[0], center[1]))
+        elif kind == "npc":
+            npc = props.get("npc")
+            if not isinstance(npc, str) or not npc:
+                raise TiledError(f"{where} > ponto em ({tx}, {ty}): falta a propriedade 'npc' (id em npcs.yaml)")
+            if rows[ty][tx] in WALK_BLOCKERS:
+                raise TiledError(f"{where} > NPC {npc!r} em ({tx}, {ty}): o tile é bloqueado")
+            npc_spawns.append((npc, center[0], center[1]))
         else:
             raise TiledError(f"{where} > ponto '{obj.get('name', '')}': propriedade 'tipo' deve ser "
-                             "nascimento ou inimigo")
+                             "nascimento, inimigo ou npc")
     if spawn is None:
         raise TiledError(f"{where}: falta um ponto com tipo = nascimento na camada 'pontos'")
 
@@ -194,5 +203,5 @@ def parse_tmj(path: str | Path, enemy_ids: Iterable[str] = (), tile_size: int | 
     return TileMap(
         name=name, rows=rows, tile_size=ts, spawn=spawn, enemy_spawns=enemy_spawns, zones=zones,
         default_zone=Zone(id="", name=str(props.get("nome_zona_padrao", "")), type=default_type),
-        title=str(props.get("nome", "")), portals=portals,
+        title=str(props.get("nome", "")), portals=portals, npc_spawns=npc_spawns,
     )

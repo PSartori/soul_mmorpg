@@ -1,0 +1,40 @@
+# Lojas. Um NPC abre a loja por uma opção de diálogo (shop: id), em data/npcs.yaml;
+# a mesma loja pode ser usada por vários NPCs.
+#
+#   name       nome exibido no topo da janela
+#   sells      o que o jogador pode comprar (estoque infinito):
+#                - pocao_vida                        (preço = value do item em items.yaml)
+#                - { item: pocao_vida, price: 15 }   (preço próprio desta loja)
+#   buys       o que a loja compra do jogador: all, tipos de item (equipment, consumable,
+#              material) e/ou ids de itens. Vazio = não compra nada.
+#   buy_rate   fração do value do item que a loja paga (padrão 0.4 = 40%; no mínimo 1 moeda).
+#              Itens com value 0 nunca são comprados.
+#
+# Sem wipes, as lojas são o principal escoamento de moedas: o jogador sempre vende por
+# menos do que compra. O servidor recusa conteúdo em que uma loja compra um item por
+# mais do que outra o vende (daria para ganhar moedas sem parar).
+# Nomes e números provisórios.
+
+mercearia:
+  name: Mercearia
+  sells:
+    - pocao_vida
+    - pocao_energia
+    - tonico_veloz
+  buys: [material, consumable]
+
+armeiro:
+  name: Armas e armaduras
+  sells:
+    - espada_curta
+    - gibao_de_couro
+    - { item: cajado_de_foco, price: 80 }
+  buys: [equipment]
+
+# No Bosque Sombrio: poções mais caras, mas paga melhor pelo que se caça ali.
+posto_de_caca:
+  name: Posto de caça
+  sells:
+    - { item: pocao_vida, price: 15 }
+  buys: [material]
+  buy_rate: 0.6

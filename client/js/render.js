@@ -199,7 +199,56 @@ export class Renderer {
     }
   }
 
+  // NPC: corpo de losango arredondado na cor dele, balão de fala, nome e título (sem barra de vida)
+  drawNpc(e, now) {
+    const { ctx } = this;
+    const def = this.defs.npcs?.[e.t] ?? { name: e.n, title: "", color: "#e0c070" };
+    const x = e.rx;
+    const y = e.ry;
+    ctx.fillStyle = "rgba(0,0,0,0.3)";
+    ctx.beginPath(); ctx.ellipse(x, y + 10, 10, 4, 0, 0, TAU); ctx.fill();
+
+    ctx.fillStyle = def.color;
+    ctx.strokeStyle = "rgba(0,0,0,0.65)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x, y - 13); ctx.lineTo(x + 11, y); ctx.lineTo(x, y + 11); ctx.lineTo(x - 11, y);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = "rgba(255,255,255,0.9)";
+    ctx.beginPath(); ctx.arc(x, y + 4, 2.5, 0, TAU); ctx.fill(); // olha para baixo
+
+    // balão de fala, flutuando devagar
+    const bx = x + 13;
+    const by = y - 22 + Math.sin(now / 400 + e.id) * 1.5;
+    ctx.fillStyle = "rgba(255, 248, 220, 0.95)";
+    ctx.strokeStyle = "rgba(0,0,0,0.55)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.ellipse(bx, by, 8, 6, 0, 0, TAU);
+    ctx.fill(); ctx.stroke();
+    ctx.fillStyle = "#4a3b10";
+    for (let i = -1; i <= 1; i++) ctx.fillRect(bx + i * 3 - 1, by - 1, 2, 2);
+
+    ctx.textAlign = "center";
+    ctx.font = "bold 11px system-ui, sans-serif";
+    ctx.fillStyle = "rgba(0,0,0,0.8)";
+    ctx.fillText(def.name, x + 1, y - 21);
+    ctx.fillStyle = "#ffe9b0";
+    ctx.fillText(def.name, x, y - 22);
+    if (def.title) {
+      ctx.font = "10px system-ui, sans-serif";
+      ctx.fillStyle = "rgba(0,0,0,0.8)";
+      ctx.fillText(`‹${def.title}›`, x + 1, y - 33);
+      ctx.fillStyle = "#d8c8a0";
+      ctx.fillText(`‹${def.title}›`, x, y - 34);
+    }
+  }
+
   drawEntity(e, isMe, now) {
+    if (e.k === "npc") {
+      this.drawNpc(e, now);
+      return;
+    }
     const { ctx } = this;
     const x = e.rx;
     const y = e.ry;

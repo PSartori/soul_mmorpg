@@ -2,7 +2,7 @@
 
 Cada mapa é um par de arquivos:
   data/maps/<nome>.txt   o terreno (legenda no topo do arquivo)
-  data/maps/<nome>.yaml  as zonas (opcional): zona padrão e áreas PvE/PvP
+  data/maps/<nome>.yaml  (opcional) nome, zonas, portais e onde ficam os NPCs
 """
 from __future__ import annotations
 
@@ -83,6 +83,7 @@ class TileMap:
     default_zone: Zone = Zone(id="", name="", type="pve")  # onde não há tile ':' nem área
     title: str = ""  # nome exibido do mapa
     portals: list[Portal] = field(default_factory=list)
+    npc_spawns: list[tuple[str, float, float]] = field(default_factory=list)  # (id do NPC, x, y)
 
     def portal_at(self, x: float, y: float) -> Portal | None:
         ts = self.tile_size
@@ -230,7 +231,30 @@ def parse_map(
         tilemap.default_zone, tilemap.zones = _parse_zones(zones, f"{name}.yaml", tilemap.width, tilemap.height)
         tilemap.title = str(zones.get("name") or "")
         tilemap.portals = _parse_portals(zones.get("portals") or [], f"{name}.yaml", tilemap.width, tilemap.height)
+        tilemap.npc_spawns = _parse_npcs(zones.get("npcs") or [], f"{name}.yaml", tilemap)
     return tilemap
+
+
+def _parse_npcs(raw: Any, where: str, tilemap: TileMap) -> list[tuple[str, float, float]]:
+    """npcs: - { id: mercadora, at: [x, y] }  (o id é conferido em load_maps, contra data/npcs.yaml)"""
+    if not isinstance(raw, list):
+        raise ValueError(f"{where} > npcs: deve ser uma lista")
+    spawns = []
+    for i, item in enumerate(raw):
+        at = f"{where} > npcs[{i}]"
+        if not isinstance(item, dict) or set(item) != {"id", "at"} or not isinstance(item["id"], str):
+            raise ValueError(f"{at}: use {{ id: npc, at: [x, y] }}")
+        pos = item["at"]
+        if not (isinstance(pos, list) and len(pos) == 2 and all(isinstance(v, int) and not isinstance(v, bool)
+                                                                 for v in pos)):
+            raise ValueError(f"{at}: 'at' deve ser [x, y] (tile)")
+        tx, ty = pos
+        if not (0 <= tx < tilemap.width and 0 <= ty < tilemap.height):
+            raise ValueError(f"{at}: tile {pos} fora do mapa ({tilemap.width}×{tilemap.height})")
+        if tilemap.tile_at(tx, ty) in WALK_BLOCKERS:
+            raise ValueError(f"{at}: o tile {pos} é bloqueado (parede, água ou árvore)")
+        spawns.append((item["id"], *tilemap.tile_center(tx, ty)))
+    return spawns
 
 
 def _check_area(area: Any, at: str, width: int, height: int) -> tuple[int, int, int, int]:
@@ -272,7 +296,7 @@ def _parse_zones(raw: Any, where: str, width: int, height: int) -> tuple[Zone, l
 
     if not isinstance(raw, dict):
         raise ValueError(f"{where}: o arquivo deve ser um mapa com default_zone e zones")
-    unknown = set(raw) - {"name", "default_zone", "zones", "portals"}
+    unknown = set(raw) - {"name", "default_zone", "zones", "portals", "npcs"}
     if unknown:
         raise ValueError(f"{where}: campo(s) desconhecido(s): {', '.join(sorted(map(str, unknown)))}")
 
@@ -305,10 +329,12 @@ def load_maps(
     spawn_marks: Iterable[str] = (),
     tile_size: int = C.TILE_SIZE,
     enemy_ids: Iterable[str] = (),
+    npc_ids: Iterable[str] | None = None,
 ) -> dict[str, TileMap]:
     """Carrega todos os mapas da pasta e confere se os portais levam a lugares válidos.
 
     Cada mapa é um .txt (+ .yaml) ou um .tmj do Tiled (server/tiled.py) — nunca os dois.
+    npc_ids: NPCs que existem (data/npcs.yaml); None = não confere.
     """
     from .tiled import parse_tmj  # import aqui: tiled.py importa este módulo
 
@@ -324,7 +350,18 @@ def load_maps(
     maps.update({name: parse_tmj(path, ids, tile_size) for name, path in tiled.items()})
     maps = dict(sorted(maps.items()))
     check_portals(maps)
+    if npc_ids is not None:
+        check_npcs(maps, npc_ids)
     return maps
+
+
+def check_npcs(maps: dict[str, TileMap], npc_ids: Iterable[str]) -> None:
+    known = set(npc_ids)
+    for tilemap in maps.values():
+        for npc_id, x, y in tilemap.npc_spawns:
+            if npc_id not in known:
+                tx, ty = int(x // tilemap.tile_size), int(y // tilemap.tile_size)
+                raise ValueError(f"Mapa {tilemap.name!r}: NPC {npc_id!r} em ({tx}, {ty}) não existe em npcs.yaml")
 
 
 def check_portals(maps: dict[str, TileMap]) -> None:
