@@ -234,8 +234,12 @@ reaplica os comandos ainda não confirmados. Como a física é idêntica, o resu
 bate e não há "puxões"; o teste `tests/test_physics_parity.py` garante isso
 comparando os dois lados (precisa do Node instalado).
 
-**Se mudar `move_box` em `tilemap.py` ou `_move_player` em `world.py`, mude
-`physics.js` também** — o teste de paridade acusa se esquecer.
+A previsão também encosta nos outros corpos (jogadores, inimigos e NPCs), usando as
+posições do último snapshot. Com NPCs, que ficam parados, bate sempre; perto de quem se
+move pode haver uma pequena correção, suavizada no desenho.
+
+**Se mudar `move_box`/`clamp_by_solids` em `tilemap.py` ou `_move_player` em `world.py`,
+mude `physics.js` também** — o teste de paridade (com e sem corpos) acusa se esquecer.
 
 Para depurar no console do navegador: `__game.state`, `__game.pred`, `__game.pending`.
 
@@ -265,6 +269,11 @@ desconectar), `admin_data`/`admin_result` (equipe), `error {msg}`, `snap {ents, 
   multiplicam; morrer limpa todos.
 - **Inimigos** perseguem em linha reta e contornam obstáculos simples pelo lado
   (não é pathfinding: labirintos ainda os prendem).
+- **Colisão entre corpos**: jogadores, inimigos e NPCs não entram uns nos outros (caixas
+  de 20 px); quem anda encosta e desliza, como nas paredes, e o dash para no primeiro
+  corpo. Mortos não bloqueiam. Corpos já sobrepostos (ex.: dois jogadores nascendo no
+  mesmo ponto) podem se separar. Cada par liga/desliga em `config.py`
+  (`PLAYERS_BLOCK_PLAYERS`, `PLAYERS_BLOCK_ENEMIES`, `ENEMIES_BLOCK_ENEMIES`, `NPCS_BLOCK`).
 - **Meditação** gera cansaço; ao chegar a 100 para sozinha, e só volta com cansaço
   abaixo de 75, o que obriga a descansar.
 - **Zonas** (`data/maps/<mapa>.yaml`):
@@ -326,6 +335,10 @@ desconectar), `admin_data`/`admin_result` (equipe), `error {msg}`, `snap {ents, 
 - Lojas com estoque infinito e preço fixo.
 - Missões só individuais (grupos ainda não existem); sem missões com tempo limite ou que falham.
 - Outros jogadores são desenhados com suavização simples, não interpolação com atraso fixo.
+- Com colisão entre jogadores, alguém pode bloquear passagens estreitas (ex.: a saída de
+  2 tiles da cidade). Se incomodar: desligar `PLAYERS_BLOCK_PLAYERS` ou só na zona segura.
+- A colisão confere todos os corpos do mapa perto de cada um (sem grade espacial); ok
+  para dezenas de entidades por mapa.
 - Login sem HTTPS: na VPS, colocar atrás de um proxy com TLS (ex.: Caddy) antes de abrir ao público.
 - O hash de senha roda no loop do servidor (~0,1 s por login); ok para poucos jogadores.
 - Arte provisória (formas geométricas).

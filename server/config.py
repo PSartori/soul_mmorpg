@@ -34,6 +34,16 @@ RESPAWN_SECONDS = 3.0
 MAX_FATIGUE = 100.0
 MEDITATE_FATIGUE_LIMIT = 75.0  # só começa a meditar com cansaço abaixo disto
 
+# --- Colisão entre corpos (além das paredes) ----------------------------------
+# Quem bloqueia quem. Cada corpo é uma caixa de 2 × ENTITY_HALF; mortos não bloqueiam.
+# Corpos que já estão sobrepostos (ex.: dois jogadores que nascem no mesmo ponto) podem
+# se separar; só não podem entrar um no outro. client/js/physics.js repete a conta.
+PLAYERS_BLOCK_PLAYERS = True
+PLAYERS_BLOCK_ENEMIES = True  # jogador × inimigo, nos dois sentidos
+ENEMIES_BLOCK_ENEMIES = True
+NPCS_BLOCK = True  # NPCs bloqueiam jogadores e inimigos
+SOLID_SEARCH = 64.0  # só corpos a esta distância (além das metades) entram na conta de um passo
+
 # --- Movimento --------------------------------------------------------------
 BASE_SPEED = 120.0
 SPEED_PER_AGILITY = 3.0

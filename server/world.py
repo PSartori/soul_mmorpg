@@ -34,7 +34,7 @@ from .inventory import Inventory
 from .rules import rule_matches
 from .saves import SaveVersionError, migrate
 from .stats import STAT_LABELS
-from .tilemap import SAFE, SHOT_BLOCKERS, WALK_BLOCKERS, TileMap
+from .tilemap import SAFE, SHOT_BLOCKERS, WALK_BLOCKERS, Solid, TileMap
 
 log = logging.getLogger("world")
 
@@ -218,6 +218,25 @@ class World:
             portal["title"] = (dest.title or dest.name) if dest else portal["to"]
         return info
 
+    def _solids(self, e: Entity) -> list[Solid]:
+        """Corpos que bloqueiam o movimento de `e` (config: PLAYERS_BLOCK_PLAYERS e cia.), perto dele."""
+        is_player = isinstance(e, Player)
+        groups: list = []
+        if (C.PLAYERS_BLOCK_PLAYERS if is_player else C.PLAYERS_BLOCK_ENEMIES):
+            groups.append(self.players.values())
+        if (C.PLAYERS_BLOCK_ENEMIES if is_player else C.ENEMIES_BLOCK_ENEMIES):
+            groups.append(self.enemies.values())
+        if C.NPCS_BLOCK:
+            groups.append(self.npcs.entities.values())
+        solids = []
+        for other in chain(*groups):
+            if other is e or not other.alive or other.map_id != e.map_id:
+                continue
+            near = e.half + other.half + C.SOLID_SEARCH
+            if abs(other.x - e.x) < near and abs(other.y - e.y) < near:
+                solids.append((other.x, other.y, other.half))
+        return solids
+
     def _fx_at(self, who: Entity, data: dict) -> None:
         """Efeito visual na posição de `who` (só vai para quem está perto, no mesmo mapa)."""
         self._fx.append((who.map_id, who.x, who.y, data))
@@ -337,6 +356,8 @@ class World:
             "map": self._map_payload(self._map(player)),
             "stat_labels": STAT_LABELS,
             "npc_range": C.NPC_TALK_RANGE,  # distância para conversar com NPCs (tecla E)
+            # o que bloqueia o jogador (a previsão de movimento do cliente repete a colisão)
+            "solid": {"player": C.PLAYERS_BLOCK_PLAYERS, "enemy": C.PLAYERS_BLOCK_ENEMIES, "npc": C.NPCS_BLOCK},
             **self.content.client_payload(),
         }
 
@@ -576,7 +597,7 @@ class World:
         _face(p, dx, dy)
         scale = speed * dt * (math.sqrt(0.5) if dx and dy else 1.0)
         old_x, old_y = p.x, p.y
-        p.x, p.y = self._map(p).move_box(p.x, p.y, p.half, dx * scale, dy * scale, _player_blocks)
+        p.x, p.y = self._map(p).move_box(p.x, p.y, p.half, dx * scale, dy * scale, _player_blocks, self._solids(p))
         distance = math.hypot(p.x - old_x, p.y - old_y)
         p.state = "walk" if distance > 0 else "idle"
         if distance > 0:
@@ -852,11 +873,13 @@ class World:
         fdx, fdy = DIRECTIONS[caster.facing]
         start = (caster.x, caster.y)
         remaining = skill.distance
+        solids = self._solids(caster)
         while remaining > 0:
             step = min(C.DASH_STEP, remaining)
-            nx, ny = self._map(caster).move_box(caster.x, caster.y, caster.half, fdx * step, fdy * step, blocks)
+            nx, ny = self._map(caster).move_box(caster.x, caster.y, caster.half, fdx * step, fdy * step, blocks,
+                                                solids)
             if (nx, ny) == (caster.x, caster.y):
-                break  # bateu numa parede
+                break  # bateu numa parede ou num corpo
             caster.x, caster.y = nx, ny
             remaining -= step
         if caster.state in ("meditate", "rest"):
@@ -1215,9 +1238,11 @@ class World:
         """
         old = (e.x, e.y)
         step = e.speed * dt
+        solids = self._solids(e)
 
         def sidestep(side: int) -> bool:  # perpendicular à direção do alvo
-            e.x, e.y = self._map(e).move_box(e.x, e.y, e.half, -uy * side * step, ux * side * step, _enemy_blocks)
+            e.x, e.y = self._map(e).move_box(e.x, e.y, e.half, -uy * side * step, ux * side * step, _enemy_blocks,
+                                             solids)
             return (e.x, e.y) != old
 
         if e.detour_timer > 0:
@@ -1226,7 +1251,7 @@ class World:
                 e.detour_side = -e.detour_side
                 e.detour_timer = 0.0
         else:
-            e.x, e.y = self._map(e).move_box(e.x, e.y, e.half, ux * step, uy * step, _enemy_blocks)
+            e.x, e.y = self._map(e).move_box(e.x, e.y, e.half, ux * step, uy * step, _enemy_blocks, solids)
             if (e.x, e.y) == old:  # travou: começa a contornar (tenta um lado, depois o outro)
                 for side in (e.detour_side, -e.detour_side):
                     if sidestep(side):
@@ -1277,6 +1302,6 @@ class World:
             return
         step = e.speed * 0.5 * dt
         old = (e.x, e.y)
-        e.x, e.y = self._map(e).move_box(e.x, e.y, e.half, wx * step, wy * step, _enemy_blocks)
+        e.x, e.y = self._map(e).move_box(e.x, e.y, e.half, wx * step, wy * step, _enemy_blocks, self._solids(e))
         _face(e, wx, wy)
         e.state = "walk" if (e.x, e.y) != old else "idle"

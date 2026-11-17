@@ -23,7 +23,7 @@ const physics = new Physics(data.map, data.half, data.tick_rate);
 const pos = { x: data.start[0], y: data.start[1], f: "down" };
 const out = [];
 for (const keys of data.commands) {
-  physics.step(pos, keys, data.speed);
+  physics.step(pos, keys, data.speed, data.solids);
   out.push([pos.x, pos.y, pos.f]);
 }
 console.log(JSON.stringify(out));
@@ -33,10 +33,25 @@ console.log(JSON.stringify(out));
 @unittest.skipUnless(shutil.which("node"), "Node não instalado")
 class PhysicsParityTests(unittest.TestCase):
     def test_random_walk_matches_server(self):
+        self.walk(bodies=False)
+
+    def test_walk_among_bodies_matches_server(self):
+        """Com outros jogadores parados em volta: o cliente encosta neles igual ao servidor."""
+        self.walk(bodies=True)
+
+    def walk(self, bodies: bool):
         content = Content.load(C.DATA_DIR)
         world = World(load_map(C.DEFAULT_MAP, content.enemy_by_mark), Database(":memory:"), content)
         world.enemies.clear()
         player, _ = world.login("Paridade", "1234", "humano")
+        if bodies:  # uma grade de jogadores parados na cidade, com o testado no meio
+            sx, sy = player.x, player.y
+            for i, (gx, gy) in enumerate([(gx, gy) for gx in (-2, -1, 0, 1, 2) for gy in (-2, -1, 0, 1, 2)
+                                          if (gx, gy) != (0, 0)]):
+                other, _ = world.login(f"Corpo{i}", "1234", "humano")
+                other.x, other.y = sx + gx * 37.5, sy + gy * 33.0
+        solids = [(e.x, e.y, e.half) for e in list(world.players.values()) + list(world.npcs.entities.values())
+                  if e is not player and e.map_id == player.map_id]
         # Agilidade no máximo: a velocidade não muda no meio do teste (e fica alta, testando mais colisões)
         player.stats["agility"] = Stat(level=C.MAX_STAT_LEVEL)
         speed = player.speed
@@ -61,6 +76,7 @@ class PhysicsParityTests(unittest.TestCase):
             "speed": speed,
             "start": start,
             "commands": commands,
+            "solids": solids,  # todos os corpos do mapa (o servidor usa só os perto: tem que dar igual)
         }
         result = subprocess.run(
             ["node", "--input-type=commonjs", "-e", f"(async () => {{ {NODE_SCRIPT} }})()", PHYSICS_JS],
@@ -72,7 +88,13 @@ class PhysicsParityTests(unittest.TestCase):
         self.assertEqual(len(actual), len(expected))
         for i, (a, e) in enumerate(zip(actual, expected)):
             self.assertEqual(a, e, f"diverge no comando {i + 1}")
-        self.assertGreater(abs(player.x - start[0]) + abs(player.y - start[1]), 100)  # andou de verdade
+        if not bodies:
+            self.assertGreater(abs(player.x - start[0]) + abs(player.y - start[1]), 100)  # andou de verdade
+            return
+        # Nunca entrou num corpo, e encostou em algum de verdade (distância de caixa = soma das metades)
+        gaps = [min(max(abs(x - sx), abs(y - sy)) - player.half - sh for sx, sy, sh in solids) for x, y, _ in expected]
+        self.assertGreaterEqual(min(gaps), 0)
+        self.assertLess(min(gaps), 0.01)
 
 
 if __name__ == "__main__":

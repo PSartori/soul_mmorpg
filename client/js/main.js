@@ -40,6 +40,7 @@ let tickTimer = null;
 let entityHalf = 10;
 let tickRate = 20;
 let npcRange = 80; // distância para conversar com NPCs (vem do servidor)
+let solidKinds = new Set(); // o que bloqueia o jogador: "player", "enemy", "npc" (vem do servidor)
 let seq = 0;
 let pending = []; // comandos enviados que o servidor ainda não confirmou
 let pred = null; // posição prevista {x, y, f}
@@ -60,6 +61,7 @@ function handleMessage(msg) {
         items: msg.items, orgs: msg.orgs, roles: msg.roles, npcs: msg.npcs, quests: msg.quests,
       };
       npcRange = msg.npc_range ?? npcRange;
+      solidKinds = new Set(Object.entries(msg.solid ?? {}).filter(([, on]) => on).map(([kind]) => kind));
       kickText = null;
       state.ents.clear();
       renderer.setMap(msg.map);
@@ -219,13 +221,25 @@ function applySnapshot(msg) {
   updateHud();
 }
 
+// Corpos que bloqueiam o movimento previsto: posições do último snapshot (todos têm a mesma
+// metade, entityHalf). Quem se move pode já estar um pouco em outro lugar no servidor; aí a
+// correção chega no snapshot seguinte e é suavizada no desenho.
+function solids() {
+  const list = [];
+  for (const e of state.ents.values()) {
+    if (e.id !== state.myId && e.s !== "dead" && solidKinds.has(e.k)) list.push([e.x, e.y, entityHalf]);
+  }
+  return list;
+}
+
 // Parte da posição confirmada pelo servidor e reaplica os comandos ainda não confirmados.
 function reconcile(you) {
   while (pending.length && pending[0].seq <= you.ack) pending.shift();
   const me = state.ents.get(state.myId);
   const facing = pending.length && pred ? pred.f : me?.f ?? "down";
   pred = { x: you.x, y: you.y, f: facing };
-  for (const cmd of pending) physics.step(pred, cmd.keys, you.spd);
+  const bodies = pending.length ? solids() : [];
+  for (const cmd of pending) physics.step(pred, cmd.keys, you.spd, bodies);
 }
 
 function handleFx(fx, now) {
@@ -281,7 +295,7 @@ function clientTick() {
   seq += 1;
   conn.send({ t: "move", seq, ...keys });
   pending.push({ seq, keys });
-  physics.step(pred, keys, state.you.spd);
+  physics.step(pred, keys, state.you.spd, solids());
 }
 
 function useSlot(slot) {

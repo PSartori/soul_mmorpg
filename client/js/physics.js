@@ -1,5 +1,5 @@
-// Previsão de movimento: cópia fiel da colisão de server/tilemap.py (move_box) e do
-// movimento de server/world.py (_move_player e _face). O servidor continua sendo a
+// Previsão de movimento: cópia fiel da colisão de server/tilemap.py (move_box e
+// clamp_by_solids) e do movimento de server/world.py (_move_player e _face). O servidor continua sendo a
 // autoridade; isto só deixa o próprio personagem responder na hora, sem esperar a rede.
 // Se mudar a lógica lá, mude aqui também.
 
@@ -48,15 +48,31 @@ export class Physics {
     return next;
   }
 
+  // Encurta o passo de pos para next para só encostar nos corpos (outros jogadores, inimigos,
+  // NPCs); corpos já sobrepostos no começo são ignorados. Igual a clamp_by_solids no servidor.
+  clampBySolids(pos, other, next, solids, horizontal) {
+    if (next === pos) return next;
+    for (const [sx, sy, sh] of solids) {
+      const sPos = horizontal ? sx : sy;
+      const sOther = horizontal ? sy : sx;
+      const reach = this.half + sh;
+      if (Math.abs(other - sOther) >= reach || Math.abs(pos - sPos) < reach) continue;
+      if (next > pos && sPos > pos) next = Math.min(next, Math.max(pos, sPos - reach - EPS));
+      else if (next < pos && sPos < pos) next = Math.max(next, Math.min(pos, sPos + reach + EPS));
+    }
+    return next;
+  }
+
   // Aplica um comando de movimento (um tick) em pos = {x, y, f}.
-  step(pos, keys, speed) {
+  // solids: [[x, y, metade], ...] dos corpos que bloqueiam (posições do último snapshot).
+  step(pos, keys, speed, solids = []) {
     const dx = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
     const dy = (keys.down ? 1 : 0) - (keys.up ? 1 : 0);
     if ((!dx && !dy) || speed <= 0) return;
     if (Math.abs(dx) > Math.abs(dy)) pos.f = dx > 0 ? "right" : "left";
     else if (dy) pos.f = dy > 0 ? "down" : "up";
     const scale = speed * this.dt * (dx && dy ? DIAGONAL : 1.0);
-    pos.x = this.moveAxis(pos.x, pos.y, dx * scale, true);
-    pos.y = this.moveAxis(pos.y, pos.x, dy * scale, false);
+    pos.x = this.clampBySolids(pos.x, pos.y, this.moveAxis(pos.x, pos.y, dx * scale, true), solids, true);
+    pos.y = this.clampBySolids(pos.y, pos.x, this.moveAxis(pos.y, pos.x, dy * scale, false), solids, false);
   }
 }

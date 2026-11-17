@@ -39,6 +39,7 @@ ZONE_TYPES = ("safe", "pve", "pvp")
 AREA_ZONE_TYPES = ("pve", "pvp")
 
 Blocker = Callable[[str], bool]  # recebe o caractere do tile e diz se bloqueia
+Solid = tuple[float, float, float]  # corpo que bloqueia: (x, y, metade do lado)
 
 
 @dataclass(frozen=True)
@@ -149,19 +150,25 @@ class TileMap:
         return False
 
     def move_box(
-        self, x: float, y: float, half: float, dx: float, dy: float, blocks: Blocker
+        self, x: float, y: float, half: float, dx: float, dy: float, blocks: Blocker,
+        solids: Iterable[Solid] = (),
     ) -> tuple[float, float]:
         """Move uma caixa, um eixo de cada vez.
 
         Se o passo bater num tile, a caixa encosta na borda dele e para naquele
         eixo; o outro eixo continua livre (efeito de "deslizar" na parede).
         Supõe passos menores que um tile, o que vale com 20 ticks/s.
+        `solids` são outros corpos (jogadores, inimigos, NPCs): a caixa encosta
+        neles do mesmo jeito (veja clamp_by_solids).
 
         ATENÇÃO: client/js/physics.js tem uma cópia desta lógica (previsão de
         movimento). Se mudar aqui, mude lá também.
         """
-        x = self._move_axis(x, y, half, dx, blocks, horizontal=True)
-        y = self._move_axis(y, x, half, dy, blocks, horizontal=False)
+        solids = list(solids)
+        new_x = self._move_axis(x, y, half, dx, blocks, horizontal=True)
+        x = clamp_by_solids(x, y, half, new_x, solids, horizontal=True)
+        new_y = self._move_axis(y, x, half, dy, blocks, horizontal=False)
+        y = clamp_by_solids(y, x, half, new_y, solids, horizontal=False)
         return x, y
 
     def _move_axis(
@@ -185,6 +192,27 @@ class TileMap:
         if (d > 0 and new < pos) or (d < 0 and new > pos) or blocked(new):
             return pos
         return new
+
+
+def clamp_by_solids(pos: float, other: float, half: float, new: float, solids: list[Solid],
+                    horizontal: bool) -> float:
+    """Encurta um passo num eixo (de pos para new) para a caixa só encostar nos corpos do caminho.
+
+    Corpos já sobrepostos no começo do passo são ignorados (deixa se separarem). A ordem
+    dos corpos não importa (só min/max). client/js/physics.js repete esta conta.
+    """
+    if new == pos:
+        return new
+    for sx, sy, sh in solids:
+        s_pos, s_other = (sx, sy) if horizontal else (sy, sx)
+        reach = half + sh
+        if abs(other - s_other) >= reach or abs(pos - s_pos) < reach:
+            continue  # não se cruzam no outro eixo, ou já estavam sobrepostos
+        if new > pos and s_pos > pos:
+            new = min(new, max(pos, s_pos - reach - EPS))
+        elif new < pos and s_pos < pos:
+            new = max(new, min(pos, s_pos + reach + EPS))
+    return new
 
 
 def parse_map(

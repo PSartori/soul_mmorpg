@@ -38,7 +38,7 @@ Desperto, Espectral, Vigília, Coro Sombrio, Espectro, Devorador...) são
 - **Conteúdo é dado, não código.** Skills, efeitos, itens, inimigos, raças, classes,
   regras, organizações, papéis da equipe, NPCs, lojas, missões e mapas ficam em `data/`, validados ao
   carregar (um erro de digitação aponta arquivo, item e campo).
-- **Cada etapa termina testada**: testes automáticos (hoje 303) e verificação no
+- **Cada etapa termina testada**: testes automáticos (hoje 318) e verificação no
   navegador, e só então commit.
 
 ---
@@ -77,13 +77,15 @@ Desperto, Espectral, Vigília, Coro Sombrio, Espectro, Devorador...) são
 | `c9a094c` | Base 11 | Recarregar conteúdo ao vivo e mapas no Tiled |
 | `ceb9c05` | Interface | Duelos e organizações por menus e botões, no lugar dos comandos |
 | `2f9d345` | NPCs e lojas | NPCs com diálogo (condições e ações), lojas de compra e venda |
-| — | Missões | Oferta e entrega pelos NPCs, objetivos, diário, recompensas, save v5 |
+| `4f487ce` | Missões | Oferta e entrega pelos NPCs, objetivos, diário, recompensas, save v5 |
+| — | Colisão | Jogadores, inimigos e NPCs não se atravessam (servidor e previsão) |
 
 ### Sistemas prontos
 
 - **Motor**: servidor autoritativo (20 ticks/s) com WebSocket; cliente em JavaScript
   puro que prevê o próprio movimento (com teste que garante física idêntica nos
-  dois lados); cada jogador só recebe o que está no mesmo mapa e por perto.
+  dois lados); cada jogador só recebe o que está no mesmo mapa e por perto. Jogadores,
+  inimigos e NPCs têm corpo: não se atravessam (cada par liga/desliga em `config.py`).
 - **Personagem**: raça (escolhida na criação), classe (define as skills), quatro
   atributos treinados por uso (Força, Espírito, Agilidade, Vitalidade), meditação e
   descanso com cansaço, inventário com equipamento e moedas.

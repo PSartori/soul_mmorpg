@@ -199,6 +199,11 @@ O NPC oferece e recebe sozinho na conversa, com **!** e **?** sobre a cabeça; d
 tecla J e acompanhamento no painel lateral. Save v5. Evento `quest_complete` e ação
 `start_quest` nas regras. Cinco missões de exemplo encadeadas (Vó Celeste → Bruno).
 
+**Colisão entre corpos (concluído):** jogador×jogador, jogador×inimigo, inimigo×inimigo
+e NPC×todos, com a mesma conta no servidor e na previsão do cliente (teste de paridade
+com corpos). Cada par liga/desliga em `config.py`. A decidir se jogadores devem se
+atravessar na zona segura (para ninguém bloquear a saída da cidade).
+
 Ainda a decidir sobre a hierarquia (seção 6): limite de recusas de desafio de
 cargo (hoje pode recusar sempre), cargo vago por inatividade do ocupante, e se
 alguns cargos devem ser por torneio ou pontos de contribuição.
