@@ -213,6 +213,13 @@ de balanceamento testa cada inimigo no próprio nível e avisa quem sai da faixa
 Os chefes foram pensados para empatar no nível deles: vencíveis alguns níveis acima,
 com o equipamento da região e poções.
 
+**Caminho dos inimigos (concluído):** A* na grade de tiles quando a linha reta não está
+livre, com recálculo limitado, desistência quando não há caminho, linha de tiro para
+quem ataca de longe e retorno para casa pelo caminho. Corpos maiores que um tile
+(chefes) planejam como se coubessem num tile e os pontos do caminho são ajustados
+para onde o corpo cabe. Custo medido: ~0,1 ms por tick a mais com 42 inimigos
+perseguindo ao mesmo tempo.
+
 Ainda a decidir sobre a hierarquia (seção 6): limite de recusas de desafio de
 cargo (hoje pode recusar sempre), cargo vago por inatividade do ocupante, e se
 alguns cargos devem ser por torneio ou pontos de contribuição.
@@ -247,7 +254,7 @@ Combinado em 17/11/2026. A ordem pode mudar conforme as decisões em aberto.
 **Fase 1 — o que fazer no dia a dia (PvE)**
 - ~~Missões~~ (feito).
 - ~~Inimigos por faixa de nível (10–50), elites e chefes com fases~~ (feito).
-- IA com caminho de verdade (A*); hoje labirintos prendem os inimigos.
+- ~~IA com caminho de verdade (A*)~~ (feito).
 - Treinadores e skills aprendidas com requisitos; escolher as 8 da barra.
 - Criação de itens: receitas em YAML que transformam materiais em itens.
 - Grupos: chat, divisão de XP e saque, missões em grupo.

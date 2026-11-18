@@ -38,7 +38,7 @@ Desperto, Espectral, Vigília, Coro Sombrio, Espectro, Devorador...) são
 - **Conteúdo é dado, não código.** Skills, efeitos, itens, inimigos, raças, classes,
   regras, organizações, papéis da equipe, NPCs, lojas, missões e mapas ficam em `data/`, validados ao
   carregar (um erro de digitação aponta arquivo, item e campo).
-- **Cada etapa termina testada**: testes automáticos (hoje 352) e verificação no
+- **Cada etapa termina testada**: testes automáticos (hoje 363) e verificação no
   navegador, e só então commit.
 
 ---
@@ -79,7 +79,8 @@ Desperto, Espectral, Vigília, Coro Sombrio, Espectro, Devorador...) são
 | `2f9d345` | NPCs e lojas | NPCs com diálogo (condições e ações), lojas de compra e venda |
 | `4f487ce` | Missões | Oferta e entrega pelos NPCs, objetivos, diário, recompensas, save v5 |
 | `3e2b17f` | Colisão | Jogadores, inimigos e NPCs não se atravessam (servidor e previsão) |
-| — | Inimigos por nível | Nível, elites, chefes com fases, Ruínas e Fenda (níveis 15–50) |
+| `0ab69da` | Inimigos por nível | Nível, elites, chefes com fases, Ruínas e Fenda (níveis 15–50) |
+| — | Caminho dos inimigos | A* na grade de tiles: contornam paredes, saem de salas, desistem sem rota |
 
 ### Sistemas prontos
 
@@ -101,7 +102,8 @@ Desperto, Espectral, Vigília, Coro Sombrio, Espectro, Devorador...) são
   título acima do nome.
 - **Mundo**: quatro mapas ligados por portais, do nível 1 ao 50 (Campos de Início,
   Bosque Sombrio, Ruínas Esquecidas e Fenda do Vazio), inimigos com nível, elites
-  sorteadas e dois chefes com fases e invocações.
+  sorteadas e dois chefes com fases e invocações. Os inimigos acham caminho (A*) em
+  volta de paredes e água, e desistem quando não há rota.
 - **NPCs e lojas**: NPCs parados nos mapas (`data/npcs.yaml`), conversa por botões
   (clique ou tecla E) com opções que dependem de raça, classe, organização, moedas,
   nível total e marcas, e que podem dar itens, marcar progressão ou trocar
@@ -189,7 +191,7 @@ O roteiro completo, por fases, está em `docs/design.md` (seção 12).
 2. **Liberações e teto de progressão** — é o que mais define o jogo; depende das
    decisões em aberto.
 3. **Ajustes de classes** que o balanceamento aponta (golpe básico dominando, Assombração
-   fraca) e **IA com caminho de verdade** (A*).
+   fraca).
 4. Arte e som em paralelo, a qualquer momento.
 
 ---

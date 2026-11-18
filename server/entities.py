@@ -260,6 +260,11 @@ class Enemy(Entity):
     wander_timer: float = 0.0
     detour_side: int = 1  # lado (+1/-1) para contornar obstáculos ao perseguir
     detour_timer: float = 0.0  # enquanto > 0, continua contornando em vez de ir reto
+    path: list[tuple[float, float]] = field(default_factory=list)  # pontos do caminho (A*) até o alvo
+    path_goal: tuple[int, int] | None = None  # tile para onde o caminho leva
+    path_timer: float = 0.0  # recalcula o caminho quando chega a 0
+    ignore_id: int | None = None  # jogador sem caminho possível: ignorado por ignore_timer segundos
+    ignore_timer: float = 0.0
 
     kind: ClassVar[str] = "enemy"
 

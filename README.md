@@ -192,6 +192,7 @@ server/              Python (aiohttp)
   content.py         carrega e valida data/*.yaml
   rules.py           vocabulário das regras (eventos, campos, ações) e comparação
   duels.py           desafios e duelos
+  pathfinding.py     caminho dos inimigos: A* na grade de tiles e teste de linha livre
   npcs.py            NPCs: conversa (nós de diálogo) e lojas (compra e venda)
   quests.py          missões: progresso, entrega, recompensas e marcadores ! / ?
   inventory.py       inventário: espaços que empilham, equipamento e moedas
@@ -272,8 +273,15 @@ desconectar), `admin_data`/`admin_result` (equipe), `error {msg}`, `snap {ents, 
   ao atributo principal da skill que deu o golpe final.
 - **Efeitos**: reaplicar renova a duração (não acumula); efeitos diferentes se
   multiplicam; morrer limpa todos.
-- **Inimigos** perseguem em linha reta e contornam obstáculos simples pelo lado
-  (não é pathfinding: labirintos ainda os prendem).
+- **Inimigos** andam reto até o alvo quando nada está no meio; senão seguem um caminho
+  calculado com A* na grade de tiles (`server/pathfinding.py`), contornando paredes,
+  água, árvores e a zona segura, saindo de salas e atravessando labirintos. O caminho
+  é recalculado no máximo a cada 0,5 s ou quando o alvo muda de tile, com limite de
+  busca (`PATH_*` em `config.py`). Sem caminho possível (ex.: alvo do outro lado da
+  água), o inimigo desiste daquele jogador por 3 s, em vez de ficar empurrando a
+  parede. Quem ataca de longe continua andando até ter linha de tiro. O desvio pelo
+  lado continua resolvendo corpos no caminho e quinas. Também voltam para casa pelo
+  caminho depois de uma perseguição.
 - **Colisão entre corpos**: jogadores, inimigos e NPCs não entram uns nos outros (caixas
   de 20 px); quem anda encosta e desliza, como nas paredes, e o dash para no primeiro
   corpo. Mortos não bloqueiam. Corpos já sobrepostos (ex.: dois jogadores nascendo no

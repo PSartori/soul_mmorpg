@@ -80,6 +80,12 @@ BOSS_RESET_SECONDS = 5.0  # chefe ferido sem ninguém para lutar volta inteiro d
 SUMMON_SPREAD = 56.0  # invocados aparecem a esta distância do chefe
 SUMMON_CORPSE_SECONDS = 2.0  # invocados não renascem: somem depois disso
 ENEMY_DETOUR_SECONDS = 0.5  # tempo contornando um obstáculo antes de tentar ir reto de novo
+# Caminho (A*, server/pathfinding.py): só quando a linha reta até o alvo não está livre
+PATH_MAX_NODES = 800  # tiles examinados no máximo por busca; sem caminho até aí, desiste
+PATH_REPLAN_SECONDS = 0.5  # recalcula o caminho no máximo a cada meio segundo (ou se o alvo mudar de tile)
+PATH_GIVE_UP_SECONDS = 3.0  # alvo sem caminho possível é ignorado por este tempo
+PATH_MAX_HALF = 15.0  # corpos maiores planejam como se coubessem num tile (a colisão faz o encaixe)
+WAYPOINT_REACHED = 4.0  # chegou a um ponto do caminho a esta distância
 
 # --- Itens e saque ----------------------------------------------------------
 INVENTORY_SIZE = 20

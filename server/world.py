@@ -26,6 +26,7 @@ from .db import Database
 from .duels import DuelSystem
 from .npcs import NpcSystem
 from .orgs import OrgSystem, total_level
+from .pathfinding import clear_line, find_path, free_spot, tile_of
 from .quests import QuestSystem
 from .entities import (
     DIRECTIONS, MOVE_KEYS, ActiveEffect, Enemy, Entity, GroundItem, MoveKeys, Player, Projectile,
@@ -1242,6 +1243,8 @@ class World:
         self._update_effects(e, dt)
         if not e.alive:
             return
+        if e.ignore_timer > 0:
+            e.ignore_timer -= dt
         if e.has_flag("stunned"):
             e.state = "idle"
             return
@@ -1269,26 +1272,70 @@ class World:
         def ai_range(s: SkillDef) -> float:
             return s.ai_range + (extra if s.type in ("melee", "area") else 0.0)
 
+        # projéteis só saem com a linha de tiro livre (senão batem na parede)
+        ranged = any(s.type == "projectile" for s in skills)
+        line_of_fire = not ranged or clear_line(self._map(e), e.x, e.y, target.x, target.y, 2.0, _shot_blocks)
+
         for skill in skills:
+            if skill.type == "projectile" and not line_of_fire:
+                continue
             if e.cooldowns.get(skill.id, 0) <= 0 and dist <= ai_range(skill) and self._can_hit(e, target):
                 if self._use_skill(e, skill):
                     break
 
-        # Aproxima até o alcance da skill de menor alcance (quem tem golpe chega perto)
+        # Aproxima até o alcance da skill de menor alcance (quem tem golpe chega perto);
+        # quem atira continua andando enquanto não tiver linha de tiro
         attack_ranges = [ai_range(s) for s in skills if s.type != "self"]
         keep_distance = min(attack_ranges) if attack_ranges else 0.0
-        if dist > keep_distance and dist > 0:
-            self._enemy_chase_step(e, dx / dist, dy / dist, dt)
+        if (dist > keep_distance or not line_of_fire) and dist > 0:
+            if not self._enemy_move_to(e, target.x, target.y, dt):
+                e.ignore_id, e.ignore_timer = target.id, C.PATH_GIVE_UP_SECONDS  # sem caminho: desiste
+                e.target_id = None
+                e.state = "idle"
         else:
             e.state = "idle"
 
-    def _enemy_chase_step(self, e: Enemy, ux: float, uy: float, dt: float) -> None:
-        """Anda na direção do alvo; se travar num obstáculo, contorna pelo lado por um tempo.
+    def _enemy_move_to(self, e: Enemy, x: float, y: float, dt: float, speed_scale: float = 1.0) -> bool:
+        """Anda em direção a (x, y): reto se a linha estiver livre; senão pelo caminho do A*.
 
-        Não é pathfinding: resolve árvores e quinas, mas não labirintos.
+        Devolve False se não existe caminho (dentro do limite de busca).
+        """
+        tilemap = self._map(e)
+        tx, ty = x, y
+        if clear_line(tilemap, e.x, e.y, x, y, e.half, _enemy_blocks):
+            e.path = []
+        else:
+            goal = tile_of(tilemap, x, y)
+            e.path_timer -= dt
+            if not e.path or goal != e.path_goal or e.path_timer <= 0:
+                e.path_goal, e.path_timer = goal, C.PATH_REPLAN_SECONDS
+                tiles = find_path(tilemap, tile_of(tilemap, e.x, e.y), goal, min(e.half, C.PATH_MAX_HALF),
+                                  _enemy_blocks, C.PATH_MAX_NODES)
+                if tiles is None:
+                    e.path = []
+                    return False
+                e.path = [free_spot(tilemap, *tilemap.tile_center(*t), e.half, _enemy_blocks)
+                          for t in tiles[:-1]] + [(x, y)]
+            while e.path and math.hypot(e.path[0][0] - e.x, e.path[0][1] - e.y) < C.WAYPOINT_REACHED:
+                e.path.pop(0)
+            if len(e.path) > 1 and clear_line(tilemap, e.x, e.y, *e.path[1], e.half, _enemy_blocks):
+                e.path.pop(0)  # dá para cortar caminho até o ponto seguinte
+            if e.path:
+                tx, ty = e.path[0]
+        dx, dy = tx - e.x, ty - e.y
+        dist = math.hypot(dx, dy)
+        if dist > 0:
+            self._enemy_chase_step(e, dx / dist, dy / dist, dt, speed_scale)
+            _face(e, dx, dy)
+        return True
+
+    def _enemy_chase_step(self, e: Enemy, ux: float, uy: float, dt: float, speed_scale: float = 1.0) -> None:
+        """Um passo numa direção; se travar (num corpo, ou numa quina), contorna pelo lado por um tempo.
+
+        O caminho em volta de paredes vem do A* (_enemy_move_to); isto resolve o que sobra.
         """
         old = (e.x, e.y)
-        step = e.speed * dt
+        step = e.speed * speed_scale * dt
         solids = self._solids(e)
 
         def sidestep(side: int) -> bool:  # perpendicular à direção do alvo
@@ -1303,6 +1350,11 @@ class World:
                 e.detour_timer = 0.0
         else:
             e.x, e.y = self._map(e).move_box(e.x, e.y, e.half, ux * step, uy * step, _enemy_blocks, solids)
+            if math.hypot(e.x - old[0], e.y - old[1]) < step * 0.25 and ux and uy:
+                # travou num eixo (andou quase nada): um passo inteiro no outro, para o lado do alvo,
+                # para desencostar da quina (senão chega cada vez mais devagar e nunca passa)
+                minor = (0.0, math.copysign(step, uy)) if abs(ux) >= abs(uy) else (math.copysign(step, ux), 0.0)
+                e.x, e.y = self._map(e).move_box(e.x, e.y, e.half, *minor, _enemy_blocks, solids)
             if (e.x, e.y) == old:  # travou: começa a contornar (tenta um lado, depois o outro)
                 for side in (e.detour_side, -e.detour_side):
                     if sidestep(side):
@@ -1315,7 +1367,9 @@ class World:
         """Mantém o alvo atual se ainda for válido; senão procura o jogador mais próximo."""
 
         def valid(p: Player | None) -> bool:
-            return p is not None and p.alive and p.map_id == e.map_id and not self._map(p).is_safe(p.x, p.y)
+            if p is None or (p.id == e.ignore_id and e.ignore_timer > 0):  # sem caminho até ele, por ora
+                return False
+            return p.alive and p.map_id == e.map_id and not self._map(p).is_safe(p.x, p.y)
 
         if math.hypot(e.x - e.home_x, e.y - e.home_y) > e.defn.leash:
             if e.defn.boss and (e.phase or e.hp < e.max_hp):
@@ -1375,6 +1429,11 @@ class World:
                 self._private(p, text)
 
     def _enemy_wander(self, e: Enemy, dt: float) -> None:
+        if math.hypot(e.home_x - e.x, e.home_y - e.y) > e.defn.wander_radius + C.TILE_SIZE:
+            # longe de casa (ex.: voltou de uma perseguição): volta pelo caminho, sem pressa
+            if not self._enemy_move_to(e, e.home_x, e.home_y, dt, 0.5):
+                e.state = "idle"
+            return
         e.wander_timer -= dt
         if e.wander_timer <= 0:
             e.wander_timer = self.rng.uniform(1.5, 3.0)
