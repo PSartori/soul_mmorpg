@@ -82,7 +82,8 @@ Desperto, Espectral, Vigília, Coro Sombrio, Espectro, Devorador...) são
 | `0ab69da` | Inimigos por nível | Nível, elites, chefes com fases, Ruínas e Fenda (níveis 15–50) |
 | `9518f90` | Caminho dos inimigos | A* na grade de tiles: contornam paredes, saem de salas, desistem sem rota |
 | `e6ea339` | Treinadores e skills | Skills conhecidas + barra escolhida (janela K, arrastar), treinadores com requisitos, save v6 |
-| — | Criação de itens | Oficinas nos NPCs, receitas com materiais, preço e requisitos, receitas secretas, evento `craft` |
+| `a757a70` | Criação de itens | Oficinas nos NPCs, receitas com materiais, preço e requisitos, receitas secretas, evento `craft` |
+| — | Visão 3D (protótipo) | Mundo 3D com personagens 2D virados para a câmera (three.js), zoom, giro de 90°, troca com o 2D (V) |
 
 ### Sistemas prontos
 
@@ -203,6 +204,9 @@ Do `docs/balanceamento.md` (lutas simuladas no próprio motor):
 - Skills que sobem de nível com o uso; mais skills e treinadores para os níveis altos.
 - Criação com tempo ou chance de falha, ofícios que sobem de nível, objetivo de missão "criar".
 - **Arte e som** (hoje tudo são formas geométricas); tutorial dos primeiros minutos.
+- **Visão 3D**: há um protótipo (tecla V) com mundo 3D e personagens 2D virados para a
+  câmera. Falta decidir se vira o visual oficial e, com isso, o formato da arte (sprites em
+  4 ou 8 direções, texturas de chão e parede, modelos simples para árvores e construções).
 
 ---
 

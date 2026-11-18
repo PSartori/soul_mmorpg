@@ -5,7 +5,7 @@ const DIR = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
 const FACING_ANGLE = { right: 0, down: Math.PI / 2, left: Math.PI, up: -Math.PI / 2 };
 const TAU = Math.PI * 2;
 
-const TILE_BASE = {
+export const TILE_BASE = {
   "#": "#3a3d47",
   ".": "#4f6b34",
   ",": "#46622d",
@@ -15,13 +15,13 @@ const TILE_BASE = {
 };
 
 // Número pseudoaleatório estável por tile (para variar detalhes sem "piscar")
-function tileNoise(x, y) {
+export function tileNoise(x, y) {
   let h = (Math.imul(x, 374761393) + Math.imul(y, 668265263)) | 0;
   h = Math.imul(h ^ (h >>> 13), 1274126177);
   return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
 }
 
-function drawTile(g, ch, x, y, ts, r) {
+export function drawTile(g, ch, x, y, ts, r) {
   g.fillStyle = TILE_BASE[ch] ?? "#ff00ff";
   g.fillRect(x, y, ts, ts);
   switch (ch) {

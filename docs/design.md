@@ -280,6 +280,7 @@ Combinado em 17/11/2026. A ordem pode mudar conforme as decisões em aberto.
 - Troca entre jogadores e banco.
 - Controle da economia: moedas em circulação e mais escoamentos.
 
-**Em paralelo:** arte e som (sprites, animações, aparência do personagem), desempenho
+**Em paralelo:** visão 3D (protótipo feito: mundo 3D com personagens 2D, tecla V; falta
+decidir se fica e o formato da arte), arte e som (sprites, animações, aparência do personagem), desempenho
 (busca espacial, snapshots só com o que mudou, interpolação), interface (minimapa,
 teclas configuráveis, barra personalizável).

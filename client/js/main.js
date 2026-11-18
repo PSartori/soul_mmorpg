@@ -34,6 +34,53 @@ const state = {
 
 const renderer = new Renderer($("canvas"));
 let conn = null;
+
+// ------------------------------------------------------------------ visão 2D / 3D (protótipo)
+// O desenho 3D (render3d.js + biblioteca three) só é carregado quando a visão 3D é ligada.
+// Se não carregar (sem internet, navegador sem WebGL), o jogo continua em 2D.
+let view = "2d";
+let renderer3d = null;
+let loading3d = null;
+let rotateKeys = (keys) => keys; // teclas da tela -> do mundo, conforme o giro da câmera 3D
+let currentMap = null;
+const VIEW_KEY = "rpg.view";
+
+function savedView() {
+  try {
+    return localStorage.getItem(VIEW_KEY);
+  } catch {
+    return null;
+  }
+}
+
+async function setView(next) {
+  if (next === "3d" && !renderer3d) {
+    try {
+      loading3d ??= import("./render3d.js");
+      const mod = await loading3d;
+      renderer3d = new mod.Renderer3D($("canvas3d"), $("canvas"));
+      renderer3d.defs = state.defs;
+      if (currentMap) renderer3d.setMap(currentMap);
+      rotateKeys = mod.rotateKeys;
+    } catch (err) {
+      console.warn("visão 3D indisponível:", err);
+      addChatLine("Não foi possível carregar a visão 3D; o jogo continua em 2D.");
+      loading3d = null;
+      next = "2d";
+    }
+  }
+  view = next;
+  $("canvas3d").hidden = view !== "3d";
+  $("canvas").classList.toggle("overlay", view === "3d");
+  $("view-toggle").textContent = view === "3d" ? "Visão 2D (V)" : "Visão 3D (V)";
+  try {
+    localStorage.setItem(VIEW_KEY, view);
+  } catch {
+    // sem armazenamento: só não lembra a escolha
+  }
+}
+
+const active3d = () => view === "3d" && renderer3d;
 let inGame = false;
 
 // Previsão de movimento (só do próprio personagem)
@@ -68,6 +115,11 @@ function handleMessage(msg) {
       state.ents.clear();
       renderer.setMap(msg.map);
       renderer.defs = state.defs;
+      currentMap = msg.map;
+      if (renderer3d) {
+        renderer3d.defs = state.defs;
+        renderer3d.setMap(msg.map);
+      }
       entityHalf = msg.half;
       tickRate = msg.tick_rate;
       physics = new Physics(msg.map, entityHalf, tickRate);
@@ -149,6 +201,7 @@ function applyContent(msg) {
     items: msg.items, orgs: msg.orgs, roles: msg.roles, npcs: msg.npcs, quests: msg.quests,
   };
   renderer.defs = state.defs;
+  if (renderer3d) renderer3d.defs = state.defs;
   questLog.refresh();
   skillsWindow.lastKey = "";
   skillsWindow.update();
@@ -163,6 +216,8 @@ function applyContent(msg) {
 // Atravessou um portal: troca o mapa desenhado e a física, e recomeça a previsão
 function changeMap(msg) {
   renderer.setMap(msg.map);
+  currentMap = msg.map;
+  renderer3d?.setMap(msg.map);
   physics = new Physics(msg.map, entityHalf, tickRate);
   pending = [];
   pred = { x: msg.x, y: msg.y, f: pred?.f ?? "down" };
@@ -312,7 +367,8 @@ function handleFx(fx, now) {
 
 function clientTick() {
   if (!inGame || !pred || !state.you || state.you.s === "dead") return;
-  const keys = input.sample();
+  // na visão 3D a câmera pode estar girada: "cima" é para longe da câmera
+  const keys = active3d() ? rotateKeys(input.sample(), renderer3d.yawSteps) : input.sample();
   if (!keys.up && !keys.down && !keys.left && !keys.right) return;
   seq += 1;
   conn.send({ t: "move", seq, ...keys });
@@ -679,6 +735,12 @@ const playerMenu = new PlayerMenu({
 
 // O que está sob o mouse: outro jogador ou um NPC (tolerância de 22 px)
 function clickableAt(ev) {
+  if (active3d()) {
+    const candidates = [...state.ents.values()].filter(
+      (e) => e.id !== state.myId && e.s !== "dead" && (e.k === "player" || e.k === "npc"),
+    );
+    return renderer3d.pickEntity(ev, candidates);
+  }
   const { x, y } = screenToWorld(renderer, ev);
   let target = null;
   let best = 22;
@@ -705,6 +767,17 @@ $("canvas").addEventListener("click", (ev) => {
   const box = $("viewport").getBoundingClientRect();
   playerMenu.open(target, ev.clientX - box.left, ev.clientY - box.top);
 });
+// Rodinha do mouse: zoom da câmera 3D
+$("canvas").addEventListener("wheel", (ev) => {
+  if (!active3d()) return;
+  ev.preventDefault();
+  renderer3d.zoomBy(ev.deltaY);
+}, { passive: false });
+$("view-toggle").addEventListener("click", (ev) => {
+  setView(view === "3d" ? "2d" : "3d");
+  ev.currentTarget.blur();
+});
+if (savedView() === "3d") setView("3d");
 $("canvas").addEventListener("mousemove", (ev) => {
   $("canvas").style.cursor = inGame && clickableAt(ev) ? "pointer" : "";
 });
@@ -720,6 +793,8 @@ const input = setupInput({
     else if (name === "talk") talkToNearest();
     else if (name === "quests") toggleQuests();
     else if (name === "skills") toggleSkills();
+    else if (name === "view") setView(view === "3d" ? "2d" : "3d");
+    else if (name === "rotate-left" || name === "rotate-right") renderer3d?.rotate(name === "rotate-left" ? -1 : 1);
     else if (name === "escape") {
       closeCornerWindows();
       adminUI.toggle(false);
@@ -735,6 +810,7 @@ window.__game = {
   state,
   get pred() { return pred; },
   get pending() { return pending; },
+  get renderer3d() { return renderer3d; },
 };
 
 // ------------------------------------------------------------------ loop de desenho
@@ -777,7 +853,7 @@ function frame(now) {
     updateHotbarCooldowns(now);
   }
 
-  renderer.draw(state, now);
+  (active3d() ? renderer3d : renderer).draw(state, now);
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);

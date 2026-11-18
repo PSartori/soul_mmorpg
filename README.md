@@ -116,6 +116,9 @@ lutadores ficam parados, então alcance e esquiva não contam.
 | G | janela de administração (só para a equipe) |
 | O | janela da organização: entrar, sair, cargos e ocupantes, assumir vaga, disputar, promover, rebaixar, expulsar |
 | Enter | chat; o seletor ao lado escolhe o canal (Geral ou Organização) |
+| V | troca entre a visão 2D e a 3D (protótipo; o jogo lembra a escolha) |
+| Q / Z | na visão 3D, gira a câmera 90° para um lado ou para o outro |
+| Rodinha do mouse | na visão 3D, aproxima ou afasta a câmera |
 | **Clique num jogador** | menu: desafiar para duelo, disputar o cargo dele e, para líderes, promover, rebaixar e expulsar |
 | **Clique num NPC** | conversa; as respostas são botões, e alguns abrem a loja (comprar e vender), o treinador (aprender skills) ou a oficina (criar itens) |
 | **Arrastar na barra** | arrastar uma skill para outro espaço troca as duas de lugar; clicar num espaço vazio abre as skills |
@@ -221,6 +224,7 @@ client/              JavaScript puro, sem build
   js/main.js         estado, previsão de movimento, HUD, barra de skills, chat
   js/physics.js      cópia da colisão/movimento do servidor (previsão)
   js/render.js       desenho no canvas (arte provisória com formas)
+  js/render3d.js     visão 3D (protótipo): mundo 3D com personagens 2D virados para a câmera
   js/inventory.js    janela de inventário
   js/admin.js        janela de administração
   js/social.js       menu do jogador, aviso de desafio e janela da organização
@@ -397,6 +401,26 @@ pode usar — só vêm quando mudam), `chat {from, text}`, `sys {text}`.
 - **Morte**: renasce no ponto de nascimento (`S`) do mapa onde está, depois de 3 s.
 - **Salvamento**: ao sair e automaticamente a cada 60 s. Save v6 guarda skills conhecidas e
   barra; personagens de antes continuam com as skills que a classe dava e a mesma barra.
+
+## Visão 3D (protótipo)
+
+Com **V** (ou o botão no painel) o jogo troca o desenho 2D por uma visão 3D: o chão é
+uma textura feita dos tiles do mapa, paredes e árvores ganham volume e sombra, e
+jogadores, inimigos, NPCs e itens são imagens 2D sempre viradas para a câmera. Nomes,
+barras de vida, marcas de missão e números são desenhados no canvas 2D por cima.
+
+- **Só o desenho muda.** O servidor continua num plano: física, colisão, alcance,
+  previsão de movimento, mapas e Tiled são os mesmos nas duas visões.
+- **Câmera inclinada** que segue o personagem, com zoom (rodinha) e giro de 90° (Q/Z).
+  Com a câmera girada, o cliente converte as teclas: W anda sempre "para longe da câmera"
+  (`rotateKeys` em `render3d.js`). O giro é em passos de 90° porque o servidor só recebe
+  cima/baixo/esquerda/direita.
+- **Clique** em jogadores e NPCs compara o mouse com a imagem de cada um na tela.
+- A biblioteca 3D ([three.js](https://threejs.org), versão 0.160.0 fixa) vem da CDN
+  jsDelivr pelo *import map* do `index.html`, e só é baixada quando a visão 3D é ligada. Se
+  não carregar (sem internet ou sem WebGL), o jogo avisa no chat e continua em 2D.
+- As imagens dos personagens são geradas com formas (de frente, de costas e de lado,
+  conforme para onde olham em relação à câmera), até termos sprites de verdade.
 
 ## Pendências conhecidas
 

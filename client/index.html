@@ -5,11 +5,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>RPG Online — protótipo</title>
   <link rel="stylesheet" href="/static/style.css">
+  <!-- Biblioteca 3D do protótipo de visão 3D (versão fixa). Só é baixada se a visão 3D for usada. -->
+  <script type="importmap">
+    { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+  </script>
 </head>
 <body>
   <div id="app">
     <main id="stage">
       <div id="viewport">
+        <canvas id="canvas3d" hidden></canvas>
         <canvas id="canvas" width="960" height="640"></canvas>
         <section id="inventory" hidden aria-label="Inventário">
           <header>
@@ -74,6 +79,7 @@
           <button type="button" id="org-open">Organização (O)</button>
           <button type="button" id="quests-open">Missões (J)</button>
           <button type="button" id="skills-open">Skills (K)</button>
+          <button type="button" id="view-toggle">Visão 3D (V)</button>
           <button type="button" id="admin-open" hidden>Administração (G)</button>
         </div>
       </section>
@@ -101,7 +107,8 @@
         <b>J</b> missões ·
         <b>K</b> skills ·
         <b>E</b> conversar ·
-        <b>Enter</b> chat
+        <b>Enter</b> chat ·
+        <b>V</b> visão 2D/3D (no 3D: <b>Q</b>/<b>Z</b> giram a câmera, rodinha do mouse dá zoom)
         <br><b>Clique num jogador</b> para desafiar, disputar cargo ou (líderes) promover e expulsar.
         <b>Clique num NPC</b> (ou <b>E</b> perto dele) para conversar, negociar, treinar e criar itens.
       </section>
