@@ -1,6 +1,6 @@
 # Contexto geral do projeto
 
-Resumo de tudo o que foi conversado e construído até 15/11/2026 (atualizado com NPCs, lojas e missões): de onde o projeto
+Resumo de tudo o que foi conversado e construído até 17/11/2026 (atualizado com treinadores e skills aprendidas): de onde o projeto
 veio, como trabalhamos, o que foi decidido, o que existe hoje e o que vem a seguir.
 Para detalhes técnicos, veja o `README.md`; para a visão do jogo e as decisões em
 aberto, o `docs/design.md`; para números de balanceamento, o `docs/balanceamento.md`.
@@ -36,9 +36,9 @@ Desperto, Espectral, Vigília, Coro Sombrio, Espectro, Devorador...) são
   comandos no chat; toda funcionalidade nova já nasce com menus, botões e janelas.
   Comandos podem existir só como atalho.
 - **Conteúdo é dado, não código.** Skills, efeitos, itens, inimigos, raças, classes,
-  regras, organizações, papéis da equipe, NPCs, lojas, missões e mapas ficam em `data/`, validados ao
+  regras, organizações, papéis da equipe, NPCs, lojas, treinadores, missões e mapas ficam em `data/`, validados ao
   carregar (um erro de digitação aponta arquivo, item e campo).
-- **Cada etapa termina testada**: testes automáticos (hoje 363) e verificação no
+- **Cada etapa termina testada**: testes automáticos (hoje 390) e verificação no
   navegador, e só então commit.
 
 ---
@@ -80,7 +80,8 @@ Desperto, Espectral, Vigília, Coro Sombrio, Espectro, Devorador...) são
 | `4f487ce` | Missões | Oferta e entrega pelos NPCs, objetivos, diário, recompensas, save v5 |
 | `3e2b17f` | Colisão | Jogadores, inimigos e NPCs não se atravessam (servidor e previsão) |
 | `0ab69da` | Inimigos por nível | Nível, elites, chefes com fases, Ruínas e Fenda (níveis 15–50) |
-| — | Caminho dos inimigos | A* na grade de tiles: contornam paredes, saem de salas, desistem sem rota |
+| `9518f90` | Caminho dos inimigos | A* na grade de tiles: contornam paredes, saem de salas, desistem sem rota |
+| — | Treinadores e skills | Skills conhecidas + barra escolhida (janela K, arrastar), treinadores com requisitos, save v6 |
 
 ### Sistemas prontos
 
@@ -88,11 +89,17 @@ Desperto, Espectral, Vigília, Coro Sombrio, Espectro, Devorador...) são
   puro que prevê o próprio movimento (com teste que garante física idêntica nos
   dois lados); cada jogador só recebe o que está no mesmo mapa e por perto. Jogadores,
   inimigos e NPCs têm corpo: não se atravessam (cada par liga/desliga em `config.py`).
-- **Personagem**: raça (escolhida na criação), classe (define as skills), quatro
+- **Personagem**: raça (escolhida na criação), classe (dá as skills iniciais), quatro
   atributos treinados por uso (Força, Espírito, Agilidade, Vitalidade), meditação e
   descanso com cansaço, inventário com equipamento e moedas.
 - **Combate**: skills de vários tipos (golpe, projétil, área, dash, buff) e efeitos
   de status (lento, atordoado, veneno, buffs).
+- **Skills aprendidas**: cada personagem conhece skills (iniciais da classe, compradas de
+  treinadores ou dadas por regras/missões) e escolhe 8 para a barra na janela de skills (K),
+  arrastando. A barra trava em combate e em duelos. Skills restritas a uma raça/classe ficam
+  bloqueadas depois de uma transformação, mas não se perdem. Treinadores (`data/trainers.yaml`)
+  mostram cada skill com preço e o que falta (nível de atributo, outra skill, raça/classe,
+  nível total, missão).
 - **Regras em YAML** (`data/rules.yaml`): "quando X, se Y, faça Z" para morte, abate,
   subida de nível, fim de duelo e mudança de cargo — penalidades, transformações,
   recompensas.
@@ -124,8 +131,12 @@ Desperto, Espectral, Vigília, Coro Sombrio, Espectro, Devorador...) são
 - **Raças**: Humano e Desperto (escolhíveis), Espectral (alcançada por regra).
 - **Classes**: Aprendiz, Iniciado, Assombração.
 - **Organizações**: Vigília (Humanos e Despertos) e Coro Sombrio (Espectrais).
-- **NPCs**: Hilda (mercadora), Otto (ferreiro) e Vó Celeste (dá 3 poções uma vez) nos
-  Campos de Início; Bruno (caçador, paga melhor por materiais) no Bosque Sombrio.
+- **NPCs**: Hilda (mercadora), Otto (ferreiro), Vó Celeste (dá 3 poções uma vez) e Ivo
+  (treinador: Onda de choque, Leque de energia, Foco) nos Campos de Início; Bruno (caçador,
+  paga melhor por materiais) e Eco (treinador dos Espectrais: Leque) no Bosque Sombrio.
+- **Skills iniciais**: Aprendiz (Golpe, Rajada, Passo veloz), Iniciado (Golpe, Rajada,
+  Flecha gélida), Assombração (Golpe, Dardo venenoso, Passo veloz); o resto vem dos
+  treinadores.
 - **Missões**: Primeiros passos → Notícias do bosque → Caça ao Devorador (Vó Celeste e
   Bruno), Couro para a forja (Otto) e Fragmentos para a mercearia (Hilda, repetível).
 - **Inimigos**: Espectro (1), Bruto (4), Devorador (9), Sentinela de pedra (16),
@@ -176,8 +187,9 @@ Do `docs/balanceamento.md` (lutas simuladas no próprio motor):
   conta/IP; recuperação de senha.
 - **Hospedagem na VPS**: HTTPS, reinício automático, backup fora da máquina.
 - **Proteções**: limite de mensagens por segundo, tentativas de senha.
-- Treinadores, criação de itens e grupos (missões em grupo); lojas com estoque
+- Criação de itens e grupos (missões em grupo); lojas com estoque
   limitado ou preço variável; eventos iniciados pela equipe (ex.: invasões).
+- Skills que sobem de nível com o uso; mais skills e treinadores para os níveis altos.
 - **Arte e som** (hoje tudo são formas geométricas); tutorial dos primeiros minutos.
 
 ---

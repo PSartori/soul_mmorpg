@@ -102,6 +102,9 @@ NPC_LEAVE_RANGE = 128.0  # afastou-se mais que isso: a conversa (e a loja) fecha
 SHOP_BUY_RATE = 0.4  # padrão do buy_rate: a loja paga 40% do valor do item
 SHOP_MAX_QTY = 999  # máximo de unidades numa compra ou venda
 MAX_ACTIVE_QUESTS = 10  # missões em andamento ao mesmo tempo (data/quests.yaml)
+BAR_SIZE = 8  # espaços da barra de atalhos (teclas 1–8)
+BAR_COMBAT_LOCK = 5.0  # não dá para mudar a barra até este tempo depois de atacar ou levar dano (0 = sem trava)
+BAR_SAFE_ZONE_ONLY = False  # True: a barra só muda na zona segura
 
 # --- Duelos (server/duels.py) -------------------------------------------------
 DUEL_CHALLENGE_RANGE = 256.0  # distância máxima para desafiar/aceitar (8 tiles)

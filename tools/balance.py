@@ -131,7 +131,7 @@ class Report:
                 top_source, top_damage = max(result.a.by_source.items(), key=lambda kv: kv[1], default=("", 0))
                 if top_damage / total >= TOP_SOURCE_SHARE:
                     self.note("dominance", c, top_source, level, top_damage / total)
-                for sid in self.content.classes[c].skills:
+                for sid in self.content.class_skill_pool(c):
                     skill = self.content.skills[sid]
                     if skill.type not in ("melee", "projectile", "area") or self._has_utility(skill):
                         continue  # o valor dela não é (só) dano
@@ -204,7 +204,7 @@ class Report:
 
         # ---- skills que nunca entram na rotação
         for c in classes:
-            for sid in self.content.classes[c].skills:
+            for sid in self.content.class_skill_pool(c):
                 skill = self.content.skills[sid]
                 if skill.type != "dash" and sid not in used_skills[c]:
                     self.alerts.append(f"**{skill.name}** nunca foi usada pela rotação de "

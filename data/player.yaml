@@ -3,6 +3,7 @@
 #   default_race  raça dada a personagens antigos (de antes das raças existirem)
 #                 e a quem tiver no save uma raça que foi removida do jogo.
 #
-# As skills de cada personagem vêm da classe (data/classes.yaml).
+# As skills iniciais vêm da classe (data/classes.yaml); as outras, de treinadores
+# (data/trainers.yaml) e da ação learn_skill.
 
 default_race: humano

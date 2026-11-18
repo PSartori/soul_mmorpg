@@ -12,6 +12,15 @@
 #   self_effects  [ { id: efeito, duration: segundos } ] aplicados em quem usa
 #   color         cor do efeito visual no cliente
 #
+# Só para skills de jogadores:
+#   description   texto da janela de skills (tecla K)
+#   races         raças que podem usar (vazio = todas)
+#   classes       classes que podem usar (vazio = todas)
+#                 Quem conhece uma skill que a raça/classe atual não pode usar continua
+#                 sabendo, mas ela fica bloqueada até voltar a poder (ex.: depois de uma
+#                 transformação). Como se aprende: classes.yaml (start_skills),
+#                 trainers.yaml (treinadores) e a ação learn_skill das regras/diálogos/missões.
+#
 # Campos por tipo:
 #   melee       reach (distância do centro do golpe), size (metade do lado da área)
 #   projectile  speed, ttl (segundos de vida), radius, count (quantos), spread (graus entre eles)
@@ -25,6 +34,7 @@
 
 golpe:
   name: Golpe
+  description: Golpe corpo a corpo rápido, sem custo. Treina Força.
   type: melee
   cooldown: 0.45
   reach: 20
@@ -34,6 +44,7 @@ golpe:
 
 rajada:
   name: Rajada
+  description: Disparo de energia em linha reta.
   type: projectile
   color: "#8cc8ff"
   cooldown: 0.8
@@ -46,6 +57,7 @@ rajada:
 
 passo:
   name: Passo veloz
+  description: Avança rápido na direção em que olha. Bom para fugir ou alcançar.
   type: dash
   cooldown: 2.0
   cost: { energy: 8 }
@@ -54,6 +66,8 @@ passo:
 
 flecha_gelida:
   name: Flecha gélida
+  description: Projétil frio que deixa o alvo lento.
+  classes: [iniciado]
   type: projectile
   color: "#bfe8ff"
   cooldown: 1.2
@@ -67,6 +81,8 @@ flecha_gelida:
 
 dardo:
   name: Dardo venenoso
+  description: Pouco dano na hora, mas envenena o alvo por alguns segundos.
+  classes: [assombracao]
   type: projectile
   color: "#8fe36b"
   cooldown: 3.0
@@ -80,6 +96,8 @@ dardo:
 
 leque:
   name: Leque de energia
+  description: Três disparos em leque. Acerta grupos e alvos que se esquivam.
+  races: [desperto, espectral]
   type: projectile
   color: "#d0a8ff"
   cooldown: 2.5
@@ -94,6 +112,8 @@ leque:
 
 onda:
   name: Onda de choque
+  description: Explosão em volta de quem usa; atordoa por um instante.
+  races: [humano, desperto]
   type: area
   color: "#ffe28a"
   cooldown: 4.0
@@ -105,6 +125,8 @@ onda:
 
 foco:
   name: Foco
+  description: Concentra a energia e aumenta o próprio dano por alguns segundos.
+  races: [humano, desperto]
   type: self
   cooldown: 20
   cost: { energy: 15 }

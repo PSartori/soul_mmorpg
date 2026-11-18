@@ -1,4 +1,4 @@
-# Personagens do mundo (NPCs): conversam, abrem lojas e podem dar coisas ou mudar o
+# Personagens do mundo (NPCs): conversam, abrem lojas, ensinam skills e podem dar coisas ou mudar o
 # personagem, com as mesmas ações das regras (data/rules.yaml).
 #
 # Onde cada NPC fica é definido no mapa:
@@ -22,7 +22,8 @@
 #                 give_gold, lose_gold, set_flag, clear_flag, gain_xp, add_effect,
 #                 set_class, set_race...)
 #           goto: nó seguinte          | shop: abre a loja (data/shops.yaml)
-#                 (sem goto nem shop, a conversa termina depois das ações)
+#                                      | trainer: abre o treinador (data/trainers.yaml)
+#                 (sem goto, shop nem trainer, a conversa termina depois das ações)
 #       Nó sem opções mostra só um botão para encerrar.
 #
 # Para algo acontecer uma vez só, use uma marca: if { not_flags: [x] } + do [ set_flag: x ].
@@ -131,4 +132,35 @@ vigia:
       options:
         - text: Preciso de suprimentos.
           shop: acampamento
+        - text: Até mais.
+
+mestre:
+  name: Ivo
+  title: Mestre de armas
+  color: "#c8c8d8"
+  dialogue:
+    inicio:
+      text: "Força sem técnica é desperdício, {name}. Treine os atributos e eu ensino o resto."
+      options:
+        - text: Quero aprender técnicas.
+          trainer: treino_campos
+        - text: Como funciona o treino?
+          goto: explica
+        - text: Até mais.
+    explica:
+      text: "Cada técnica pede um certo nível de atributo, às vezes outra técnica antes, e algumas moedas. As que você aprende ficam na janela de skills (K); escolha lá quais vão para a barra."
+      options:
+        - text: Entendi.
+          goto: inicio
+
+eco:
+  name: Eco
+  title: Mestre das sombras
+  color: "#7d6aa8"
+  dialogue:
+    inicio:
+      text: "Nem todos que caíram para os espectros se perderam. Alguns aprenderam com eles."
+      options:
+        - text: Ensine-me.
+          trainer: treino_sombras
         - text: Até mais.

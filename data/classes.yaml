@@ -1,7 +1,9 @@
 # Classes. Cada classe pertence a uma raça.
 #
 #   name, race, description
-#   skills      barra de atalhos, na ordem (até 8; Espaço = 1, F = 2)
+#   start_skills  skills que o personagem aprende ao entrar na classe (na criação ou
+#                 numa transformação); montam a barra inicial, na ordem (até 8;
+#                 Espaço = 1, F = 2). As outras vêm de treinadores (trainers.yaml).
 #   train_rate  multiplicador do XP ganho por atributo (padrão 1.0):
 #               define os pontos fortes e fracos da classe
 #
@@ -11,19 +13,19 @@ aprendiz:
   name: Aprendiz
   race: humano
   description: Luta de perto e aguenta pancada.
-  skills: [golpe, rajada, passo, onda, foco]
+  start_skills: [golpe, rajada, passo]
   train_rate: { strength: 1.25, vitality: 1.25, spirit: 0.8 }
 
 iniciado:
   name: Iniciado
   race: desperto
   description: Controla a energia à distância.
-  skills: [golpe, rajada, flecha_gelida, leque, onda, foco]
+  start_skills: [golpe, rajada, flecha_gelida]
   train_rate: { spirit: 1.3, strength: 0.8 }
 
 assombracao:
   name: Assombração
   race: espectral
   description: Some e reaparece; envenena e foge.
-  skills: [golpe, dardo, passo, leque]
+  start_skills: [golpe, dardo, passo]
   train_rate: { agility: 1.3, vitality: 0.7 }

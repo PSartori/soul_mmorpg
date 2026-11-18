@@ -28,6 +28,7 @@ from .npcs import NpcSystem
 from .orgs import OrgSystem, total_level
 from .pathfinding import clear_line, find_path, free_spot, tile_of
 from .quests import QuestSystem
+from .training import TrainingSystem
 from .entities import (
     DIRECTIONS, MOVE_KEYS, ActiveEffect, Enemy, Entity, GroundItem, MoveKeys, Player, Projectile,
 )
@@ -114,6 +115,7 @@ class World:
         self.admin = AdminSystem(self)
         self.npcs = NpcSystem(self)  # personagens do mundo: conversas e lojas
         self.quests = QuestSystem(self)  # missões (data/quests.yaml)
+        self.training = TrainingSystem(self)  # skills aprendidas, barra e treinadores (data/trainers.yaml)
 
         self._spawn_enemies()
         self.npcs.spawn()
@@ -212,7 +214,6 @@ class World:
                     del p.effects[effect_id]
             p.cooldowns = {k: v for k, v in p.cooldowns.items() if k in content.skills}
             p.item_cooldowns = {k: v for k, v in p.item_cooldowns.items() if k in content.items}
-            p.actions = [a for a in p.actions if a[0] != "skill" or a[1] in p.skills]
             tilemap = maps.get(p.map_id)
             map_id, x, y = p.map_id, p.x, p.y
             if tilemap is None:
@@ -312,6 +313,7 @@ class World:
         player = Player(id=self._new_id(), name=record.name, x=sx, y=sy, map_id=self.start_map_id)
         # antes do load: a vida máxima depende da raça e do equipamento
         player.inventory = Inventory.from_dict(data.get("inventory") or {}, self.content.items)
+        self.training.load(player, data.get("skills"))  # conferidas com a classe logo abaixo
         self._set_class(player, self._resolve_class(data))
         player.load_dict(data)
         if is_new:
@@ -346,10 +348,14 @@ class World:
         return classes[races[self.content.default_race].start_class]
 
     def _set_class(self, p: Player, cls: ClassDef) -> None:
-        """Troca classe e, junto, a raça (a da classe). As skills vêm da classe."""
+        """Troca classe e, junto, a raça (a da classe).
+
+        Aprende as skills iniciais da classe; as que a raça/classe nova não pode usar
+        continuam conhecidas, mas saem da barra (server/training.py).
+        """
         p.class_def = cls
         p.race_def = self.content.races[cls.race]
-        p.skills = list(cls.skills)
+        self.training.on_class_change(p)
         for slot, item in list(p.inventory.equipment.items()):
             if not self._can_equip(p, item):  # a raça/classe nova não pode usar: volta para a bolsa
                 del p.inventory.equipment[slot]
@@ -378,6 +384,7 @@ class World:
             "map": self._map_payload(self._map(player)),
             "stat_labels": STAT_LABELS,
             "npc_range": C.NPC_TALK_RANGE,  # distância para conversar com NPCs (tecla E)
+            "bar_size": C.BAR_SIZE,  # espaços da barra de atalhos
             # o que bloqueia o jogador (a previsão de movimento do cliente repete a colisão)
             "solid": {"player": C.PLAYERS_BLOCK_PLAYERS, "enemy": C.PLAYERS_BLOCK_ENEMIES, "npc": C.NPCS_BLOCK},
             **self.content.client_payload(),
@@ -397,7 +404,7 @@ class World:
         elif kind == "skill":
             skill_id = data.get("id")
             facing = data.get("f") if data.get("f") in DIRECTIONS else None
-            if skill_id in player.skills and len(player.actions) < C.MAX_QUEUED_ACTIONS:
+            if skill_id in player.bar and len(player.actions) < C.MAX_QUEUED_ACTIONS:
                 player.actions.append(("skill", skill_id, facing))
         elif kind in ("meditate", "rest"):
             if len(player.actions) < C.MAX_QUEUED_ACTIONS:
@@ -426,6 +433,8 @@ class World:
             self.npcs.handle_op(player, data)
         elif kind == "quest":
             self.quests.handle_op(player, data)
+        elif kind == "skills":
+            self.training.handle_op(player, data)
 
     def save_all(self) -> None:
         for player in self.players.values():
@@ -537,6 +546,8 @@ class World:
                 player.inventory.dirty = False
             if (quests := self.quests.snapshot_for(player)) is not None:  # diário também
                 you["q"] = quests
+            if (known := self.training.snapshot_for(player)) is not None:  # skills conhecidas também
+                you["known"] = known
             self._outbox.append((player.id, {
                 "t": "snap", "ents": near(ents), "projs": near(all_projs), "drops": near(all_drops),
                 "fx": near(all_fx), "you": you,
@@ -728,6 +739,8 @@ class World:
             p.inventory.add_gold(-lost)
         elif name == "start_quest":
             self.quests.start(p, args)
+        elif name == "learn_skill":
+            self.training.learn(p, args)
 
     def _player_context(self, p: Player) -> dict:
         """O que as condições de diálogos e missões podem consultar sobre o personagem."""
@@ -791,6 +804,8 @@ class World:
                 self._private(caster, f"Energia insuficiente para {skill.name}.")
                 return False
             caster.energy -= skill.cost_energy
+            if skill.type in ("melee", "projectile", "area"):  # atacar trava a barra por um tempo
+                self.training.mark_combat(caster)
             if caster.state in ("meditate", "rest"):
                 caster.state = "idle"
             if facing:  # o cliente diz para onde estava olhando ao apertar a tecla
@@ -970,6 +985,7 @@ class World:
             target.hp = max(1.0, target.hp)
         self._fx_at(target, {"k": "dmg", "id": target.id, "x": round(target.x), "y": round(target.y), "v": amount})
         if isinstance(target, Player):
+            self.training.mark_combat(target)
             if target.state in ("meditate", "rest"):
                 target.state = "idle"
             self._train(target, "vitality", lost * C.VITALITY_XP_PER_DAMAGE)

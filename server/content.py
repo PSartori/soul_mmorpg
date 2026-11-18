@@ -25,7 +25,7 @@ SKILL_TYPES = ("melee", "projectile", "area", "dash", "self")
 AI_SKILL_TYPES = ("melee", "projectile", "area", "self")
 MODIFIERS = ("speed", "damage", "damage_taken", "energy_regen")
 FLAGS = ("stunned", "silenced")
-MAX_HOTBAR = 8
+MAX_HOTBAR = C.BAR_SIZE  # barra de atalhos
 RACE_BONUSES = ("max_hp", "max_energy", "speed")
 ITEM_TYPES = ("equipment", "consumable", "material")
 EQUIP_SLOTS = ("weapon", "armor", "accessory")
@@ -88,6 +88,14 @@ class SkillDef:
     count: int = 1
     spread: float = 0.0
     distance: float = 0.0
+    # só para jogadores: texto da janela de skills e quem pode usar (vazio = todos)
+    description: str = ""
+    races: tuple[str, ...] = ()
+    classes: tuple[str, ...] = ()
+
+    def usable_by(self, race: str | None, class_id: str | None) -> bool:
+        """A raça/classe pode usar esta skill? (restrições races/classes de skills.yaml)"""
+        return (not self.races or race in self.races) and (not self.classes or class_id in self.classes)
 
     @property
     def ai_range(self) -> float:
@@ -101,7 +109,8 @@ class SkillDef:
         return float("inf")  # self: pode usar a qualquer distância
 
     def client_info(self) -> dict:
-        return {"name": self.name, "type": self.type, "cd": self.cooldown, "cost": self.cost_energy, "color": self.color}
+        return {"name": self.name, "type": self.type, "cd": self.cooldown, "cost": self.cost_energy, "color": self.color,
+                "desc": self.description, "races": list(self.races), "classes": list(self.classes)}
 
 
 @dataclass(frozen=True)
@@ -251,7 +260,7 @@ class ClassDef:
     name: str
     race: str
     description: str
-    skills: tuple[str, ...]
+    start_skills: tuple[str, ...]  # aprendidas ao entrar na classe; montam a barra inicial
     train_rate: dict[str, float]
 
 
@@ -280,11 +289,31 @@ class ShopDef:
 
 
 @dataclass(frozen=True)
+class TrainerEntry:
+    skill: str
+    price: int  # moedas para aprender (0 = de graça)
+    stats: dict[str, int]  # nível mínimo de cada atributo
+    skills: tuple[str, ...]  # skills que precisa já conhecer
+    rule: Rule  # condições extras (as mesmas dos diálogos: total_level, quest_done, flags...)
+
+
+@dataclass(frozen=True)
+class TrainerDef:
+    id: str
+    name: str
+    teaches: tuple[TrainerEntry, ...]
+
+    def entry(self, skill_id: str) -> TrainerEntry | None:
+        return next((e for e in self.teaches if e.skill == skill_id), None)
+
+
+@dataclass(frozen=True)
 class DialogOption:
     text: str
     rule: Rule  # condições (quando a opção aparece) e ações (o que acontece ao escolher)
-    goto: str | None = None  # nó seguinte; sem goto nem shop, a conversa termina
+    goto: str | None = None  # nó seguinte; sem goto, shop nem trainer, a conversa termina
     shop: str | None = None  # abre esta loja
+    trainer: str | None = None  # abre este treinador (data/trainers.yaml)
 
 
 @dataclass(frozen=True)
@@ -350,6 +379,7 @@ class Content:
     shops: dict[str, ShopDef] = field(default_factory=dict)
     npcs: dict[str, NpcDef] = field(default_factory=dict)
     quests: dict[str, QuestDef] = field(default_factory=dict)
+    trainers: dict[str, TrainerDef] = field(default_factory=dict)
 
     @property
     def enemy_by_mark(self) -> dict[str, EnemyDef]:
@@ -358,6 +388,16 @@ class Content:
     @cached_property
     def rules_by_event(self) -> dict[str, tuple[Rule, ...]]:
         return {event: tuple(r for r in self.rules if r.when == event) for event in EVENT_FIELDS}
+
+    def class_skill_pool(self, class_id: str) -> list[str]:
+        """Tudo que a classe pode chegar a usar: as iniciais e as de treinadores que ela pode usar.
+
+        Serve às ferramentas (balanceamento); não confere requisitos de nível nem preço.
+        """
+        cls = self.classes[class_id]
+        taught = [e.skill for t in self.trainers.values() for e in t.teaches]
+        return [sid for sid in dict.fromkeys([*cls.start_skills, *taught])
+                if self.skills[sid].usable_by(cls.race, cls.id)]
 
     def selectable_races(self) -> list[dict]:
         return [
@@ -373,6 +413,7 @@ class Content:
             "enemies": {e.id: {"color": e.color, "phases": len(e.phases)} for e in self.enemies.values()},
             "races": {r.id: {"name": r.name} for r in self.races.values()},
             "classes": {c.id: {"name": c.name, "race": c.race} for c in self.classes.values()},
+            "stat_names": {s: STAT_LABELS[s] for s in STAT_NAMES},
             "items": {i.id: i.client_info() for i in self.items.values()},
             "orgs": {o.id: o.client_info() for o in self.orgs.values()},
             "roles": {r.id: r.client_info() for r in self.roles.values()},
@@ -401,6 +442,8 @@ class Content:
                 labels.append(f"{args} moedas")
             elif name == "gain_xp":
                 labels.append(f"{args['amount']:g} XP de {STAT_LABELS[args['stat']]}")
+            elif name == "learn_skill":
+                labels.append(f"Skill: {getattr(self.skills.get(args), 'name', args)}")
         return labels
 
     def quest_client_info(self, q: QuestDef) -> dict:
@@ -453,12 +496,13 @@ class Content:
         rules = tuple(_parse_rule(i, raw, refs) for i, raw in _load_yaml(data_dir / "rules.yaml").items())
         # lojas, NPCs e missões são opcionais (o arquivo pode não existir)
         shops = {i: _parse_shop(i, raw, items) for i, raw in _load_yaml(data_dir / "shops.yaml", True).items()}
+        trainers = {i: _parse_trainer(i, raw, refs) for i, raw in _load_yaml(data_dir / "trainers.yaml", True).items()}
         npcs = {i: _parse_npc(i, raw, refs) for i, raw in _load_yaml(data_dir / "npcs.yaml", True).items()}
         quests = {i: _parse_quest(i, raw, refs) for i, raw in quests_raw.items()}
 
         content = cls(effects=effects, skills=skills, enemies=enemies, races=races, classes=classes,
                       rules=rules, default_race=default_race, items=items, orgs=orgs, roles=roles,
-                      shops=shops, npcs=npcs, quests=quests)
+                      shops=shops, npcs=npcs, quests=quests, trainers=trainers)
         content.check_references()
         return content
 
@@ -467,6 +511,12 @@ class Content:
             for app in s.effects + s.self_effects:
                 if app.effect not in self.effects:
                     raise ContentError(f"skills.yaml > {s.id}: efeito '{app.effect}' não existe em effects.yaml")
+            for race in s.races:
+                if race not in self.races:
+                    raise ContentError(f"skills.yaml > {s.id}: raça '{race}' não existe em races.yaml")
+            for cls_id in s.classes:
+                if cls_id not in self.classes:
+                    raise ContentError(f"skills.yaml > {s.id}: classe '{cls_id}' não existe em classes.yaml")
         marks: dict[str, str] = {}
         for e in self.enemies.values():
             if e.mark in marks:
@@ -511,11 +561,14 @@ class Content:
             where = f"classes.yaml > {c.id}"
             if c.race not in self.races:
                 raise ContentError(f"{where}: raça '{c.race}' não existe em races.yaml")
-            for sid in c.skills:
+            for sid in c.start_skills:
                 if sid not in self.skills:
                     raise ContentError(f"{where}: skill '{sid}' não existe em skills.yaml")
-            if len(c.skills) > MAX_HOTBAR:
-                raise ContentError(f"{where}: no máximo {MAX_HOTBAR} skills (barra de atalhos)")
+                if not self.skills[sid].usable_by(c.race, c.id):
+                    raise ContentError(f"{where}: a skill inicial '{sid}' não pode ser usada por esta classe "
+                                       "(veja races/classes dela em skills.yaml)")
+            if len(c.start_skills) > MAX_HOTBAR:
+                raise ContentError(f"{where}: no máximo {MAX_HOTBAR} skills iniciais (barra de atalhos)")
         for r in self.races.values():
             start = self.classes.get(r.start_class)
             if start is None:
@@ -536,6 +589,9 @@ class Content:
                     if opt.shop and opt.shop not in self.shops:
                         raise ContentError(f"npcs.yaml > {npc.id}.dialogue > {node.id}.options[{i}]: "
                                            f"loja {opt.shop!r} não existe em shops.yaml")
+                    if opt.trainer and opt.trainer not in self.trainers:
+                        raise ContentError(f"npcs.yaml > {npc.id}.dialogue > {node.id}.options[{i}]: "
+                                           f"treinador {opt.trainer!r} não existe em trainers.yaml")
         self._check_shop_prices()
         for q in self.quests.values():
             where = f"quests.yaml > {q.id}"
@@ -748,6 +804,9 @@ def _parse_skill(sid: str, raw: Any) -> SkillDef:
         train=f.stat_numbers("train"),
         effects=_effect_apps(f, "effects"),
         self_effects=_effect_apps(f, "self_effects"),
+        description=f.text("description", ""),
+        races=tuple(f.str_list("races")),
+        classes=tuple(f.str_list("classes")),
         **extra,
     )
     f.done()
@@ -931,7 +990,7 @@ def _parse_class(cid: str, raw: Any) -> ClassDef:
         name=f.text("name"),
         race=f.text("race"),
         description=f.text("description", ""),
-        skills=tuple(f.str_list("skills")),
+        start_skills=tuple(f.str_list("start_skills")),
         train_rate=f.stat_numbers("train_rate"),
     )
     f.done()
@@ -1036,6 +1095,10 @@ def _check_action(where: str, when: str, name: str, args: Any, refs: _RuleRefs) 
         return result
     if name in ("set_flag", "clear_flag"):
         return flag_name(args)
+    if name == "learn_skill":
+        if args not in refs.skills:
+            raise ContentError(f"{where}: skill {args!r} não existe em skills.yaml")
+        return args
     if name == "start_quest":
         if args not in refs.quests:
             raise ContentError(f"{where}: missão {args!r} não existe em quests.yaml")
@@ -1240,6 +1303,40 @@ def _parse_shop(sid: str, raw: Any, items: dict[str, ItemDef]) -> ShopDef:
     return shop
 
 
+def _parse_trainer(tid: str, raw: Any, refs: _RuleRefs) -> TrainerDef:
+    f = _Fields(f"trainers.yaml > {tid}", raw)
+    teaches: list[TrainerEntry] = []
+    for i, entry in enumerate(f.list("teaches")):
+        e = _Fields(f"{f.where}.teaches[{i}]", entry if isinstance(entry, dict) else {"skill": entry})
+        skill_id = e.text("skill")
+        if skill_id not in refs.skills:
+            raise ContentError(f"{e.where}: skill {skill_id!r} não existe em skills.yaml")
+        if any(t.skill == skill_id for t in teaches):
+            raise ContentError(f"{e.where}: {skill_id} aparece duas vezes na lista")
+        stats_f = e.sub("stats")
+        stats = {}
+        for stat in list(stats_f.raw):
+            if stat not in STAT_NAMES:
+                raise ContentError(f"{stats_f.where}: atributo {stat!r} inválido (válidos: {', '.join(STAT_NAMES)})")
+            stats[stat] = stats_f.int(stat, minimum=1)
+        stats_f.done()
+        needs = tuple(e.str_list("skills"))
+        for other in needs:
+            if other not in refs.skills:
+                raise ContentError(f"{e.where}.skills: skill {other!r} não existe em skills.yaml")
+            if other == skill_id:
+                raise ContentError(f"{e.where}.skills: a skill não pode ser requisito dela mesma")
+        conditions = _dialog_conditions(e, refs, "nos requisitos de treinador")
+        teaches.append(TrainerEntry(skill=skill_id, price=e.int("price", 0), stats=stats, skills=needs,
+                                    rule=Rule(id=f"{tid}.{skill_id}", when="train", conditions=conditions, actions=())))
+        e.done()
+    if not teaches:
+        raise ContentError(f"{f.where}: 'teaches' precisa de pelo menos uma skill")
+    trainer = TrainerDef(id=tid, name=f.text("name"), teaches=tuple(teaches))
+    f.done()
+    return trainer
+
+
 def _parse_npc(nid: str, raw: Any, refs: _RuleRefs) -> NpcDef:
     f = _Fields(f"npcs.yaml > {nid}", raw)
     nodes_raw = f._get("dialogue", None)
@@ -1254,14 +1351,14 @@ def _parse_npc(nid: str, raw: Any, refs: _RuleRefs) -> NpcDef:
         for i, opt_raw in enumerate(n.list("options")):
             o = _Fields(f"{n.where}.options[{i}]", opt_raw)
             conditions = _dialog_conditions(o, refs, "nas condições de diálogo")
-            goto, shop = o.text("goto", None), o.text("shop", None)
-            if goto and shop:
-                raise ContentError(f"{o.where}: use goto OU shop, não os dois")
+            goto, shop, trainer = o.text("goto", None), o.text("shop", None), o.text("trainer", None)
+            if sum(x is not None for x in (goto, shop, trainer)) > 1:
+                raise ContentError(f"{o.where}: use só um de goto, shop ou trainer")
             options.append(DialogOption(
                 text=o.text("text"),
                 rule=Rule(id=f"{nid}.{node_id}[{i}]", when="talk", conditions=conditions,
                           actions=_parse_actions(o, "talk", refs)),
-                goto=goto, shop=shop,
+                goto=goto, shop=shop, trainer=trainer,
             ))
             o.done()
         nodes[node_id] = DialogNode(id=node_id, text=n.text("text"), options=tuple(options))

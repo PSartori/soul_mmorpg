@@ -1,19 +1,21 @@
-"""NPCs: personagens do mundo que conversam e abrem lojas.
+"""NPCs: personagens do mundo que conversam, abrem lojas e ensinam skills.
 
-Conteúdo em data/npcs.yaml (falas e opções) e data/shops.yaml (lojas); onde cada
+Conteúdo em data/npcs.yaml (falas e opções), data/shops.yaml (lojas) e
+data/trainers.yaml (treinadores); onde cada
 NPC fica vem do mapa. Fluxo, tudo por botões no cliente ({"t": "npc", "op": ...}):
 
   talk {id}             começa a conversa com o NPC (precisa estar perto)
   choose {i}            escolhe a opção i do nó atual: roda as ações dela e vai
-                        para o próximo nó, abre a loja ou encerra. Opções de
+                        para o próximo nó, abre a loja/treinador ou encerra. Opções de
                         missão (server/quests.py) têm i em texto: "missao:id",
                         "aceitar:id", "entregar:id" e "voltar"
   buy {item, qty}       compra da loja aberta
   sell {slot, qty}      vende para a loja aberta um item da bolsa
+  learn {skill}         aprende uma skill do treinador aberto (server/training.py)
   close                 encerra
 
 O servidor responde com "dialog" (fala + opções visíveis), "shop" (o que a loja
-vende e quanto paga) ou "npc_close". A conversa também fecha se o jogador se
+vende e quanto paga), "trainer" (o que ensina e o que falta para aprender) ou "npc_close". A conversa também fecha se o jogador se
 afastar, morrer, mudar de mapa ou se o conteúdo for recarregado.
 """
 from __future__ import annotations
@@ -27,7 +29,7 @@ from .entities import Npc
 from .rules import rule_matches
 
 if TYPE_CHECKING:
-    from .content import DialogNode, NpcDef, ShopDef
+    from .content import DialogNode, NpcDef, ShopDef, TrainerDef
     from .entities import Player
     from .world import World
 
@@ -38,6 +40,7 @@ class Conversation:
     node: str | None  # nó atual do diálogo (None com a loja aberta ou vendo uma missão)
     shop: str | None = None  # loja aberta
     offer: str | None = None  # missão sendo oferecida (esperando Aceitar)
+    trainer: str | None = None  # treinador aberto
 
 
 def _qty(value: object) -> int | None:
@@ -99,6 +102,8 @@ class NpcSystem:
             self.buy(p, data.get("item"), _qty(data.get("qty", 1)))
         elif op == "sell":
             self.sell(p, data.get("slot"), _qty(data.get("qty", 1)))
+        elif op == "learn":
+            self.learn(p, data.get("skill"))
 
     def talk(self, p: Player, entity_id: object) -> None:
         npc = self.entities.get(entity_id) if isinstance(entity_id, int) and not isinstance(entity_id, bool) else None
@@ -136,6 +141,8 @@ class NpcSystem:
             return
         if option.shop:
             self._open_shop(p, npc, self.world.content.shops[option.shop])
+        elif option.trainer:
+            self._open_trainer(p, npc, self.world.content.trainers[option.trainer])
         elif option.goto:
             talk.node = option.goto
             self._send_node(p, npc, option.goto)
@@ -184,6 +191,16 @@ class NpcSystem:
         self.world._private(p, f"Você vendeu {sold.qty}× {sold.item.name} por {total} moedas.")
         self._coins_fx(p, f"+{total} moedas")
 
+    def learn(self, p: Player, skill_id: object) -> None:
+        talk, npc = self._current(p)
+        trainer = self.world.content.trainers.get(talk.trainer) if talk and talk.trainer else None
+        if trainer is None:
+            return
+        entry = trainer.entry(skill_id) if isinstance(skill_id, str) else None
+        if self.world.training.teach(p, trainer, skill_id) and entry and entry.price:
+            self._coins_fx(p, f"-{entry.price} moedas")
+        self._open_trainer(p, npc, trainer)  # reenvia: o que falta (e o que já sabe) mudou
+
     # ------------------------------------------------------------ auxiliares
 
     def _current(self, p: Player) -> tuple[Conversation | None, Npc | None]:
@@ -217,7 +234,7 @@ class NpcSystem:
                            [{"i": "voltar", "text": "Continuar"}])
 
     def _back_to_start(self, p: Player, npc: Npc, talk: Conversation) -> None:
-        talk.node, talk.offer, talk.shop = npc.defn.start, None, None
+        talk.node, talk.offer, talk.shop, talk.trainer = npc.defn.start, None, None, None
         self._send_node(p, npc, npc.defn.start)
 
     def _send_node(self, p: Player, npc: Npc, node_id: str) -> None:
@@ -253,6 +270,15 @@ class NpcSystem:
             "sells": [{"id": e.item, "price": e.price} for e in shop.sells],
             # quanto paga por cada item que compra (o cliente cruza com a bolsa)
             "buys": {item.id: price for item in items.values() if (price := shop.buy_price(item)) > 0},
+        }))
+
+    def _open_trainer(self, p: Player, npc: Npc, trainer: TrainerDef) -> None:
+        talk = self.talks[p.id]
+        talk.node, talk.shop, talk.trainer = None, None, trainer.id
+        self.world._outbox.append((p.id, {
+            "t": "trainer", **self._header(npc), "trainer": trainer.name,
+            # cada skill: preço, se já sabe e o que falta (textos prontos para mostrar)
+            "teaches": self.world.training.trainer_payload(p, trainer),
         }))
 
     @staticmethod

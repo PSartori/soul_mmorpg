@@ -80,13 +80,13 @@ class ReloadTests(unittest.TestCase):
     def test_removed_class_falls_back(self):
         aprendiz = CONTENT.classes["aprendiz"]
         classes = {k: v for k, v in CONTENT.classes.items() if k != "aprendiz"}
-        guerreiro = dataclasses.replace(aprendiz, id="guerreiro", name="Guerreiro", skills=("golpe",))
+        guerreiro = dataclasses.replace(aprendiz, id="guerreiro", name="Guerreiro", start_skills=("golpe",))
         races = {**CONTENT.races, "humano": dataclasses.replace(CONTENT.races["humano"], start_class="guerreiro")}
         content = dataclasses.replace(CONTENT, classes={**classes, "guerreiro": guerreiro}, races=races)
         ok, text, _ = self.reload_with(content)
         self.assertTrue(ok)
         self.assertEqual(self.p.class_id, "guerreiro")
-        self.assertEqual(self.p.skills, ["golpe"])
+        self.assertIn("golpe", self.p.bar)  # continua sabendo o que sabia
         self.assertIn("guerreiro", text)
 
     def test_removed_map_moves_player(self):

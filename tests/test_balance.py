@@ -12,8 +12,8 @@ from tools.simulator import Build, Simulator
 
 BASE = Content.load(C.DATA_DIR)
 # Classe de teste que só tem o golpe básico: o dano/s esperado é fácil de calcular
-ONLY_STRIKE = ClassDef(id="so_golpe", name="Só golpe", race="humano", description="", skills=("golpe",), train_rate={})
-CONTENT = dataclasses.replace(BASE, classes={**BASE.classes, "so_golpe": ONLY_STRIKE})
+ONLY_STRIKE = ClassDef(id="so_golpe", name="Só golpe", race="humano", description="", start_skills=("golpe",), train_rate={})
+CONTENT = dataclasses.replace(BASE, classes={**BASE.classes, "so_golpe": ONLY_STRIKE}, trainers={})  # sem treinadores: só o golpe
 
 
 class SimulatorTests(unittest.TestCase):

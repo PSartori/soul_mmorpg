@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-SAVE_VERSION = 5
+SAVE_VERSION = 6
 
 
 class SaveVersionError(ValueError):
@@ -51,11 +51,33 @@ def _v4_to_v5(data: dict) -> dict:
     return data
 
 
+# Barra de cada classe na versão 5 (antes das skills aprendidas): naquela época a classe
+# dava todas estas skills. Fica escrito aqui, e não lido de classes.yaml, porque o
+# conteúdo muda e a migração precisa dar sempre o mesmo resultado.
+_V5_CLASS_SKILLS = {
+    "aprendiz": ["golpe", "rajada", "passo", "onda", "foco"],
+    "iniciado": ["golpe", "rajada", "flecha_gelida", "leque", "onda", "foco"],
+    "assombracao": ["golpe", "dardo", "passo", "leque"],
+}
+
+
+def _v5_to_v6(data: dict) -> dict:
+    """v6: skills conhecidas e barra de atalhos escolhida pelo jogador.
+
+    Quem já existia continua sabendo as skills que a classe dava e com a mesma
+    barra. Classe desconhecida: vazio, e o servidor dá as skills iniciais da classe.
+    """
+    skills = list(_V5_CLASS_SKILLS.get(data.get("class") or "", []))
+    data.setdefault("skills", {"known": skills, "bar": skills})
+    return data
+
+
 MIGRATIONS: dict[int, Callable[[dict], dict]] = {
     1: _v1_to_v2,
     2: _v2_to_v3,
     3: _v3_to_v4,
     4: _v4_to_v5,
+    5: _v5_to_v6,
 }
 
 

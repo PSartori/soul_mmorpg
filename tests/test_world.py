@@ -129,7 +129,7 @@ class ContentTests(unittest.TestCase):
         self.assertTrue(content.selectable_races())
 
     def test_class_of_unknown_race(self):
-        self.append("classes.yaml", "teste:\n  name: T\n  race: anao\n  skills: [golpe]\n")
+        self.append("classes.yaml", "teste:\n  name: T\n  race: anao\n  start_skills: [golpe]\n")
         self.assert_error("teste", "anao")
 
     def test_start_class_of_other_race(self):
@@ -200,7 +200,9 @@ class LoginTests(unittest.TestCase):
         p, err = world.login("Teste", "1234", "humano")
         self.assertIsNone(err)
         self.assertEqual(p.class_id, CONTENT.races["humano"].start_class)
-        self.assertEqual(p.skills, list(CONTENT.classes[p.class_id].skills))
+        start = list(CONTENT.classes[p.class_id].start_skills)
+        self.assertEqual(p.known, start)
+        self.assertEqual(p.bar, start + [None] * (C.BAR_SIZE - len(start)))
         world.logout(p)
         _, err = world.login("teste", "errada")
         self.assertEqual(err, "Senha incorreta.")
@@ -331,7 +333,8 @@ class GameplayBase(unittest.TestCase):
         self.world = make_world()
         self.player, _ = self.world.login("Teste", "1234", "humano")
         # Os testes de skills usam qualquer skill, independente da classe
-        self.player.skills = [sid for sid in CONTENT.skills]
+        self.player.known = list(CONTENT.skills)
+        self.player.bar = list(CONTENT.skills)
         self.enemy = next(iter(self.world.enemies.values()))
 
     def place_next_to_enemy(self, gap: float = 20):
@@ -412,7 +415,7 @@ class SkillTests(GameplayBase):
         self.assertEqual(len(self.world.projectiles), 0)
 
     def test_unknown_skill_is_ignored(self):
-        self.player.skills = list(CONTENT.classes["aprendiz"].skills)
+        self.player.bar = list(CONTENT.classes["aprendiz"].start_skills)
         self.world.handle_message(self.player, {"t": "skill", "id": "garra"})  # skill de inimigo
         self.assertEqual(self.player.actions, [])
 
@@ -626,7 +629,9 @@ virar:
         self.kill_player()
         p = self.player
         self.assertEqual((p.race_id, p.class_id), ("espectral", "assombracao"))
-        self.assertEqual(p.skills, list(CONTENT.classes["assombracao"].skills))
+        # guarda o que sabia, aprende as iniciais da classe nova; a barra perde o que não serve
+        self.assertIn("dardo", p.known)
+        self.assertEqual(p.bar_skills, [s for s in p.known if CONTENT.skills[s].usable_by("espectral", "assombracao")])
         self.assertIn("Você renasce como Assombração.", self.messages())
         run(self.world, C.RESPAWN_SECONDS + 0.1)
         self.assertEqual(p.hp, p.max_hp)  # renasce com a vida da raça nova

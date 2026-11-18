@@ -16,3 +16,4 @@ portals:
 
 npcs:
   - { id: cacador, at: [5, 1] }
+  - { id: eco, at: [2, 4] }

@@ -560,3 +560,104 @@ ul.objectives li.done { color: #7bd65a; list-style: none; margin-left: -14px; }
 #bossbar .track { position: relative; height: 12px; margin-top: 3px; background: #2a1414; border-radius: 3px; overflow: hidden; }
 #bossbar .fill { position: absolute; inset: 0 auto 0 0; background: linear-gradient(#d9534f, #a32f2f); transition: width .15s linear; }
 #bossbar .hp { position: relative; font-size: 10px; line-height: 12px; color: #fff; text-shadow: 0 1px 1px #000; }
+
+/* ---------------------------------------------------------------- skills e treinador */
+#hotbar .slot.empty {
+  border-style: dashed;
+  border-bottom-width: 1px;
+  background: rgba(27, 29, 36, .55);
+}
+#hotbar .slot.empty .name::before { content: "vazio"; color: var(--muted); font-style: italic; }
+#hotbar .slot.drop, .bar-cell.drop { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+#skills, #trainer {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: min(390px, calc(100% - 24px));
+  max-height: calc(100% - 24px);
+  overflow-y: auto;
+  padding: 10px 12px;
+  background: rgba(22, 24, 30, .97);
+  border: 1px solid #353946;
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, .5);
+  font-size: 13px;
+}
+#trainer { z-index: 2; border-color: #5a74a8; }
+#skills[hidden], #trainer[hidden] { display: none; }
+#skills header, #trainer header { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 8px; }
+#skills h3 { margin: 0; font-size: 15px; flex: 1; color: #b8e0ff; }
+#trainer h3 { margin: 0; font-size: 15px; color: #b8e0ff; }
+#trainer .shop-title { flex: 1; min-width: 0; }
+#trainer .npc-name { font-size: 12px; }
+#trainer .shop-gold { color: var(--r-gold); font-weight: 600; white-space: nowrap; }
+#skills button.close, #trainer button.close { padding: 2px 8px; background: var(--panel-2); border-color: #353946; }
+#skills .hint, #trainer .hint { margin: 4px 0 0; font-size: 12px; color: var(--muted); }
+
+.skill-box { margin-bottom: 8px; padding: 6px 8px; background: var(--panel-2); border-radius: 6px; }
+.skill-box h4 { margin: 0 0 6px; font-size: 13px; }
+.skill-bar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; }
+.bar-cell {
+  position: relative;
+  min-height: 40px;
+  padding: 3px 5px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  background: var(--panel);
+  border: 1px solid #353946;
+  border-bottom: 3px solid var(--skill-color);
+  border-radius: 5px;
+  cursor: grab;
+}
+.bar-cell.empty { border-style: dashed; border-bottom-width: 1px; cursor: default; }
+.bar-cell.target { cursor: pointer; border-color: var(--accent); }
+.bar-cell .key { font-size: 9px; color: var(--muted); }
+.bar-cell .name { font-size: 11px; line-height: 1.15; padding-right: 12px; }
+.bar-cell.empty .name { color: var(--muted); font-style: italic; }
+.bar-cell .clear {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  padding: 0 4px;
+  font-size: 11px;
+  line-height: 1.3;
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+}
+.bar-cell .clear:hover { color: var(--error); }
+
+.skill-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 4px;
+  border-top: 1px solid #2c303b;
+  border-radius: 4px;
+}
+.skill-box h4 + .skill-row { border-top: 0; }
+#skills .skill-row:not(.locked) { cursor: grab; }
+#skills .skill-row:not(.locked):hover { background: rgba(255, 255, 255, .04); }
+.skill-row.selected { background: #24324a; outline: 1px solid var(--accent); }
+.skill-row .swatch {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  margin-top: 4px;
+  border-radius: 50%;
+  background: var(--skill-color);
+}
+.skill-row .info { flex: 1; min-width: 0; }
+.skill-row .title { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.skill-row .tag { padding: 0 5px; font-size: 10px; color: var(--muted); border: 1px solid #3a3f4d; border-radius: 8px; }
+.skill-row .tag.locked { color: var(--error); border-color: #6a3a3a; }
+.skill-row .meta { font-size: 11px; color: var(--muted); }
+.skill-row .desc { font-size: 12px; margin-top: 2px; }
+.skill-row .why { font-size: 11px; color: #e8a86a; margin-top: 2px; }
+.skill-row ul.missing { margin: 1px 0 0; padding-left: 16px; font-size: 11px; color: #e8a86a; }
+.skill-row.locked .title b, .skill-row.locked .desc { color: var(--muted); }
+.skill-row.known { opacity: .6; }
+.skill-row button.small { flex: none; padding: 2px 8px; font-size: 11px; white-space: nowrap; align-self: center; }
+.skill-row button.small:disabled { opacity: .45; cursor: not-allowed; }

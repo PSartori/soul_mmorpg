@@ -7,8 +7,9 @@ import { Renderer, rankTitle, screenToWorld } from "./render.js";
 import { InvitePanel, OrgWindow, PlayerMenu } from "./social.js";
 import { InventoryUI, RARITY_COLORS } from "./inventory.js";
 import { AdminUI } from "./admin.js";
-import { DialogBox, ShopWindow } from "./npc.js";
+import { DialogBox, ShopWindow, npcHeading } from "./npc.js";
 import { QuestLog } from "./quests.js";
+import { SkillsWindow, TrainerWindow, makeDraggable, makeDropTarget, skillMeta } from "./skills.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -88,18 +89,25 @@ function handleMessage(msg) {
       break;
     case "dialog":
       shopWindow.hide();
+      trainerWindow.hide();
       dialogBox.show(msg);
       break;
     case "shop":
       dialogBox.hide();
-      inventoryUI.toggle(false); // a loja ocupa o mesmo canto do inventário, organização e diário
-      orgWindow.toggle(false);
-      questLog.toggle(false);
+      trainerWindow.hide();
+      closeCornerWindows(); // a loja ocupa o mesmo canto do inventário, organização, diário e skills
       shopWindow.show(msg);
+      break;
+    case "trainer":
+      dialogBox.hide();
+      shopWindow.hide();
+      closeCornerWindows();
+      trainerWindow.show(msg);
       break;
     case "npc_close":
       dialogBox.hide();
       shopWindow.hide();
+      trainerWindow.hide();
       break;
     case "org_data":
       orgWindow.update(msg);
@@ -140,6 +148,9 @@ function applyContent(msg) {
   };
   renderer.defs = state.defs;
   questLog.refresh();
+  skillsWindow.lastKey = "";
+  skillsWindow.update();
+  if (trainerWindow.isOpen) trainerWindow.render();
   lastHotbarKey = "";
   lastStatsKey = "";
   inventoryUI.lastKey = "";
@@ -180,6 +191,8 @@ function handleClose() {
   orgWindow.toggle(false);
   dialogBox.hide();
   shopWindow.hide();
+  trainerWindow.hide();
+  skillsWindow.toggle(false);
   invitePanel.update(null);
   $("overlay").classList.remove("hidden");
   $("login-error").textContent = kickText ?? "Conexão perdida. Entre de novo.";
@@ -214,6 +227,8 @@ function applySnapshot(msg) {
   reconcile(msg.you);
   inventoryUI.update(msg.you.inv, msg.you.icd);
   shopWindow.refresh();
+  trainerWindow.refresh();
+  skillsWindow.update(msg.you.known);
   if (msg.you.q) {
     questLog.update(msg.you.q);
     state.questMarks = msg.you.q.marks ?? {};
@@ -261,6 +276,11 @@ function handleFx(fx, now) {
       break;
     case "lvl":
       state.floaters.push({ x: fx.x, y: fx.y - 12, text: "Nível +1", color: "#ffd65a", born: now, ttl: 1400 });
+      break;
+    case "learn":
+      if (fx.id === state.myId) {
+        state.floaters.push({ x: fx.x, y: fx.y - 18, text: `Nova skill: ${fx.t}`, color: "#b8e0ff", born: now, ttl: 2000 });
+      }
       break;
     case "quest":
       if (fx.id === state.myId) {
@@ -386,7 +406,7 @@ function updateHud() {
     $("stats").replaceChildren(...Object.entries(you.stats).map(([key, s]) => statRow(key, s)));
   }
 
-  const hotbarKey = you.skills.join(",");
+  const hotbarKey = JSON.stringify(you.skills);
   if (hotbarKey !== lastHotbarKey) {
     lastHotbarKey = hotbarKey;
     buildHotbar(you.skills);
@@ -439,23 +459,32 @@ function statRow(key, s) {
   return li;
 }
 
+// Barra de atalhos: todos os espaços, inclusive os vazios. Dá para arrastar skills da
+// janela de skills (K) para cá, ou de um espaço para outro (trocam de lugar).
 function buildHotbar(skills) {
   $("hotbar").replaceChildren(
     ...skills.map((skillId, slot) => {
-      const def = state.defs.skills[skillId];
+      const def = skillId ? state.defs.skills[skillId] : null;
       const btn = document.createElement("button");
-      btn.className = "slot";
+      btn.className = def ? "slot" : "slot empty";
       btn.type = "button";
-      btn.dataset.skill = skillId;
-      btn.title = `${def.name} — custo ${def.cost} energia, recarga ${def.cd}s`;
       btn.innerHTML = '<span class="cd"></span><span class="key"></span><span class="name"></span>';
       btn.querySelector(".key").textContent = SLOT_LABELS[slot];
-      btn.querySelector(".name").textContent = def.name;
-      btn.style.setProperty("--skill-color", def.color);
+      if (def) {
+        btn.dataset.skill = skillId;
+        btn.title = `${def.name} — ${skillMeta(def)}`;
+        btn.querySelector(".name").textContent = def.name;
+        btn.style.setProperty("--skill-color", def.color);
+        makeDraggable(btn, skillId);
+      } else {
+        btn.title = "Espaço vazio: abra as skills (K) para escolher";
+      }
       btn.addEventListener("click", () => {
-        useSlot(slot);
+        if (def) useSlot(slot);
+        else toggleSkills(true);
         btn.blur();
       });
+      makeDropTarget(btn, (id) => conn?.send({ t: "skills", op: "bar", slot, id }));
       return btn;
     }),
   );
@@ -466,6 +495,7 @@ function updateHotbarCooldowns(now) {
   if (!you) return;
   for (const btn of $("hotbar").children) {
     const def = state.defs.skills[btn.dataset.skill];
+    if (!def) continue; // espaço vazio
     const left = cooldownLeft(btn.dataset.skill, now);
     btn.querySelector(".cd").style.height = `${def.cd > 0 ? (100 * left) / def.cd : 0}%`;
     btn.classList.toggle("no-energy", you.en < def.cost);
@@ -556,10 +586,22 @@ const shopWindow = new ShopWindow({
   getInventory: () => inventoryUI.inv,
   send: (msg) => conn?.send(msg),
 });
+const trainerWindow = new TrainerWindow({
+  getDefs: () => state.defs,
+  getGold: () => state.you?.gold ?? 0,
+  send: (msg) => conn?.send(msg),
+  heading: npcHeading,
+});
+const skillsWindow = new SkillsWindow({
+  getDefs: () => state.defs,
+  getYou: () => state.you,
+  send: (msg) => conn?.send(msg),
+});
 function closeNpc() {
-  if (dialogBox.isOpen || shopWindow.isOpen) conn?.send({ t: "npc", op: "close" });
+  if (dialogBox.isOpen || shopWindow.isOpen || trainerWindow.isOpen) conn?.send({ t: "npc", op: "close" });
   dialogBox.hide();
   shopWindow.hide();
+  trainerWindow.hide();
 }
 // Tecla E: conversa com o NPC mais próximo, se houver um ao alcance
 function talkToNearest() {
@@ -583,16 +625,25 @@ $("inv-open").addEventListener("click", (ev) => {
 });
 
 const orgWindow = new OrgWindow({ getDefs: () => state.defs, send: (msg) => conn?.send(msg) });
-// Inventário, organização, diário e loja ocupam o mesmo canto: abrir um fecha os outros
-function openInCorner(win) {
-  win.toggle();
+// Inventário, organização, diário, skills, loja e treinador ocupam o mesmo canto: abrir um fecha os outros
+const cornerWindows = () => [inventoryUI, orgWindow, questLog, skillsWindow];
+function closeCornerWindows() {
+  for (const win of cornerWindows()) win.toggle(false);
+}
+function openInCorner(win, force) {
+  win.toggle(force);
   if (!win.isOpen) return;
-  for (const other of [inventoryUI, orgWindow, questLog]) if (other !== win) other.toggle(false);
-  if (shopWindow.isOpen) closeNpc();
+  for (const other of cornerWindows()) if (other !== win) other.toggle(false);
+  if (shopWindow.isOpen || trainerWindow.isOpen) closeNpc();
 }
 const toggleOrg = () => openInCorner(orgWindow);
 const toggleInventory = () => openInCorner(inventoryUI);
 const toggleQuests = () => openInCorner(questLog);
+const toggleSkills = (force) => openInCorner(skillsWindow, force);
+$("skills-open").addEventListener("click", (ev) => {
+  toggleSkills();
+  ev.currentTarget.blur();
+});
 $("quests-open").addEventListener("click", (ev) => {
   toggleQuests();
   ev.currentTarget.blur();
@@ -657,11 +708,10 @@ const input = setupInput({
     else if (name === "admin" && state.you?.staff) adminUI.toggle();
     else if (name === "talk") talkToNearest();
     else if (name === "quests") toggleQuests();
+    else if (name === "skills") toggleSkills();
     else if (name === "escape") {
-      inventoryUI.toggle(false);
+      closeCornerWindows();
       adminUI.toggle(false);
-      orgWindow.toggle(false);
-      questLog.toggle(false);
       playerMenu.close();
       closeNpc();
     }

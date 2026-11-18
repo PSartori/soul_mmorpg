@@ -1,0 +1,32 @@
+# Treinadores: ensinam skills por moedas, a quem cumpre os requisitos. Um NPC abre o
+# treinador por uma opção de diálogo (trainer: id), em data/npcs.yaml; o mesmo
+# treinador pode ser usado por vários NPCs.
+#
+#   name      nome exibido no topo da janela
+#   teaches   lista de skills (de skills.yaml), cada uma com:
+#     skill     id da skill
+#     price     moedas para aprender (padrão 0 = de graça)
+#     stats     nível mínimo de atributos: { strength: 5, spirit: 3 }
+#     skills    skills que precisa já conhecer: [rajada]
+#     if        condições extras, as mesmas dos diálogos: race, class, org, rank,
+#               total_level, quest_done, quest_active, flags, not_flags
+#
+# Além disso, a raça/classe precisa poder usar a skill (races/classes em skills.yaml).
+# A janela mostra todas as skills do treinador, com o que falta para cada uma.
+# Para dar uma skill sem treinador (ex.: ao subir de nível ou concluir uma missão),
+# use a ação learn_skill nas regras, diálogos ou recompensas de missão.
+# Nomes e números provisórios.
+
+# Campos de Início: técnicas de Humanos e Despertos
+treino_campos:
+  name: Treino de combate
+  teaches:
+    - { skill: onda, price: 40, stats: { spirit: 4 } }
+    - { skill: leque, price: 50, stats: { spirit: 5 } }
+    - { skill: foco, price: 60, stats: { spirit: 6 }, skills: [rajada] }
+
+# Bosque Sombrio: técnicas dos Espectrais
+treino_sombras:
+  name: Caminho das sombras
+  teaches:
+    - { skill: leque, price: 40, stats: { agility: 5 }, if: { total_level: 6 } }

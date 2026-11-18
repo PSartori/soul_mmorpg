@@ -98,6 +98,10 @@ class Simulator:
         p = Player(id=world._new_id(), name=name, x=x, y=y, map_id=world.start_map_id)
         p.stats = {n: Stat(level=build.level) for n in STAT_NAMES}
         world._set_class(p, self.content.classes[build.class_id])
+        # luta com tudo que a classe pode aprender (iniciais + treinadores), não só com as iniciais
+        pool = self.content.class_skill_pool(build.class_id)
+        p.known = list(pool)
+        p.bar = (pool + [None] * C.BAR_SIZE)[: C.BAR_SIZE]
         skipped = []
         for item_id in build.equipment:
             item = self.content.items[item_id]
@@ -177,7 +181,7 @@ class Simulator:
     def _act(self, world: World, p: Player, side: Side) -> None:
         if not p.alive or p.has_flag("stunned") or p.has_flag("silenced"):
             return
-        skills = [self.content.skills[sid] for sid in p.skills]
+        skills = [self.content.skills[sid] for sid in p.bar_skills]
 
         def ready(s: SkillDef) -> bool:
             return p.cooldowns.get(s.id, 0) <= 0 and p.energy >= s.cost_energy
@@ -212,7 +216,7 @@ class Simulator:
             "max_energy": p.max_energy,
             "speed": p.speed,
             "effective_hp": p.max_hp / p.modifier("damage_taken"),
-            "skills": [(self.content.skills[s], self.expected_damage(world, p, self.content.skills[s])) for s in p.skills],
+            "skills": [(self.content.skills[s], self.expected_damage(world, p, self.content.skills[s])) for s in p.bar_skills],
             "skipped": skipped,
         }
 

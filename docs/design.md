@@ -255,7 +255,7 @@ Combinado em 17/11/2026. A ordem pode mudar conforme as decisões em aberto.
 - ~~Missões~~ (feito).
 - ~~Inimigos por faixa de nível (10–50), elites e chefes com fases~~ (feito).
 - ~~IA com caminho de verdade (A*)~~ (feito).
-- Treinadores e skills aprendidas com requisitos; escolher as 8 da barra.
+- ~~Treinadores e skills aprendidas com requisitos; escolher as 8 da barra~~ (feito).
 - Criação de itens: receitas em YAML que transformam materiais em itens.
 - Grupos: chat, divisão de XP e saque, missões em grupo.
 

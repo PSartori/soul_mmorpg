@@ -113,7 +113,10 @@ class Player(Entity):
     staff_role: RoleDef | None = None  # papel na equipe (data/roles.yaml), vindo do banco
     muted: bool = False  # silenciado no chat
     muted_until: float | None = None  # até quando (horário real; None = para sempre)
-    skills: list[str] = field(default_factory=list)  # vem da classe; ordem da barra de atalhos
+    known: list[str] = field(default_factory=list)  # skills que o personagem sabe, na ordem em que aprendeu
+    bar: list[str | None] = field(default_factory=list)  # barra de atalhos (C.BAR_SIZE espaços; None = vazio)
+    skills_sent: str = ""  # últimas skills conhecidas enviadas ao cliente (só manda quando muda)
+    combat_until: float = 0.0  # horário do mundo até quando conta como "em combate" (trava a barra)
     actions: list[tuple] = field(default_factory=list)  # ações pedidas, executadas no próximo tick
     # Movimento: o cliente manda um comando numerado por tick; o servidor executa um por tick
     # e devolve o número do último executado ("ack") para o cliente corrigir a previsão.
@@ -125,6 +128,11 @@ class Player(Entity):
 
     def stat_level(self, stat: str) -> int:
         return self.stats[stat].level
+
+    @property
+    def bar_skills(self) -> list[str]:
+        """As skills que estão na barra (sem os espaços vazios), na ordem."""
+        return [sid for sid in self.bar if sid]
 
     @property
     def race_id(self) -> str | None:
@@ -178,7 +186,7 @@ class Player(Entity):
             "y": self.y,
             "spd": self.speed,
             "ack": self.ack,
-            "skills": self.skills,
+            "skills": self.bar,  # barra de atalhos (null = espaço vazio)
             "cd": {sid: round(t, 2) for sid, t in self.cooldowns.items() if t > 0},
             "icd": {iid: round(t, 1) for iid, t in self.item_cooldowns.items() if t > 0},
             "gold": self.inventory.gold,
@@ -195,6 +203,7 @@ class Player(Entity):
             "race": self.race_id,
             "class": self.class_id,
             "flags": sorted(self.flags),
+            "skills": {"known": list(self.known), "bar": list(self.bar)},
             "quests": {"active": {qid: list(p) for qid, p in self.quests.items()},
                        "done": {qid: {"n": d[0], "at": d[1]} for qid, d in self.quests_done.items()}},
             "inventory": self.inventory.to_dict(),

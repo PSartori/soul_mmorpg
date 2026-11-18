@@ -112,11 +112,13 @@ lutadores ficam parados, então alcance e esquiva não contam.
 | I | inventário (clique: usar/equipar · Shift + clique: largar · clique no equipado: tirar) |
 | E | conversar com o NPC mais próximo (também dá para clicar nele) |
 | J | diário de missões: em andamento (objetivos, recompensa, a quem entregar, abandonar) e concluídas |
+| K | skills: as que você conhece e a barra (arraste uma skill para um espaço, ou clique nela e depois no espaço; × tira) |
 | G | janela de administração (só para a equipe) |
 | O | janela da organização: entrar, sair, cargos e ocupantes, assumir vaga, disputar, promover, rebaixar, expulsar |
 | Enter | chat; o seletor ao lado escolhe o canal (Geral ou Organização) |
 | **Clique num jogador** | menu: desafiar para duelo, disputar o cargo dele e, para líderes, promover, rebaixar e expulsar |
-| **Clique num NPC** | conversa; as respostas são botões, e alguns abrem a loja (comprar e vender) |
+| **Clique num NPC** | conversa; as respostas são botões, e alguns abrem a loja (comprar e vender) ou o treinador (aprender skills) |
+| **Arrastar na barra** | arrastar uma skill para outro espaço troca as duas de lugar; clicar num espaço vazio abre as skills |
 
 Um desafio recebido aparece na tela com **Aceitar** e **Recusar**; durante o duelo o
 painel mostra **Desistir**. Os antigos comandos de chat (`/duelo`, `/aceitar`,
@@ -130,7 +132,7 @@ Cada arquivo tem no topo a explicação de todos os campos.
 
 | Arquivo | O que define |
 |---|---|
-| `data/skills.yaml` | técnicas: tipo (melee, projectile, area, dash, self), custo, recarga, dano, efeitos, treino |
+| `data/skills.yaml` | técnicas: tipo (melee, projectile, area, dash, self), custo, recarga, dano, efeitos, treino; descrição e quem pode usar (`races`/`classes`) |
 | `data/effects.yaml` | efeitos de status: modificadores (velocidade, dano...), flags (atordoado, silenciado), dano/cura periódicos |
 | `data/enemies.yaml` | tipos de inimigo: vida, velocidade, alcance de perseguição, skills que a IA usa, letra no mapa, moedas e tabela de saque |
 | `data/items.yaml` | itens: equipamento (slot, bônus, restrição de raça/classe), consumível (cura, energia, efeitos), material |
@@ -138,9 +140,10 @@ Cada arquivo tem no topo a explicação de todos os campos.
 | `data/roles.yaml` | papéis da equipe: selo, nível na hierarquia e permissões |
 | `data/npcs.yaml` | NPCs: nome, título, cor e diálogo em nós (opções com condições, ações, `goto` e `shop`) |
 | `data/shops.yaml` | lojas: o que vendem (preço = `value` do item ou próprio) e o que compram (`buys`, `buy_rate`) |
+| `data/trainers.yaml` | treinadores: que skills ensinam, por quantas moedas e com que requisitos (atributos, outras skills, condições) |
 | `data/quests.yaml` | missões: quem oferece e a quem entregar, condições, objetivos (kill, collect, talk, reach, flag), recompensas, repetição |
 | `data/races.yaml` | raças: se aparecem na criação, classe inicial, bônus de vida/energia/velocidade |
-| `data/classes.yaml` | classes: raça, skills da barra, multiplicador de treino por atributo |
+| `data/classes.yaml` | classes: raça, skills iniciais (`start_skills`), multiplicador de treino por atributo |
 | `data/rules.yaml` | regras "quando X, se Y, faça Z": morte, abates, subida de nível (veja abaixo) |
 | `data/player.yaml` | raça padrão para personagens antigos |
 | `data/maps/<mapa>.txt` | terreno de cada mapa em texto (legenda no topo de `inicio.txt`); todo `.txt` da pasta vira um mapa |
@@ -165,7 +168,8 @@ humano_vira_espectral:
   e `rank_change` (entrou, saiu, promovido, rebaixado, expulso, assumiu, ganhou ou
   perdeu numa disputa). Todo evento também tem `org` e `rank` de quem disparou.
 - **Ações:** mensagens, perder/ganhar XP, trocar raça ou classe, marcas de
-  progressão (`set_flag`), aplicar efeitos, dar itens e dar/tirar moedas.
+  progressão (`set_flag`), aplicar efeitos, dar itens, dar/tirar moedas, começar
+  missão e ensinar uma skill (`learn_skill`).
 - **Condições especiais:** `chance`, `flags` e `not_flags`.
 
 As regras de cada evento rodam de cima para baixo; `stop: true` encerra. A lista
@@ -176,8 +180,9 @@ Os arquivos são validados ao subir o servidor: campo com erro de digitação, t
 errado ou referência inexistente (ex.: skill que aplica um efeito que não existe)
 para o servidor com uma mensagem dizendo o arquivo, o item e o campo.
 
-Para criar uma skill nova basta adicioná-la em `skills.yaml` e na lista de
-`player.yaml`; só é preciso mexer em Python para criar um *tipo* novo de skill
+Para criar uma skill nova basta adicioná-la em `skills.yaml` e dizer como se aprende:
+nas `start_skills` de uma classe, num treinador (`trainers.yaml`) ou com a ação
+`learn_skill`; só é preciso mexer em Python para criar um *tipo* novo de skill
 ou de efeito.
 
 ## Arquitetura
@@ -195,6 +200,7 @@ server/              Python (aiohttp)
   pathfinding.py     caminho dos inimigos: A* na grade de tiles e teste de linha livre
   npcs.py            NPCs: conversa (nós de diálogo) e lojas (compra e venda)
   quests.py          missões: progresso, entrega, recompensas e marcadores ! / ?
+  training.py        skills conhecidas, barra de atalhos (trava em combate) e treinadores
   inventory.py       inventário: espaços que empilham, equipamento e moedas
   orgs.py            organizações, cargos e disputas (vínculos na tabela memberships)
   admin.py           equipe, sanções (ban/silêncio) e registro de ações
@@ -216,6 +222,7 @@ client/              JavaScript puro, sem build
   js/social.js       menu do jogador, aviso de desafio e janela da organização
   js/npc.js          conversa com NPCs e janela da loja
   js/quests.js       diário de missões, acompanhamento no painel e oferta na conversa
+  js/skills.js       janela de skills (K), arrastar para a barra e janela do treinador
   js/input.js        teclado
   js/net.js          WebSocket
 data/                conteúdo do jogo (veja acima)
@@ -256,14 +263,18 @@ HTTP: `GET /api/races` lista as raças da tela de criação.
 Cliente → servidor: `login {name, password, race}`, `move {seq, up, down, left, right}`,
 `skill {id, f}`, `duel {op: challenge|accept|decline|forfeit, target}`,
 `org {op: info|join|leave|claim|dispute|promote|demote|expel, ...}`,
-`npc {op: talk|choose|buy|sell|close, id|i|item|slot, qty}`, `quest {op: abandon, id}`, `chat {text, ch}`, `admin {op, ...}` (equipe), `item {op: use|drop, slot: n}`, `item {op: unequip, slot: weapon|armor|accessory}`,
+`npc {op: talk|choose|buy|sell|learn|close, id|i|item|slot|skill, qty}`, `quest {op: abandon, id}`,
+`skills {op: bar, slot, id}` (id null = esvazia), `chat {text, ch}`, `admin {op, ...}` (equipe), `item {op: use|drop, slot: n}`, `item {op: unequip, slot: weapon|armor|accessory}`,
 `meditate`, `rest`, `chat {text}`.
 
 Servidor → cliente: `welcome {id, map, skills, effects, enemies, stat_labels, ...}`,
 `map {map, x, y}` (atravessou um portal), `org_data` (janela da organização),
-`dialog {npc, name, title, text, options}` / `shop {npc, shop, sells, buys}` / `npc_close` (NPCs), `announce {text, by}`, `kick {text}` (antes de
+`dialog {npc, name, title, text, options}` / `shop {npc, shop, sells, buys}` /
+`trainer {npc, trainer, teaches: [{id, price, known, missing}]}` / `npc_close` (NPCs), `announce {text, by}`, `kick {text}` (antes de
 desconectar), `admin_data`/`admin_result` (equipe), `error {msg}`, `snap {ents, projs, drops, fx, you}`
-(20×/s, só o que está perto; `you.inv` e `you.q` — diário e marcadores das missões — só vêm quando mudam), `chat {from, text}`, `sys {text}`.
+(20×/s, só o que está perto; `you.skills` é a barra, com null nos espaços vazios; `you.inv`, `you.q` —
+diário e marcadores das missões — e `you.known` — skills conhecidas, com `ok` se a raça/classe atual
+pode usar — só vêm quando mudam), `chat {from, text}`, `sys {text}`.
 
 ### Regras atuais
 
@@ -319,6 +330,18 @@ desconectar), `admin_data`/`admin_result` (equipe), `error {msg}`, `snap {ents, 
   (`if`: raça, classe, organização, cargo, moedas, nível total, marcas) e rodam as
   mesmas ações das regras (`do`) — dá para dar itens, marcar progressão e até trocar
   raça/classe por um NPC.
+- **Skills e barra**: cada personagem conhece um conjunto de skills — as iniciais da classe
+  (`start_skills`), as compradas de treinadores e as dadas pela ação `learn_skill` — e escolhe
+  até 8 para a barra (`BAR_SIZE`). Conhecer não se perde: se a raça/classe mudar e uma skill
+  for restrita (`races`/`classes` em `skills.yaml`), ela fica bloqueada (cinza) e sai da
+  barra, e volta a funcionar se o personagem voltar a poder usá-la. Ao entrar numa classe,
+  aprende as iniciais dela, que vão para os espaços vazios; o que o jogador tirou da barra de
+  propósito não volta sozinho. A barra **trava em combate**: 5 s depois de atacar ou levar
+  dano (`BAR_COMBAT_LOCK`) e durante duelos; com `BAR_SAFE_ZONE_ONLY` só muda na zona segura.
+- **Treinadores**: NPCs com a opção `trainer: id` abrem a janela do treinador, que mostra
+  todas as skills dele, o preço e o que falta para cada uma (nível de atributo, outra skill,
+  raça/classe, condições como nível total ou missão concluída). Aprender cobra as moedas e
+  põe a skill no primeiro espaço vazio da barra.
 - **Lojas**: estoque infinito; o jogador compra pelo `value` do item (ou pelo `price`
   da loja) e vende por uma fração dele (`buy_rate`, padrão 40%, no mínimo 1 moeda).
   Compra só sai se houver moedas e espaço para tudo. O servidor recusa conteúdo em
@@ -356,10 +379,12 @@ desconectar), `admin_data`/`admin_result` (equipe), `error {msg}`, `snap {ents, 
   (`VIEW_RADIUS`), o que mantém o tráfego proporcional ao que está por perto, e não
   ao total de jogadores.
 - **Morte**: renasce no ponto de nascimento (`S`) do mapa onde está, depois de 3 s.
-- **Salvamento**: ao sair e automaticamente a cada 60 s.
+- **Salvamento**: ao sair e automaticamente a cada 60 s. Save v6 guarda skills conhecidas e
+  barra; personagens de antes continuam com as skills que a classe dava e a mesma barra.
 
 ## Pendências conhecidas
 
+- Skills não sobem de nível com o uso (só os atributos); não há como esquecer uma skill.
 - Trocar de raça/classe por escolha já é possível por NPC (ação `set_race`/`set_class`
   num diálogo), mas o conteúdo atual não tem nenhum NPC assim.
 - Lojas com estoque infinito e preço fixo.

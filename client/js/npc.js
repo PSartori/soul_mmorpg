@@ -21,7 +21,7 @@ const button = (text, onClick, className = "") => {
 };
 
 // Nome do NPC (na cor dele) e título: "Hilda · Mercadora"
-function npcHeading(msg) {
+export function npcHeading(msg) {
   const head = el("div", "npc-name");
   const name = el("b", "", msg.name);
   name.style.color = msg.color;

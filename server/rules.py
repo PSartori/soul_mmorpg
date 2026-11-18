@@ -36,7 +36,8 @@ EVENT_FIELDS = {
 SPECIAL_CONDITIONS = ("chance", "flags", "not_flags")
 
 ACTIONS = ("message", "broadcast", "lose_xp", "gain_xp", "set_class", "set_race",
-           "set_flag", "clear_flag", "add_effect", "give_item", "give_gold", "lose_gold", "start_quest")
+           "set_flag", "clear_flag", "add_effect", "give_item", "give_gold", "lose_gold", "start_quest",
+           "learn_skill")
 
 KILLER_KINDS = ("player", "enemy", "none")  # "none": morreu sem autor (ex.: veneno de quem já saiu)
 VICTIM_KINDS = ("player", "enemy")
