@@ -30,6 +30,7 @@ from .pathfinding import clear_line, find_path, free_spot, tile_of
 from .quests import QuestSystem
 from .training import TrainingSystem
 from .crafting import CraftingSystem
+from .parties import PartySystem
 from .entities import (
     DIRECTIONS, MOVE_KEYS, ActiveEffect, Enemy, Entity, GroundItem, MoveKeys, Player, Projectile,
 )
@@ -118,6 +119,7 @@ class World:
         self.quests = QuestSystem(self)  # missões (data/quests.yaml)
         self.training = TrainingSystem(self)  # skills aprendidas, barra e treinadores (data/trainers.yaml)
         self.crafting = CraftingSystem(self)  # oficinas e receitas (data/crafting.yaml)
+        self.parties = PartySystem(self)  # grupos de jogadores
 
         self._spawn_enemies()
         self.npcs.spawn()
@@ -373,6 +375,7 @@ class World:
             return
         self.duels.on_logout(player)  # antes de sair da lista: o duelo termina com ele presente
         self.npcs.on_logout(player)
+        self.parties.on_logout(player)
         self.players.pop(player.id, None)
         self._save(player)
         self._system(f"{player.name} saiu do jogo.")
@@ -423,6 +426,8 @@ class World:
             text = str(data.get("text", ""))[: C.CHAT_MAX_LEN].strip()
             if text and data.get("ch") == "org":
                 self.orgs.chat(player, text)
+            elif text and data.get("ch") == "party":
+                self.parties.chat(player, text)
             elif text:
                 self._chat(player, text)
         elif kind == "duel":
@@ -437,6 +442,8 @@ class World:
             self.quests.handle_op(player, data)
         elif kind == "skills":
             self.training.handle_op(player, data)
+        elif kind == "party":
+            self.parties.handle_op(player, data)
 
     def save_all(self) -> None:
         for player in self.players.values():
@@ -484,9 +491,16 @@ class World:
                 self.duels.decline(player)
             elif command == "/render":
                 self.duels.forfeit(player)
+            elif command == "/grupo":
+                if args:
+                    self.parties.invite(player, args[0])
+                else:
+                    self._private(player, "Use: /grupo Nome (ou clique no jogador)")
+            elif command == "/g":
+                self.parties.chat(player, text[len(command):])
             else:
                 self._private(player, f"Comando desconhecido: {command}. Disponíveis: /who, /duelo Nome, "
-                                      "/aceitar, /recusar, /render, /org, /entrar, /sair, /o, /assumir, "
+                                      "/aceitar, /recusar, /render, /grupo Nome, /g, /org, /entrar, /sair, /o, /assumir, "
                                       "/disputar, /promover, /rebaixar, /expulsar")
             return
         self._outbox.append((None, {"t": "chat", "from": player.name, "text": text}))
@@ -498,6 +512,7 @@ class World:
         for player in list(self.players.values()):
             self._update_player(player, dt)
         self.duels.update()
+        self.parties.update()
         self.npcs.update()
         self.quests.update()
         for enemy in list(self.enemies.values()):
@@ -542,6 +557,10 @@ class World:
             you["zone"] = {"t": zone.type, "n": zone.name, "m": tilemap.title or tilemap.name}
             you["duel"] = self.duels.client_info(player)
             you["invite"] = self.duels.invite_for(player)  # desafio esperando resposta
+            you["pinv"] = self.parties.invite_for(player)  # convite de grupo esperando resposta
+            changed, party = self.parties.snapshot_for(player)
+            if changed:  # o grupo só vai quando muda (null = saiu ou acabou)
+                you["party"] = party
             you["staff"] = player.staff_role.id if player.staff_role else None
             if player.inventory.dirty:  # inventário só vai quando muda
                 you["inv"] = player.inventory.client_info()
@@ -808,6 +827,8 @@ class World:
             caster.energy -= skill.cost_energy
             if skill.type in ("melee", "projectile", "area"):  # atacar trava a barra por um tempo
                 self.training.mark_combat(caster)
+            if skill.train:
+                caster.last_stat = next(iter(skill.train))
             if caster.state in ("meditate", "rest"):
                 caster.state = "idle"
             if facing:  # o cliente diz para onde estava olhando ao apertar a tecla
@@ -861,6 +882,8 @@ class World:
                 return self.duels.fighting(attacker, target)  # não vale durante a contagem
             if self.duels.duel_of(attacker) or self.duels.duel_of(target):
                 return False  # ninguém de fora entra (nem sai) de um duelo
+            if not C.PARTY_FRIENDLY_FIRE and self.parties.same_party(attacker, target):
+                return False
             tilemap = self._map(attacker)
             return (tilemap.zone_at(attacker.x, attacker.y).type == "pvp"
                     and tilemap.zone_at(target.x, target.y).type == "pvp")
@@ -1035,15 +1058,22 @@ class World:
             target.dead_timer = C.SUMMON_CORPSE_SECONDS if target.summoner_id else target.defn.respawn
             self._spawn_loot(target, killer)
             # Bônus de abate vai para o atributo principal (o primeiro de "train") da skill usada
+            reward = target.defn.kill_xp * (C.ELITE_REWARD if target.elite else 1.0)
             if isinstance(killer, Player) and skill and skill.train:
-                reward = C.ELITE_REWARD if target.elite else 1.0
-                self._train(killer, next(iter(skill.train)), target.defn.kill_xp * reward)
+                self._train(killer, next(iter(skill.train)), reward)
+            if isinstance(killer, Player):
+                # grupo: quem está perto e lutou nos últimos segundos ganha parte do bônus
+                for member in self.parties.near(killer, target.x, target.y):
+                    if member.combat_until > self.time:
+                        self._train(member, member.last_stat or "strength", reward * C.PARTY_XP_SHARE)
             if target.defn.boss:
                 self._despawn_summons(target)
                 who = f" por {killer.name}" if isinstance(killer, Player) else ""
                 self._system(f"{target.name} foi derrotado{who}!")
             if isinstance(killer, Player):
                 self.quests.on_kill(killer, target.defn.id)
+                for member in self.parties.near(killer, target.x, target.y):  # o abate conta para o grupo
+                    self.quests.on_kill(member, target.defn.id)
 
         if isinstance(killer, Player):
             victim_player = target if isinstance(target, Player) else None
@@ -1204,30 +1234,38 @@ class World:
 
     def _spawn_loot(self, enemy: Enemy, killer: Entity | None) -> None:
         owner = killer.id if isinstance(killer, Player) else None
+        party = self.parties.of(killer) if isinstance(killer, Player) else None
         low, high = enemy.defn.gold
         gold = self.rng.randint(low, high) if high > 0 else 0
         if enemy.elite:
             gold = round(gold * C.ELITE_REWARD)
+        drops = []
         if gold:
-            self._drop(None, gold, enemy.map_id, enemy.x, enemy.y, owner)
+            drops.append(self._drop(None, gold, enemy.map_id, enemy.x, enemy.y, owner))
         for _ in range(C.ELITE_LOOT_ROLLS if enemy.elite else 1):
             for entry in enemy.defn.loot:
                 if self.rng.random() < entry.chance:
                     qty = self.rng.randint(entry.qty_min, entry.qty_max)
-                    self._drop(self.content.items[entry.item], qty, enemy.map_id, enemy.x, enemy.y, owner)
+                    drops.append(self._drop(self.content.items[entry.item], qty, enemy.map_id, enemy.x, enemy.y,
+                                            owner))
+        for drop in drops:
+            drop.party_id = party.id if party else None
 
     def _pickup(self, p: Player) -> None:
         for drop in list(self.drops.values()):
             if drop.map_id != p.map_id or math.hypot(drop.x - p.x, drop.y - p.y) > C.PICKUP_RADIUS:
                 continue
-            if drop.owner_id not in (None, p.id) and self.time < drop.owner_until:
-                continue  # ainda é de quem matou
+            party = self.parties.of(p)
+            same_party = party is not None and drop.party_id == party.id
+            if drop.owner_id not in (None, p.id) and self.time < drop.owner_until and not same_party:
+                continue  # ainda é de quem matou (ou do grupo dele)
             if drop.ignore_id == p.id and self.time < drop.ignore_until:
                 continue  # acabou de largar
             if drop.item is None:
-                p.inventory.add_gold(drop.qty)
                 taken = drop.qty
-                label = f"+{taken} moedas"
+                label = f"+{self._share_gold(p, taken) if same_party else taken} moedas"
+                if not same_party:
+                    p.inventory.add_gold(taken)
             else:
                 taken = drop.qty - p.inventory.add(drop.item, drop.qty)
                 label = f"+{taken} {drop.item.name}"
@@ -1238,6 +1276,18 @@ class World:
                 del self.drops[drop.id]
             self._fx_at(p, {"k": "pick", "id": p.id, "x": round(p.x), "y": round(p.y), "t": label,
                              "r": drop.item.rarity if drop.item else "gold"})
+
+    def _share_gold(self, p: Player, amount: int) -> int:
+        """Moedas do saque do grupo: divididas entre quem pegou e os membros perto. Devolve a parte de p."""
+        others = self.parties.near(p, p.x, p.y)
+        each, rest = divmod(amount, len(others) + 1)
+        for member in others:
+            if each:
+                member.inventory.add_gold(each)
+                self._fx_at(member, {"k": "pick", "id": member.id, "x": round(member.x), "y": round(member.y),
+                                     "t": f"+{each} moedas (grupo)", "r": "gold"})
+        p.inventory.add_gold(each + rest)
+        return each + rest
 
     def _update_drops(self) -> None:
         for drop in list(self.drops.values()):

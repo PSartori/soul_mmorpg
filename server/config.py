@@ -102,6 +102,11 @@ NPC_LEAVE_RANGE = 128.0  # afastou-se mais que isso: a conversa (e a loja) fecha
 SHOP_BUY_RATE = 0.4  # padrão do buy_rate: a loja paga 40% do valor do item
 SHOP_MAX_QTY = 999  # máximo de unidades numa compra ou venda
 CRAFT_MAX_TIMES = 99  # máximo de criações de uma vez numa oficina
+PARTY_MAX = 5  # membros por grupo
+PARTY_INVITE_SECONDS = 30.0  # o convite para o grupo expira
+PARTY_SHARE_RANGE = 480.0  # membros a esta distância dividem abates, missões e moedas (15 tiles)
+PARTY_XP_SHARE = 0.5  # fração do bônus de abate que cada membro perto (e lutando) ganha
+PARTY_FRIENDLY_FIRE = False  # True: membros do mesmo grupo se ferem em áreas PvP
 MAX_ACTIVE_QUESTS = 10  # missões em andamento ao mesmo tempo (data/quests.yaml)
 BAR_SIZE = 8  # espaços da barra de atalhos (teclas 1–8)
 BAR_COMBAT_LOCK = 5.0  # não dá para mudar a barra até este tempo depois de atacar ou levar dano (0 = sem trava)

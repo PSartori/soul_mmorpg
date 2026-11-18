@@ -50,6 +50,7 @@
         <div id="bossbar" hidden><span class="name"></span><div class="track"><span class="fill"></span><span class="hp"></span></div></div>
         <div id="announce" hidden></div>
         <div id="invite" hidden></div>
+        <div id="party-invite" hidden></div>
         <section id="org" hidden aria-label="Organização">
           <header>
             <h3 id="org-title">Organização</h3>
@@ -84,6 +85,8 @@
         </div>
       </section>
 
+      <section id="party" hidden aria-label="Grupo"></section>
+
       <section id="tracker" hidden aria-label="Missões em andamento"></section>
 
       <section id="chat">
@@ -92,6 +95,7 @@
           <select id="chat-channel" aria-label="Canal">
             <option value="">Geral</option>
             <option value="org" hidden>Organização</option>
+            <option value="party" hidden>Grupo</option>
           </select>
           <input id="chat-input" maxlength="200" placeholder="Enter para conversar" autocomplete="off">
         </div>
@@ -109,7 +113,7 @@
         <b>E</b> conversar ·
         <b>Enter</b> chat ·
         <b>V</b> visão 2D/3D (no 3D: <b>Q</b>/<b>Z</b> giram a câmera, rodinha do mouse dá zoom)
-        <br><b>Clique num jogador</b> para desafiar, disputar cargo ou (líderes) promover e expulsar.
+        <br><b>Clique num jogador</b> para desafiar, convidar para o grupo, disputar cargo ou (líderes) promover e expulsar.
         <b>Clique num NPC</b> (ou <b>E</b> perto dele) para conversar, negociar, treinar e criar itens.
       </section>
     </aside>

@@ -713,3 +713,43 @@ ul.craft-needs li.short { color: var(--error); }
 }
 #canvas3d[hidden] { display: none; }
 #canvas.overlay { background: transparent; image-rendering: auto; }
+
+/* ---------------------------------------------------------------- grupo */
+#party-invite {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 4;
+  max-width: 90%;
+  padding: 10px 14px;
+  background: rgba(18, 30, 26, .96);
+  border: 1px solid #7ee0c0;
+  border-radius: 8px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, .5);
+  text-align: center;
+}
+#invite:not([hidden]) ~ #party-invite { bottom: 108px; } /* os dois avisos ao mesmo tempo */
+#party-invite[hidden] { display: none; }
+#party-invite .text { margin: 0 0 8px; font-weight: 600; }
+#party-invite .actions { display: flex; gap: 8px; justify-content: center; }
+#party-invite button.accept { background: #2f7a5c; border-color: #3c9a7c; }
+
+#side #party { padding: 8px 12px; font-size: 12px; }
+#party[hidden] { display: none; }
+#party header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+#party h3 { margin: 0; flex: 1; font-size: 13px; color: #7ee0c0; }
+#party button.small { padding: 2px 8px; font-size: 11px; }
+#party button.tiny { padding: 0 5px; font-size: 10px; line-height: 1.5; }
+#party button.danger { background: #6a2f2f; border-color: #8a3c3c; }
+ul.party-list { margin: 0; padding: 0; list-style: none; }
+ul.party-list li { padding: 3px 0; }
+ul.party-list li + li { border-top: 1px solid #2c303b; }
+ul.party-list .row { display: flex; align-items: center; gap: 6px; }
+ul.party-list .name { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+ul.party-list .name.me { color: #ffe08a; }
+ul.party-list .lv { color: var(--muted); }
+ul.party-list .hp { height: 5px; margin-top: 2px; background: var(--panel-2); border-radius: 3px; overflow: hidden; }
+ul.party-list .hp span { display: block; height: 100%; background: var(--hp); }
+ul.party-list .where { color: var(--muted); font-size: 11px; font-style: italic; }
+ul.party-list li.dead .name { color: var(--muted); text-decoration: line-through; }

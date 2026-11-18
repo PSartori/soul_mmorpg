@@ -9,7 +9,7 @@
 // servidor só entende cima/baixo/esquerda/direita (ver rotateKeys).
 import * as THREE from "three";
 import { RARITY_COLORS } from "./inventory.js";
-import { TILE_BASE, drawTile, levelColor, nameColor, rankTitle, tileNoise } from "./render.js";
+import { PARTY_NAME_COLOR, TILE_BASE, drawTile, levelColor, nameColor, rankTitle, tileNoise } from "./render.js";
 
 const TAU = Math.PI * 2;
 const DIR = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
@@ -481,6 +481,7 @@ export class Renderer3D {
     this.updateCamera(me, dt);
     this.questMarks = state.questMarks ?? {};
     this.myLevel = state.myLevel ?? 1;
+    this.partyIds = state.partyIds;
     const ts = this.ts;
 
     for (const pool of [this.rings, this.glows, this.shadows, this.swings, this.strips]) pool.begin();
@@ -734,7 +735,8 @@ export class Renderer3D {
       ctx.fillStyle = role.color;
       ctx.fillText(tag, left, hy - 5);
     }
-    ctx.fillStyle = isMe ? "#ffe08a" : e.k === "enemy" ? levelColor(e.lv ?? 1, this.myLevel) : "#ffffff";
+    ctx.fillStyle = isMe ? "#ffe08a" : e.k === "enemy" ? levelColor(e.lv ?? 1, this.myLevel)
+      : this.partyIds?.has(e.id) ? PARTY_NAME_COLOR : "#ffffff";
     ctx.fillText(label, left + ctx.measureText(tag).width, hy - 5);
 
     const title = rankTitle(this.defs, e.o);

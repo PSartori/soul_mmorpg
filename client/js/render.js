@@ -4,6 +4,7 @@ import { RARITY_COLORS } from "./inventory.js";
 const DIR = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
 const FACING_ANGLE = { right: 0, down: Math.PI / 2, left: Math.PI, up: -Math.PI / 2 };
 const TAU = Math.PI * 2;
+export const PARTY_NAME_COLOR = "#8ef0c0"; // nome de quem é do seu grupo
 
 export const TILE_BASE = {
   "#": "#3a3d47",
@@ -194,6 +195,7 @@ export class Renderer {
     const ents = [...state.ents.values()].sort((a, b) => a.ry - b.ry);
     this.questMarks = state.questMarks ?? {};
     this.myLevel = state.myLevel ?? 1;
+    this.partyIds = state.partyIds;
     for (const e of ents) this.drawEntity(e, e.id === state.myId, now);
     for (const s of state.swings) this.drawSwing(s, state, now);
     for (const r of state.rings) this.drawRing(r, now);
@@ -382,7 +384,8 @@ export class Renderer {
       ctx.fillStyle = role.color;  // selo da equipe, antes do nome
       ctx.fillText(tag, left, top - 5);
     }
-    ctx.fillStyle = isMe ? "#ffe08a" : e.k === "enemy" ? levelColor(e.lv ?? 1, this.myLevel) : "#ffffff";
+    ctx.fillStyle = isMe ? "#ffe08a" : e.k === "enemy" ? levelColor(e.lv ?? 1, this.myLevel)
+      : this.partyIds?.has(e.id) ? PARTY_NAME_COLOR : "#ffffff";
     ctx.fillText(label, left + ctx.measureText(tag).width, top - 5);
     ctx.textAlign = "center";
 

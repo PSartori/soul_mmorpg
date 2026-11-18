@@ -117,6 +117,8 @@ class Player(Entity):
     bar: list[str | None] = field(default_factory=list)  # barra de atalhos (C.BAR_SIZE espaços; None = vazio)
     skills_sent: str = ""  # últimas skills conhecidas enviadas ao cliente (só manda quando muda)
     combat_until: float = 0.0  # horário do mundo até quando conta como "em combate" (trava a barra)
+    last_stat: str | None = None  # atributo principal da última skill usada (bônus de abate do grupo)
+    party_sent: str = ""  # último estado do grupo enviado ao cliente (só manda quando muda)
     actions: list[tuple] = field(default_factory=list)  # ações pedidas, executadas no próximo tick
     # Movimento: o cliente manda um comando numerado por tick; o servidor executa um por tick
     # e devolve o número do último executado ("ack") para o cliente corrigir a previsão.
@@ -381,6 +383,7 @@ class GroundItem:
     ignore_id: int | None = None  # quem largou o item não pega de volta até ignore_until
     ignore_until: float = 0.0
     map_id: str = ""
+    party_id: int | None = None  # saque do grupo: qualquer membro pega durante a exclusividade
 
     def snapshot(self) -> dict:
         return {"id": self.id, "i": self.item.id if self.item else "gold", "q": self.qty,

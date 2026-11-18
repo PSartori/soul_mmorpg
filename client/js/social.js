@@ -27,8 +27,9 @@ function rankTitle(org, rankId, seat) {
 // ------------------------------------------------------------------ menu do jogador
 
 export class PlayerMenu {
-  constructor({ container, getDefs, getMe, getYou, send, openAdmin }) {
+  constructor({ container, getDefs, getMe, getYou, send, openAdmin, extraItems = () => [] }) {
     this.container = container;
+    this.extraItems = extraItems; // opções de outros sistemas (ex.: grupo)
     this.getDefs = getDefs;
     this.getMe = getMe;
     this.getYou = getYou;
@@ -75,6 +76,7 @@ export class PlayerMenu {
     if (!you.duel && !target.du) {
       items.push(["Desafiar para duelo", () => this.send({ t: "duel", op: "challenge", target: name })]);
     }
+    items.push(...this.extraItems(target));
 
     const [myOrg, myRankId] = me.o ?? [];
     const [theirOrg, theirRankId, theirSeat] = target.o ?? [];

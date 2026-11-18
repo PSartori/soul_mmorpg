@@ -115,17 +115,17 @@ lutadores ficam parados, então alcance e esquiva não contam.
 | K | skills: as que você conhece e a barra (arraste uma skill para um espaço, ou clique nela e depois no espaço; × tira) |
 | G | janela de administração (só para a equipe) |
 | O | janela da organização: entrar, sair, cargos e ocupantes, assumir vaga, disputar, promover, rebaixar, expulsar |
-| Enter | chat; o seletor ao lado escolhe o canal (Geral ou Organização) |
+| Enter | chat; o seletor ao lado escolhe o canal (Geral, Organização ou Grupo) |
 | V | troca entre a visão 2D e a 3D (protótipo; o jogo lembra a escolha) |
 | Q / Z | na visão 3D, gira a câmera 90° para um lado ou para o outro |
 | Rodinha do mouse | na visão 3D, aproxima ou afasta a câmera |
-| **Clique num jogador** | menu: desafiar para duelo, disputar o cargo dele e, para líderes, promover, rebaixar e expulsar |
+| **Clique num jogador** | menu: desafiar para duelo, convidar para o grupo (ou, se for do seu grupo e você liderar, passar a liderança e tirar), disputar o cargo dele e, para líderes, promover, rebaixar e expulsar |
 | **Clique num NPC** | conversa; as respostas são botões, e alguns abrem a loja (comprar e vender), o treinador (aprender skills) ou a oficina (criar itens) |
 | **Arrastar na barra** | arrastar uma skill para outro espaço troca as duas de lugar; clicar num espaço vazio abre as skills |
 
 Um desafio recebido aparece na tela com **Aceitar** e **Recusar**; durante o duelo o
 painel mostra **Desistir**. Os antigos comandos de chat (`/duelo`, `/aceitar`,
-`/recusar`, `/render`, `/org`, `/entrar`, `/sair`, `/o`, `/assumir`, `/disputar`,
+`/recusar`, `/render`, `/grupo Nome`, `/g`, `/org`, `/entrar`, `/sair`, `/o`, `/assumir`, `/disputar`,
 `/promover`, `/rebaixar`, `/expulsar`, `/who`) continuam funcionando como atalho.
 
 ## Conteúdo (data/)
@@ -207,6 +207,7 @@ server/              Python (aiohttp)
   quests.py          missões: progresso, entrega, recompensas e marcadores ! / ?
   training.py        skills conhecidas, barra de atalhos (trava em combate) e treinadores
   crafting.py        oficinas: receitas, criação de itens (tudo ou nada) e evento craft
+  parties.py         grupos: convites, liderança, chat e quem divide abates, missões e moedas
   requirements.py    requisitos de treinadores e receitas (atributos, skills, condições) em texto
   inventory.py       inventário: espaços que empilham, equipamento e moedas
   orgs.py            organizações, cargos e disputas (vínculos na tabela memberships)
@@ -232,6 +233,7 @@ client/              JavaScript puro, sem build
   js/quests.js       diário de missões, acompanhamento no painel e oferta na conversa
   js/skills.js       janela de skills (K), arrastar para a barra e janela do treinador
   js/crafting.js     janela da oficina (receitas, materiais que tem, criar uma ou várias vezes)
+  js/party.js        painel do grupo, aviso de convite e opções de grupo no menu do jogador
   js/input.js        teclado
   js/net.js          WebSocket
 data/                conteúdo do jogo (veja acima)
@@ -273,7 +275,8 @@ Cliente → servidor: `login {name, password, race}`, `move {seq, up, down, left
 `skill {id, f}`, `duel {op: challenge|accept|decline|forfeit, target}`,
 `org {op: info|join|leave|claim|dispute|promote|demote|expel, ...}`,
 `npc {op: talk|choose|buy|sell|learn|craft|close, id|i|item|slot|skill, qty|times}`, `quest {op: abandon, id}`,
-`skills {op: bar, slot, id}` (id null = esvazia), `chat {text, ch}`, `admin {op, ...}` (equipe), `item {op: use|drop, slot: n}`, `item {op: unequip, slot: weapon|armor|accessory}`,
+`skills {op: bar, slot, id}` (id null = esvazia), `party {op: invite|accept|decline|leave|kick|lead, target}`,
+`chat {text, ch: party}`, `chat {text, ch}`, `admin {op, ...}` (equipe), `item {op: use|drop, slot: n}`, `item {op: unequip, slot: weapon|armor|accessory}`,
 `meditate`, `rest`, `chat {text}`.
 
 Servidor → cliente: `welcome {id, map, skills, effects, enemies, stat_labels, ...}`,
@@ -283,8 +286,9 @@ Servidor → cliente: `welcome {id, map, skills, effects, enemies, stat_labels, 
 `craft {npc, station, recipes: [{i, make, qty, needs, price, missing}]}` / `npc_close` (NPCs), `announce {text, by}`, `kick {text}` (antes de
 desconectar), `admin_data`/`admin_result` (equipe), `error {msg}`, `snap {ents, projs, drops, fx, you}`
 (20×/s, só o que está perto; `you.skills` é a barra, com null nos espaços vazios; `you.inv`, `you.q` —
-diário e marcadores das missões — e `you.known` — skills conhecidas, com `ok` se a raça/classe atual
-pode usar — só vêm quando mudam), `chat {from, text}`, `sys {text}`.
+diário e marcadores das missões —, `you.known` — skills conhecidas, com `ok` se a raça/classe atual
+pode usar — e `you.party` — membros do grupo com vida, nível e mapa; null = sem grupo — só vêm quando
+mudam; `you.pinv` é o convite de grupo esperando resposta), `chat {from, text}`, `sys {text}`.
 
 ### Regras atuais
 
@@ -362,6 +366,20 @@ pode usar — só vêm quando mudam), `chat {from, text}`, `sys {text}`.
   missão ou marca). Cada criação dispara o evento `craft` das regras. O servidor recusa
   receitas que dão lucro sem fim (materiais todos à venda numa loja, resultado vendido de
   volta por mais).
+- **Grupos**: até 5 jogadores (`PARTY_MAX`) com um líder. Convite pelo menu do jogador
+  (aviso com Aceitar/Recusar, expira em 30 s); quem não tem grupo cria um ao convidar. O líder
+  tira membros e passa a liderança; quem sai do jogo sai do grupo; se o líder sair, o próximo
+  assume; com um membro só, o grupo acaba. Grupos não vão para o save. Painel no lado com a
+  vida e o nível de cada um, canal "Grupo" no chat e nomes dos membros em verde. Efeitos, com
+  os membros vivos, no mesmo mapa e a até 15 tiles (`PARTY_SHARE_RANGE`):
+  - **abates**: quem dá o golpe final ganha o bônus de abate inteiro, como sempre; cada membro
+    perto que lutou nos últimos 5 s (atacou ou levou dano) ganha 50% dele (`PARTY_XP_SHARE`),
+    no atributo da última skill que usou — quem só fica parado perto não ganha;
+  - **missões**: o abate conta para os objetivos "derrotar" de todos os membros perto;
+  - **saque**: a exclusividade de 15 s vale para o grupo todo; moedas pegas do saque do grupo
+    são divididas entre quem pegou e os membros perto (o resto da divisão fica com quem pegou);
+  - **PvP**: membros do mesmo grupo não se ferem em áreas PvP (`PARTY_FRIENDLY_FIRE`); duelo
+    entre eles continua valendo.
 - **Lojas**: estoque infinito; o jogador compra pelo `value` do item (ou pelo `price`
   da loja) e vende por uma fração dele (`buy_rate`, padrão 40%, no mínimo 1 moeda).
   Compra só sai se houver moedas e espaço para tudo. O servidor recusa conteúdo em
@@ -428,7 +446,8 @@ barras de vida, marcas de missão e números são desenhados no canvas 2D por ci
 - Trocar de raça/classe por escolha já é possível por NPC (ação `set_race`/`set_class`
   num diálogo), mas o conteúdo atual não tem nenhum NPC assim.
 - Lojas com estoque infinito e preço fixo.
-- Missões só individuais (grupos ainda não existem); sem missões com tempo limite ou que falham.
+- Missões não exigem grupo (o grupo só divide os abates); sem missões com tempo limite ou que falham.
+- Saque de itens do grupo é de quem pegar primeiro (sem rodízio nem sorteio).
 - Outros jogadores são desenhados com suavização simples, não interpolação com atraso fixo.
 - Com colisão entre jogadores, alguém pode bloquear passagens estreitas (ex.: a saída de
   2 tiles da cidade). Se incomodar: desligar `PLAYERS_BLOCK_PLAYERS` ou só na zona segura.

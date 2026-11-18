@@ -11,6 +11,7 @@ import { DialogBox, ShopWindow, npcHeading } from "./npc.js";
 import { QuestLog } from "./quests.js";
 import { SkillsWindow, TrainerWindow, makeDraggable, makeDropTarget, skillMeta } from "./skills.js";
 import { CraftWindow } from "./crafting.js";
+import { PartyInvitePanel, PartyPanel, partyMenuItems } from "./party.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -29,6 +30,7 @@ const state = {
     skills: {}, effects: {}, enemies: {}, races: {}, classes: {}, items: {}, orgs: {}, roles: {}, npcs: {}, quests: {},
   },
   questMarks: {}, // id do NPC -> "!" (tem missão) ou "?" (missão pronta para entregar)
+  partyIds: new Set(), // quem é do meu grupo (nomes destacados)
   statLabels: {},
 };
 
@@ -250,6 +252,9 @@ function handleClose() {
   hideNpcWindows();
   skillsWindow.toggle(false);
   invitePanel.update(null);
+  partyInvitePanel.update(null);
+  partyPanel.update(null);
+  state.partyIds = new Set();
   $("overlay").classList.remove("hidden");
   $("login-error").textContent = kickText ?? "Conexão perdida. Entre de novo.";
   conn = null;
@@ -286,6 +291,10 @@ function applySnapshot(msg) {
   trainerWindow.refresh();
   craftWindow.refresh();
   skillsWindow.update(msg.you.known);
+  if ("party" in msg.you) {  // só vem quando muda (null = sem grupo)
+    partyPanel.update(msg.you.party);
+    state.partyIds = partyPanel.memberIds;
+  }
   if (msg.you.q) {
     questLog.update(msg.you.q);
     state.questMarks = msg.you.q.marks ?? {};
@@ -435,10 +444,13 @@ function updateHud() {
       : `Duelo contra ${rival} · ${clock}`;
   }
   invitePanel.update(you.invite);
+  partyInvitePanel.update(you.pinv);
   // canal "Organização" no chat só para quem é de uma
   const orgOption = $("chat-channel").querySelector('option[value="org"]');
   orgOption.hidden = !me.o;
   if (!me.o && $("chat-channel").value === "org") $("chat-channel").value = "";
+  $("chat-channel").querySelector('option[value="party"]').hidden = !partyPanel.inParty;
+  if (!partyPanel.inParty && $("chat-channel").value === "party") $("chat-channel").value = "";
   setBar("bar-hp", you.hp, you.mhp, "Vida");
   setBar("bar-energy", you.en, you.men, "Energia");
   setBar("bar-fatigue", you.fat, you.mfat, "Cansaço");
@@ -720,6 +732,13 @@ $("org-open").addEventListener("click", (ev) => {
   ev.currentTarget.blur();
 });
 const invitePanel = new InvitePanel({ root: $("invite"), send: (msg) => conn?.send(msg) });
+const partyInvitePanel = new PartyInvitePanel({ root: $("party-invite"), send: (msg) => conn?.send(msg) });
+const partyPanel = new PartyPanel({
+  root: $("party"),
+  send: (msg) => conn?.send(msg),
+  getMyId: () => state.myId,
+  getMapId: () => currentMap?.id,
+});
 $("duel-forfeit").addEventListener("click", (ev) => {
   if (window.confirm("Desistir do duelo? Conta como derrota.")) conn?.send({ t: "duel", op: "forfeit" });
   ev.currentTarget.blur();
@@ -731,6 +750,7 @@ const playerMenu = new PlayerMenu({
   getYou: () => state.you,
   send: (msg) => conn?.send(msg),
   openAdmin: (name) => adminUI.openFor(name),
+  extraItems: (target) => partyMenuItems(partyPanel, target, (msg) => conn?.send(msg)),
 });
 
 // O que está sob o mouse: outro jogador ou um NPC (tolerância de 22 px)
