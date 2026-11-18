@@ -14,7 +14,7 @@
 #   time        segundos para vencer todas as ondas (padrão 600). Acabou o tempo: derrota,
 #               e os invasores somem.
 #   rewards     ações para cada participante quando vencem (as mesmas de rules.yaml:
-#               give_gold, give_item, gain_xp, message, set_flag...)
+#               give_item, gain_xp, message, set_flag...; moedas não: elas só entram vendendo itens)
 #   min_damage  dano mínimo aos invasores para contar como participante (padrão 1)
 #   win_text / lose_text   anúncios do fim (opcionais)
 #   every       minutos entre começos automáticos (0 ou ausente = só a equipe começa)
@@ -36,10 +36,10 @@ invasao_campos:
     - { espectro: 5, bruto: 2, text: "Brutos vêm junto." }
     - { bruto: 3, devorador: 1, text: "Um Devorador lidera a última onda!" }
   rewards:
-    - give_gold: 40
-    - give_item: { id: pocao_vida, qty: 2 }
+    - give_item: { id: pocao_vida, qty: 3 }
+    - give_item: { id: couro_grosso, qty: 2 }
     - message: "Você ajudou a defender os Campos de Início. A cidade agradece, {name}."
-  win_text: "Os Campos de Início resistiram! Quem lutou recebe moedas e poções."
+  win_text: "Os Campos de Início resistiram! Quem lutou recebe poções e couro."
   lose_text: "Os invasores se dispersaram antes de serem vencidos. Fiquem atentos."
   every: 90
   min_players: 3

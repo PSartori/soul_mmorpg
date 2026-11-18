@@ -59,8 +59,8 @@
 #   - set_flag: marca / clear_flag: marca  marcas de progressão, salvas no personagem
 #   - add_effect: { id: efeito, duration: 5 }  (não vale em death: o personagem está morto)
 #   - give_item: { id: item, qty: 1 }      dá um item (se o inventário estiver cheio, cai no chão)
-#   - give_gold: 10                        dá moedas
 #   - lose_gold: { percent: 10 }           perde % das moedas (ou { amount: N })
+#   (não existe dar moedas: elas só entram no jogo quando alguém vende itens para uma loja de NPC)
 #   - start_quest: id                      começa uma missão (data/quests.yaml), se puder
 #   - learn_skill: id                      aprende uma skill (data/skills.yaml), sem custo nem requisito
 #

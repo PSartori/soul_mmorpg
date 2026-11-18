@@ -197,6 +197,9 @@ function handleMessage(msg) {
     case "admin_result":
       adminUI.showResult(msg);
       break;
+    case "admin_economy":
+      adminUI.showEconomy(msg);
+      break;
     case "announce":
       showAnnouncement(msg.text, msg.by);
       break;

@@ -190,4 +190,5 @@ class TrainingSystem:
             return False
         if entry.price:
             p.inventory.add_gold(-entry.price)
+            self.world.economy.record("treinador", trainer.id, entry.price)
         return self.learn(p, entry.skill)

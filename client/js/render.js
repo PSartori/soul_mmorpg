@@ -426,13 +426,6 @@ export class Renderer {
     const y = d.y + bob;
     ctx.fillStyle = "rgba(0,0,0,0.3)";
     ctx.beginPath(); ctx.ellipse(d.x, d.y + 7, 6, 2.5, 0, 0, TAU); ctx.fill();
-    if (d.i === "gold") {
-      ctx.fillStyle = "#ffd65a";
-      ctx.strokeStyle = "#a07a10";
-      ctx.lineWidth = 1.5;
-      ctx.beginPath(); ctx.arc(x, y, 5, 0, TAU); ctx.fill(); ctx.stroke();
-      return;
-    }
     const rarity = this.defs.items?.[d.i]?.rarity ?? "common";
     const color = RARITY_COLORS[rarity];
     const glow = ctx.createRadialGradient(x, y, 0, x, y, 12);

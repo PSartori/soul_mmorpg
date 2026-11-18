@@ -114,6 +114,7 @@ class AdminSystem:
             "clear_profile": ("mute", self._clear_profile),
             "event_start": ("events", self._event_start),
             "event_stop": ("events", self._event_stop),
+            "economy": ("log", self._economy),
         }
         if op not in ops:
             return
@@ -126,7 +127,7 @@ class AdminSystem:
         except (TypeError, ValueError, KeyError):
             self._reply(p, False, "Pedido inválido.")
             return
-        if op != "refresh":
+        if op not in ("refresh", "economy"):
             self._refresh(p, data)
 
     def _reply(self, p: Player, ok: bool, text: str) -> None:
@@ -284,6 +285,11 @@ class AdminSystem:
         self._record(p, "tirou o silêncio de", name)
         self._reply(p, True, f"{name} pode falar de novo.")
 
+    def _economy(self, p: Player, data: dict) -> None:
+        days = data.get("days", 7)
+        days = days if isinstance(days, int) and not isinstance(days, bool) else 7
+        self.world._outbox.append((p.id, {"t": "admin_economy", **self.world.economy.report(days)}))
+
     def _event_start(self, p: Player, data: dict) -> None:
         event_id = str(data.get("id", ""))
         ok, text = self.world.events.start(event_id, by=p.name)
@@ -435,6 +441,7 @@ class AdminSystem:
             self._reply(p, False, "Quantidade de moedas inválida.")
         else:
             target.inventory.add_gold(amount)
+            self.world.economy.record("equipe", target.name, amount)  # moedas criadas fora das lojas
             self.world._private(target, f"Você recebeu {amount} moedas da equipe.")
             self._record(p, "deu moedas a", target.name, str(amount))
             self._reply(p, True, f"{amount} moedas para {target.name}.")

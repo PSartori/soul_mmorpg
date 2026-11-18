@@ -38,7 +38,7 @@ Desperto, Espectral, Vigília, Coro Sombrio, Espectro, Devorador...) são
 - **Conteúdo é dado, não código.** Skills, efeitos, itens, inimigos, raças, classes,
   regras, organizações, papéis da equipe, NPCs, lojas, treinadores, oficinas, missões e mapas ficam em `data/`, validados ao
   carregar (um erro de digitação aponta arquivo, item e campo).
-- **Cada etapa termina testada**: testes automáticos (hoje 521) e verificação no
+- **Cada etapa termina testada**: testes automáticos (hoje 534) e verificação no
   navegador, e só então commit.
 
 ---
@@ -53,6 +53,7 @@ Desperto, Espectral, Vigília, Coro Sombrio, Espectro, Devorador...) são
 | Progressão | **Por repetição** (treino por uso); o teto ainda não foi definido |
 | Hierarquia | Cargos ocupados por jogadores, **conquistados por disputa** |
 | Itens | Saque de inimigos e balanceamento de classes importam |
+| Moedas | **Só entram vendendo itens para lojas de NPC**; entre jogadores, circulam por troca. Inimigos, missões e eventos não dão moedas |
 | Wipes | **Nunca** — o mundo é permanente |
 | Mundo | Mundo aberto ou mapas com portais: **em aberto** (o motor atende aos dois) |
 
@@ -90,7 +91,8 @@ Desperto, Espectral, Vigília, Coro Sombrio, Espectro, Devorador...) são
 | `e44704b` | Roleplay | Fala local em balão, ações (/me), mensagem privada, ignorar e perfil do personagem (janela P), save v7 |
 | `ddaba3b` | Minimapa | Mapa inteiro no canto (tecla N: pequeno, grande, escondido), com você, grupo, jogadores, NPCs e marcas de missão, inimigos por perto, portais e PvP |
 | `bd6b0f6` | Troca e banco | Troca entre jogadores (pedido pelo menu, os dois aceitam, salva na hora e fica registrada) e banco da conta no banqueiro e nos acampamentos |
-| — | Eventos em ondas | Invasões em `data/events.yaml`: ondas que marcham até um ponto, tempo, recompensa para quem lutou, começo pela equipe ou agenda, evento `event_end` nas regras |
+| `026ff9a` | Eventos em ondas | Invasões em `data/events.yaml`: ondas que marcham até um ponto, tempo, recompensa para quem lutou, começo pela equipe ou agenda, evento `event_end` nas regras |
+| — | Economia | Moedas só entram vendendo itens para NPCs (sem moedas de inimigos, missões, regras ou eventos); registro de entradas e saídas, relatório na administração e em `./admin.sh economia`, moedas por inimigo no balanceamento |
 
 ### Sistemas prontos
 
@@ -116,8 +118,8 @@ Desperto, Espectral, Vigília, Coro Sombrio, Espectro, Devorador...) são
   dariam lucro sem fim com as lojas.
 - **Grupos**: até 5 jogadores, convite pelo menu do jogador, painel com a vida de cada um,
   canal "Grupo" no chat. Membros perto dividem o bônus de abate (quem lutou ganha 50%), os
-  abates contam para as missões de todos, o saque do grupo é de qualquer membro e as moedas
-  são divididas; não se ferem em áreas PvP.
+  abates contam para as missões de todos e o saque do grupo é de qualquer membro; não se ferem
+  em áreas PvP.
 - **Troca entre jogadores**: "Propor troca" no menu do jogador (ou `/troca Nome`), aviso com
   Aceitar/Recusar; cada um põe itens da bolsa e moedas; os dois aceitam e qualquer mudança desfaz os
   aceites. O servidor confere tudo de novo e faz a troca de uma vez (ou nada, se não couber); os dois
@@ -138,6 +140,11 @@ Desperto, Espectral, Vigília, Coro Sombrio, Espectro, Devorador...) são
   perfil ou clicando num nome no chat; **ignorar** (sem mensagens de nenhum canal, desafios nem convites;
   a equipe não pode ser ignorada); **perfil** com descrição livre (janela P e "Ver perfil" no menu), que
   a equipe pode apagar. Ignorados e perfil vão no save (v7).
+- **Economia**: moedas só entram no jogo vendendo itens para lojas de NPC e circulam entre jogadores pela
+  troca; saem em compras, receitas, treinadores e perdas por regras. Tudo é anotado por dia e tipo; o relatório
+  (administração, seção Economia, e `./admin.sh economia`) mostra quantas moedas existem, o que entrou e saiu,
+  os itens que mais trouxeram moedas, quem tem mais e alertas de inflação. O relatório de balanceamento mostra
+  quanto cada inimigo rende vendendo o saque.
 - **Eventos em ondas (invasões)**: definidos em `data/events.yaml`. Os inimigos de cada onda aparecem
   numa área e marcham até um ponto (ex.: a porta da cidade), atacando quem encontram; a próxima onda vem
   8 s depois de a anterior cair. Vencer todas dentro do tempo dá recompensas (ações das regras) a quem
@@ -197,7 +204,7 @@ Desperto, Espectral, Vigília, Coro Sombrio, Espectro, Devorador...) são
   Guardião das Ruínas (30) e Devorador Ancião (50), com os invocados Estilhaço e Cria
   do vazio. **Itens**: 19, entre poções, materiais e equipamentos (até épicos).
 - **Evento de exemplo**: Invasão dos Campos (3 ondas de Espectros, Brutos e um Devorador marchando até a
-  porta leste da cidade; 40 moedas e 2 poções para quem lutar; sozinho a cada 90 min com 3 online).
+  porta leste da cidade; 3 poções e 2 couros para quem lutar; sozinho a cada 90 min com 3 online).
 - **Regras de exemplo**: Humano morto por Espectro vira Espectral; Espectral morto
   por Desperto volta a Humano; perda de XP ao morrer em PvE/PvP; marca de agressor.
 

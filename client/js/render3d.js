@@ -174,12 +174,6 @@ function glowTexture(color) {
 function dropTexture(kind) {
   return canvasTexture(`d:${kind}`, 32, 32, (g) => {
     g.lineWidth = 2;
-    if (kind === "gold") {
-      g.fillStyle = "#ffd65a";
-      g.strokeStyle = "#a07a10";
-      g.beginPath(); g.arc(16, 16, 10, 0, TAU); g.fill(); g.stroke();
-      return;
-    }
     g.fillStyle = RARITY_COLORS[kind] ?? RARITY_COLORS.common;
     g.strokeStyle = "rgba(0,0,0,0.7)";
     g.beginPath();
@@ -509,7 +503,7 @@ export class Renderer3D {
     const dropSeen = new Set();
     for (const d of state.drops) {
       dropSeen.add(d.id);
-      const kind = d.i === "gold" ? "gold" : this.defs.items?.[d.i]?.rarity ?? "common";
+      const kind = this.defs.items?.[d.i]?.rarity ?? "common";
       let sprite = this.dropSprites.get(d.id);
       if (!sprite) {
         sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: dropTexture(kind), alphaTest: 0.3 }));
@@ -521,11 +515,9 @@ export class Renderer3D {
       sprite.position.set(d.x / ts, 0.08 + 0.06 * Math.sin(now / 300 + d.id), d.y / ts);
       this.shadows.get("#000000", 0.3).position.set(d.x / ts, 0.012, d.y / ts);
       this.shadows.meshes[this.shadows.used - 1].scale.set(0.16, 0.16, 1);
-      if (kind !== "gold") {
-        const glow = this.glows.get(RARITY_COLORS[kind] ?? "#ffffff", 0.35);
-        glow.position.set(d.x / ts, 0.015, d.y / ts);
-        glow.scale.set(0.38, 0.38, 1);
-      }
+      const glow = this.glows.get(RARITY_COLORS[kind] ?? "#ffffff", 0.35);
+      glow.position.set(d.x / ts, 0.015, d.y / ts);
+      glow.scale.set(0.38, 0.38, 1);
     }
     for (const [id, sprite] of this.dropSprites) {
       if (!dropSeen.has(id)) {

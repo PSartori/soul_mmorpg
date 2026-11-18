@@ -19,7 +19,7 @@
 #                   total_level: 20            (soma dos níveis dos atributos, pelo menos 20)
 #                   flags / not_flags          (marcas de progressão)
 #           do:   ações ao escolher (as mesmas de rules.yaml: message, give_item,
-#                 give_gold, lose_gold, set_flag, clear_flag, gain_xp, add_effect,
+#                 lose_gold, set_flag, clear_flag, gain_xp, add_effect,
 #                 set_class, set_race...)
 #           goto: nó seguinte          | shop: abre a loja (data/shops.yaml)
 #                                      | trainer: abre o treinador (data/trainers.yaml)

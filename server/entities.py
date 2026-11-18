@@ -392,7 +392,7 @@ class GroundItem:
     """Item (ou moedas, se item for None) caído no chão."""
 
     id: int
-    item: ItemDef | None
+    item: ItemDef  # moedas não caem no chão: só itens
     qty: int
     x: float
     y: float
@@ -405,5 +405,5 @@ class GroundItem:
     party_id: int | None = None  # saque do grupo: qualquer membro pega durante a exclusividade
 
     def snapshot(self) -> dict:
-        return {"id": self.id, "i": self.item.id if self.item else "gold", "q": self.qty,
+        return {"id": self.id, "i": self.item.id, "q": self.qty,
                 "x": round(self.x), "y": round(self.y)}

@@ -22,7 +22,7 @@
 #                                                                o mapa todo); label obrigatório
 #                    - { flag: marca, label: Texto }             ter uma marca de progressão
 #                  Todo objetivo aceita "label" para trocar o texto gerado.
-#   rewards        ações ao concluir, as mesmas de rules.yaml (give_item, give_gold,
+#   rewards        ações ao concluir, as mesmas de rules.yaml (give_item,
 #                  gain_xp, set_flag, set_class, start_quest, learn_skill...)
 #   complete_text  o que o NPC diz na entrega
 #   repeatable     true = pode fazer de novo depois de concluir
@@ -38,8 +38,8 @@ primeiros_passos:
   objectives:
     - { kill: espectro, count: 3 }
   rewards:
-    - give_gold: 15
     - give_item: { id: pocao_vida, qty: 2 }
+    - give_item: pocao_energia
   complete_text: "Nada mal para quem acabou de chegar. Fique com isto."
 
 noticias_do_bosque:
@@ -51,18 +51,18 @@ noticias_do_bosque:
     - { reach: bosque, label: Entrar no Bosque Sombrio }
     - { talk: cacador }
   rewards:
-    - give_gold: 25
+    - give_item: { id: pocao_energia, qty: 2 }
     - gain_xp: { stat: agility, amount: 60 }
   complete_text: "Ele está vivo, então. Teimoso como sempre... Obrigada, {name}."
 
 fragmentos_para_hilda:
   name: Fragmentos para a mercearia
   giver: mercadora
-  description: "Fragmentos espectrais dão um bom pó para poções. Traga cinco e pago melhor do que no balcão."
+  description: "Fragmentos espectrais dão um bom pó para poções. Traga cinco e eu troco por uma poção pronta."
   objectives:
     - { collect: fragmento_espectral, count: 5 }
   rewards:
-    - give_gold: 12
+    - give_item: pocao_vida
   complete_text: "Perfeitos. Volte quando tiver mais."
   repeatable: true
   cooldown: 1800
@@ -86,7 +86,7 @@ caca_ao_devorador:
   objectives:
     - { kill: devorador, count: 2 }
   rewards:
-    - give_gold: 40
+    - give_item: { id: presa_de_devorador, qty: 3 }
     - give_item: tonico_veloz
   complete_text: "Dois a menos. Você leva jeito para a caça."
 
@@ -98,7 +98,7 @@ o_guardiao:
   objectives:
     - { kill: guardiao }
   rewards:
-    - give_gold: 300
+    - give_item: { id: po_de_pedra, qty: 8 }
     - give_item: { id: pocao_vida_maior, qty: 3 }
   complete_text: "Você conseguiu?! Então o caminho para a Fenda está livre. Que o vazio tenha piedade."
 
@@ -110,6 +110,6 @@ o_devorador_anciao:
   objectives:
     - { kill: devorador_anciao }
   rewards:
-    - give_gold: 800
+    - give_item: { id: essencia_do_vazio, qty: 8 }
     - give_item: manto_do_vazio
   complete_text: "Eu vi a fenda tremer quando ele caiu. Leve isto: é o melhor que tenho."

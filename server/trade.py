@@ -239,6 +239,7 @@ class TradeSystem:
             inv.add_gold(offer.gold)
         a.inventory, b.inventory = new_a, new_b
         new_a.dirty = new_b.dirty = True
+        w.economy.record("troca", "", offer_a.gold + offer_b.gold)  # só mudam de mão
         self._end(trade)
         w.save_players([a, b], trade=(a.name, b.name, offer_a.to_dict(), offer_b.to_dict()))
         log.info("troca: %s deu %s; %s deu %s", a.name, offer_a.to_dict(), b.name, offer_b.to_dict())

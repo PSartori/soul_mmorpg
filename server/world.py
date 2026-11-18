@@ -36,6 +36,7 @@ from .bugs import BugReports
 from .social import SocialSystem
 from .trade import TradeSystem
 from .events import EventSystem
+from .economy import Economy
 from .entities import (
     DIRECTIONS, MOVE_KEYS, ActiveEffect, Enemy, Entity, GroundItem, MoveKeys, Player, Projectile,
 )
@@ -129,6 +130,7 @@ class World:
         self.social = SocialSystem(self)  # roleplay: fala local, ações, privado, ignorar e perfil
         self.trades = TradeSystem(self)  # troca entre jogadores
         self.events = EventSystem(self)  # eventos em ondas (data/events.yaml)
+        self.economy = Economy(self)  # de onde as moedas entram e para onde vão
 
         self._spawn_enemies()
         self.npcs.spawn()
@@ -531,6 +533,7 @@ class World:
     def save_all(self) -> None:
         for player in self.players.values():
             self._save(player)
+        self.economy.flush()
 
     def _save(self, player: Player) -> None:
         self.save_players([player])
@@ -889,12 +892,11 @@ class World:
             self._apply_effect(p, args, None)
         elif name == "give_item":
             self._give_item(p, self.content.items[args["id"]], args["qty"])
-        elif name == "give_gold":
-            p.inventory.add_gold(args)
         elif name == "lose_gold":
             gold = p.inventory.gold
             lost = int(gold * args["percent"] / 100) if "percent" in args else min(gold, args["amount"])
             p.inventory.add_gold(-lost)
+            self.economy.record("regra", "perda", lost)
         elif name == "start_quest":
             self.quests.start(p, args)
         elif name == "learn_skill":
@@ -1356,7 +1358,7 @@ class World:
             self._drop(item, leftover, p.map_id, p.x, p.y, owner=p.id, scatter=False)
             self._private(p, "Inventário cheio: o que não coube ficou no chão.")
 
-    def _drop(self, item: ItemDef | None, qty: int, map_id: str, x: float, y: float, owner: int | None,
+    def _drop(self, item: ItemDef, qty: int, map_id: str, x: float, y: float, owner: int | None,
               scatter: bool = True) -> GroundItem:
         if scatter:
             angle = self.rng.uniform(0, 2 * math.pi)
@@ -1375,13 +1377,7 @@ class World:
     def _spawn_loot(self, enemy: Enemy, killer: Entity | None) -> None:
         owner = killer.id if isinstance(killer, Player) else None
         party = self.parties.of(killer) if isinstance(killer, Player) else None
-        low, high = enemy.defn.gold
-        gold = self.rng.randint(low, high) if high > 0 else 0
-        if enemy.elite:
-            gold = round(gold * C.ELITE_REWARD)
-        drops = []
-        if gold:
-            drops.append(self._drop(None, gold, enemy.map_id, enemy.x, enemy.y, owner))
+        drops = []  # só itens: moedas entram no jogo vendendo itens para lojas de NPC
         for _ in range(C.ELITE_LOOT_ROLLS if enemy.elite else 1):
             for entry in enemy.defn.loot:
                 if self.rng.random() < entry.chance:
@@ -1401,33 +1397,15 @@ class World:
                 continue  # ainda é de quem matou (ou do grupo dele)
             if drop.ignore_id == p.id and self.time < drop.ignore_until:
                 continue  # acabou de largar
-            if drop.item is None:
-                taken = drop.qty
-                label = f"+{self._share_gold(p, taken) if same_party else taken} moedas"
-                if not same_party:
-                    p.inventory.add_gold(taken)
-            else:
-                taken = drop.qty - p.inventory.add(drop.item, drop.qty)
-                label = f"+{taken} {drop.item.name}"
+            taken = drop.qty - p.inventory.add(drop.item, drop.qty)
+            label = f"+{taken} {drop.item.name}"
             if taken == 0:
                 continue  # inventário cheio
             drop.qty -= taken
             if drop.qty == 0:
                 del self.drops[drop.id]
             self._fx_at(p, {"k": "pick", "id": p.id, "x": round(p.x), "y": round(p.y), "t": label,
-                             "r": drop.item.rarity if drop.item else "gold"})
-
-    def _share_gold(self, p: Player, amount: int) -> int:
-        """Moedas do saque do grupo: divididas entre quem pegou e os membros perto. Devolve a parte de p."""
-        others = self.parties.near(p, p.x, p.y)
-        each, rest = divmod(amount, len(others) + 1)
-        for member in others:
-            if each:
-                member.inventory.add_gold(each)
-                self._fx_at(member, {"k": "pick", "id": member.id, "x": round(member.x), "y": round(member.y),
-                                     "t": f"+{each} moedas (grupo)", "r": "gold"})
-        p.inventory.add_gold(each + rest)
-        return each + rest
+                             "r": drop.item.rarity})
 
     def _update_drops(self) -> None:
         for drop in list(self.drops.values()):

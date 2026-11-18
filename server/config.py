@@ -73,7 +73,7 @@ ENEMY_HP_REGEN = 2.0  # por segundo, quando sem alvo
 ELITE_HP = 2.0  # vida × isto
 ELITE_DAMAGE = 1.25  # dano × isto
 ELITE_SIZE = 1.25  # corpo × isto
-ELITE_REWARD = 3.0  # XP de abate e moedas × isto
+ELITE_REWARD = 3.0  # XP de abate × isto
 ELITE_LOOT_ROLLS = 2  # a tabela de saque é sorteada esta quantidade de vezes
 # Chefes (boss: true)
 BOSS_NEARBY = 900.0  # quem está a esta distância recebe os avisos de fase

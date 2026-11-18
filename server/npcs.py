@@ -188,6 +188,7 @@ class NpcSystem:
             return
         inv.add_gold(-total)
         inv.add(item, qty)
+        self.world.economy.record("loja", item.id, total)  # moedas saem do jogo
         self.world._private(p, f"Você comprou {qty}× {item.name} por {total} moedas.")
         self._coins_fx(p, f"-{total} moedas")
 
@@ -208,6 +209,7 @@ class NpcSystem:
         assert sold is not None
         total = price * sold.qty
         inv.add_gold(total)
+        self.world.economy.record("venda", sold.item.id, total)  # a única forma de moedas entrarem no jogo
         self.world._private(p, f"Você vendeu {sold.qty}× {sold.item.name} por {total} moedas.")
         self._coins_fx(p, f"+{total} moedas")
 
@@ -268,6 +270,7 @@ class NpcSystem:
             return
         source.add_gold(-amount)
         dest.add_gold(amount)
+        self.world.economy.record("banco", "guardar" if op == "deposit_gold" else "sacar", amount)
         self._bank_changed(p, npc)
 
     def _bank_changed(self, p: Player, npc: Npc) -> None:

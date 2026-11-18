@@ -201,6 +201,7 @@ class Report:
                 body += table(["Item", "Classe", "Dano/s", "Vida efetiva"], rows)
 
         body += self._enemies_at_own_level(sim, classes)
+        body += self._loot_value()
 
         # ---- skills que nunca entram na rotação
         for c in classes:
@@ -277,6 +278,39 @@ class Report:
                                        f"nível: folga {num(median)} (alvo {num(low)}–{num(high)}).")
         return body + table(["Inimigo", "Nível", "Classe", "Você mata em", "Ele mata você em", "Folga", "Veredito"],
                             rows)
+
+    def _loot_value(self) -> list[str]:
+        """Quanto cada inimigo rende em moedas: as moedas só entram no jogo vendendo itens para lojas de NPC.
+
+        Valor esperado do saque de um abate, vendido na loja que paga mais por cada item.
+        """
+        items = self.content.items
+        shops = list(self.content.shops.values())
+
+        def best(item_id: str) -> tuple[int, str]:
+            prices = [(s.buy_price(items[item_id]), s.name) for s in shops]
+            return max(prices, default=(0, ""))
+
+        body = ["## Moedas por inimigo (vendendo o saque)", "",
+                "Inimigos não deixam moedas: elas só entram no jogo quando alguém vende itens para uma loja de NPC. "
+                "Valor esperado do saque de **um abate**, vendido na loja que paga mais por cada item "
+                f"(elites sorteiam o saque {C.ELITE_LOOT_ROLLS} vezes).", ""]
+        rows = []
+        for enemy in sorted(self.content.enemies.values(), key=lambda e: (e.level, e.id)):
+            value = 0.0
+            parts = []
+            for entry in enemy.loot:
+                price, shop = best(entry.item)
+                each = entry.chance * (entry.qty_min + entry.qty_max) / 2 * price
+                value += each
+                if price:
+                    parts.append(f"{items[entry.item].name} ({price} em {shop})")
+            elite = num(value * C.ELITE_LOOT_ROLLS) if enemy.elite_chance > 0 else "—"
+            rows.append([enemy.name, str(enemy.level), num(value), elite, ", ".join(parts) or "nada que se venda"])
+            if value <= 0 and enemy.loot:
+                self.alerts.append(f"**{enemy.name}** não rende moedas: nenhuma loja compra o saque dele.")
+        return body + table(["Inimigo", "Nível", "Moedas por abate", "Elite", "Saque vendável (melhor preço)"],
+                            rows) + [""]
 
     def _grouped_alerts(self) -> list[str]:
         out = []

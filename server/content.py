@@ -141,7 +141,6 @@ class EnemyDef:
     respawn: float
     kill_xp: float
     skills: tuple[str, ...]
-    gold: tuple[int, int] = (0, 0)  # moedas que caem: [mínimo, máximo]
     loot: tuple[LootEntry, ...] = ()
     level: int = 1  # nível mostrado ao jogador (comparável ao nível dos atributos)
     damage: float = 1.0  # multiplica o dano das skills (inimigos não têm atributos)
@@ -491,8 +490,6 @@ class Content:
             if name == "give_item":
                 item_name = getattr(self.items.get(args["id"]), "name", args["id"])
                 labels.append(f"{args['qty']}× {item_name}" if args["qty"] > 1 else item_name)
-            elif name == "give_gold":
-                labels.append(f"{args} moedas")
             elif name == "gain_xp":
                 labels.append(f"{args['amount']:g} XP de {STAT_LABELS[args['stat']]}")
             elif name == "learn_skill":
@@ -928,6 +925,9 @@ def _parse_enemy(eid: str, raw: Any) -> EnemyDef:
         raise ContentError(f"{f.where}: 'elite_chance' deve estar entre 0 e 1 (ex.: 0.1 = 10%)")
     if boss and elite_chance:
         raise ContentError(f"{f.where}: chefes não nascem elite (tire elite_chance)")
+    if "gold" in f.raw:
+        raise ContentError(f"{f.where}: inimigos não deixam moedas cair (tire 'gold'): moedas só entram no jogo "
+                           "quando alguém vende itens para uma loja de NPC. Use 'loot' com itens que valham algo.")
     phases = tuple(_parse_phase(f"{f.where}.phases[{i}]", raw) for i, raw in enumerate(f.list("phases")))
     if phases and not boss:
         raise ContentError(f"{f.where}: 'phases' só vale para chefes (boss: true)")
@@ -947,7 +947,6 @@ def _parse_enemy(eid: str, raw: Any) -> EnemyDef:
         respawn=f.num("respawn"),
         kill_xp=f.num("kill_xp", 0.0),
         skills=tuple(f.str_list("skills")),
-        gold=_int_range(f, "gold", (0, 0)),
         loot=tuple(_parse_loot(f)),
         level=f.int("level", 1, minimum=1),
         damage=f.num("damage", 1.0),
@@ -1168,6 +1167,8 @@ def _check_condition(where: str, field: str, value: Any, refs: _RuleRefs) -> Any
 
 
 def _check_action(where: str, when: str, name: str, args: Any, refs: _RuleRefs) -> Any:
+    if name == "give_gold":
+        raise ContentError(f"{where}: give_gold não existe mais: moedas só entram no jogo quando alguém vende itens para uma loja de NPC; dê itens (give_item) ou tire moedas (lose_gold)")
     if name not in ACTIONS:
         raise ContentError(f"{where}: ação desconhecida '{name}' (válidas: {', '.join(ACTIONS)})")
 
@@ -1179,10 +1180,6 @@ def _check_action(where: str, when: str, name: str, args: Any, refs: _RuleRefs) 
     if name in ("message", "broadcast"):
         if not isinstance(args, str) or not args:
             raise ContentError(f"{where}: {name} precisa de um texto")
-        return args
-    if name == "give_gold":
-        if isinstance(args, bool) or not isinstance(args, int) or args < 1:
-            raise ContentError(f"{where}: give_gold precisa de um número inteiro positivo")
         return args
     if name == "lose_gold":
         f = _Fields(f"{where}.lose_gold", args)

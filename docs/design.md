@@ -31,6 +31,7 @@ inspirado nos jogos de anime do BYOND (veja `referencia-bleach-shinzui.md`).
 | Progressão | Repetição | Já existe (treino por uso); falta o teto |
 | Hierarquia | Cargos por disputa | Organizações persistentes, cargos e um sistema de desafio |
 | Itens | Loot e balanceamento de classes | Itens, tabelas de saque e uma ferramenta de balanceamento |
+| Moedas | Só entram vendendo itens para lojas de NPC; circulam por troca entre jogadores | Inimigos, missões e eventos dão itens, não moedas; registro de entradas e saídas |
 | Wipes | Nunca | Saves versionados com migração, backups, controle de inflação |
 
 ## 3. Morte e transformação
@@ -279,7 +280,7 @@ Combinado em 17/11/2026. A ordem pode mudar conforme as decisões em aberto.
 - Hierarquia sem abuso: limite de recusas, cargo vago por inatividade, torneios.
 - Fama e ranking (abates, mortes, chefes).
 - ~~Troca entre jogadores e banco~~ (feito).
-- Controle da economia: moedas em circulação e mais escoamentos.
+- ~~Controle da economia: moedas em circulação~~ (feito: registro, relatório e alertas). Falta: mais escoamentos.
 
 **Em paralelo:** visão 3D (protótipo feito: mundo 3D com personagens 2D, tecla V; falta
 decidir se fica e o formato da arte), arte e som (sprites, animações, aparência do personagem), desempenho

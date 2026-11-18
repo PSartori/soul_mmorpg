@@ -45,7 +45,7 @@ caca:
     - { kill: espectro, count: 2 }
     - { collect: couro_grosso, count: 2 }
   rewards:
-    - give_gold: 30
+    - give_item: { id: pocao_energia, qty: 3 }
     - give_item: { id: pocao_vida, qty: 2 }
   complete_text: "Bom trabalho, {name}."
 
@@ -68,14 +68,14 @@ diaria:
   objectives:
     - { kill: espectro }
   rewards:
-    - give_gold: 5
+    - give_item: tonico_veloz
 
 marca:
   name: Marca
   objectives:
     - { flag: achou, label: Achar a marca }
   rewards:
-    - give_gold: 7
+    - give_item: { id: po_de_pedra, qty: 7 }
 """
 
 
@@ -172,7 +172,7 @@ class QuestFlowTests(Base):
         self.assertNotIn("caca", self.p.quests)
         self.assertEqual(self.p.quests_done["caca"][0], 1)
         self.assertEqual(self.p.inventory.count("couro_grosso"), 1)  # entregou 2 dos 3
-        self.assertEqual(self.p.inventory.gold, 30)
+        self.assertEqual(self.p.inventory.count("pocao_energia"), 3)
         self.assertEqual(self.p.inventory.count("pocao_vida"), 2)
         self.assertNotIn("Missão: Caça", self.options(self.talk()))  # não repetível
 
@@ -205,7 +205,7 @@ class QuestFlowTests(Base):
         self.tick()
         self.talk()
         self.send(op="choose", i="entregar:diaria")
-        self.assertEqual(self.p.inventory.gold, 5)
+        self.assertEqual(self.p.inventory.count("tonico_veloz"), 1)
         self.assertNotIn("Missão: Diária", self.options(self.talk()))
         self.now += 61
         self.accept("diaria")
@@ -222,7 +222,7 @@ class QuestFlowTests(Base):
         self.p.flags.add("achou")
         self.tick()
         self.assertNotIn("marca", self.p.quests)  # sem turn_in: conclui sozinha
-        self.assertEqual(self.p.inventory.gold, 7)
+        self.assertEqual(self.p.inventory.count("po_de_pedra"), 7)
 
     def test_abandon_and_limit(self):
         self.accept("caca")
@@ -240,13 +240,13 @@ class QuestFlowTests(Base):
 festa:
   when: quest_complete
   if: { quest: marca }
-  do: [ { give_gold: 100 } ]
+  do: [ { give_item: { id: po_de_pedra, qty: 3 } } ]
 """), self.content)
         self.world.content = dataclasses.replace(self.content, rules=rules)
         self.world.quests.start(self.p, "marca")
         self.p.flags.add("achou")
         self.tick()
-        self.assertEqual(self.p.inventory.gold, 107)
+        self.assertEqual(self.p.inventory.count("po_de_pedra"), 10)
 
     def test_snapshot_sends_diary_only_when_changed_and_marks(self):
         self.tick()
@@ -266,7 +266,7 @@ festa:
         info = self.world.welcome_payload(self.p)["quests"]["caca"]
         self.assertEqual(info["giver"], "Ancião")
         self.assertEqual([o["label"] for o in info["objectives"]], ["Derrotar Espectro", "Conseguir Couro grosso"])
-        self.assertEqual(info["rewards"], ["30 moedas", "2× Poção de vida"])
+        self.assertEqual(info["rewards"], ["3× Poção de energia", "2× Poção de vida"])
 
 
 class QuestSaveTests(Base):

@@ -1070,7 +1070,7 @@ class ItemTests(GameplayBase):
         self.world.step(DT)
 
     def deterministic_loot(self):
-        defn = dataclasses.replace(self.enemy.defn, gold=(7, 7), loot=(
+        defn = dataclasses.replace(self.enemy.defn, loot=(
             dataclasses.replace(CONTENT.enemies["espectro"].loot[0], chance=1.0, qty_min=2, qty_max=2),
         ))
         self.enemy.defn = defn
@@ -1081,14 +1081,12 @@ class ItemTests(GameplayBase):
     def test_loot_drops_and_owner_picks_up(self):
         self.deterministic_loot()
         self.kill_enemy(self.player)
-        self.assertEqual(len(self.world.drops), 2)  # moedas + fragmentos
+        self.assertEqual(len(self.world.drops), 1)  # só os fragmentos: inimigos não deixam moedas
         drop = next(iter(self.world.drops.values()))
         self.player.x, self.player.y = drop.x, drop.y
-        for d in self.world.drops.values():
-            d.x, d.y = self.player.x, self.player.y
         self.world.step(DT)
         self.assertEqual(self.world.drops, {})
-        self.assertEqual(self.player.inventory.gold, 7)
+        self.assertEqual(self.player.inventory.gold, 0)
         self.assertEqual(self.player.inventory.count("fragmento_espectral"), 2)
 
     def test_loot_is_exclusive_then_free(self):
@@ -1100,10 +1098,10 @@ class ItemTests(GameplayBase):
         other.x, other.y = tile_center(7, 1)
         self.player.x, self.player.y = tile_center(2, 2)
         self.world.step(DT)
-        self.assertEqual(len(self.world.drops), 2)  # o outro não pega ainda
+        self.assertEqual(len(self.world.drops), 1)  # o outro não pega ainda
         run(self.world, C.LOOT_OWNER_SECONDS)
         self.assertEqual(self.world.drops, {})  # agora pega
-        self.assertEqual(other.inventory.gold, 7)
+        self.assertEqual(other.inventory.count("fragmento_espectral"), 2)
 
     def test_loot_expires(self):
         self.deterministic_loot()
@@ -1122,8 +1120,8 @@ class ItemTests(GameplayBase):
         for d in self.world.drops.values():
             d.x, d.y = self.player.x, self.player.y
         self.world.step(DT)
-        self.assertEqual(len(self.world.drops), 1)  # moedas entraram, fragmentos ficaram
-        self.assertEqual(self.player.inventory.gold, 7)
+        self.assertEqual(len(self.world.drops), 1)  # sem espaço: os fragmentos ficam no chão
+        self.assertEqual(self.player.inventory.count("fragmento_espectral"), 0)
 
     def test_use_potion(self):
         self.give("pocao_vida", 2)
@@ -1256,7 +1254,6 @@ premio:
   when: level_up
   do:
     - give_item: { id: pocao_vida, qty: 3 }
-    - give_gold: 50
 multa:
   when: death
   do: [ { lose_gold: { percent: 20 } } ]
@@ -1264,9 +1261,15 @@ multa:
         p, _ = world.login("Teste", "1234", "humano")
         world._train(p, "strength", 1_000, use_rate=False)
         self.assertEqual(p.inventory.count("pocao_vida"), 3)
-        self.assertEqual(p.inventory.gold, 50)
+        p.inventory.add_gold(50)
         world._kill(p, None, None)
         self.assertEqual(p.inventory.gold, 40)
+
+    def test_give_gold_no_longer_exists(self):
+        # moedas só entram no jogo vendendo itens para lojas de NPC
+        with self.assertRaises(ContentError) as ctx:
+            rules_from("r:\n  when: level_up\n  do: [ { give_gold: 10 } ]\n")
+        self.assertIn("vende itens para uma loja de NPC", str(ctx.exception))
 
     def test_give_item_shorthand_and_validation(self):
         rules = rules_from("r:\n  when: level_up\n  do: [ { give_item: pocao_vida } ]\n")
@@ -1297,8 +1300,13 @@ class ItemContentTests(ContentTests):
 
     def test_bad_qty_range(self):
         self.append("enemies.yaml", "teste:\n  name: T\n  mark: Z\n  hp: 1\n  speed: 1\n  aggro_radius: 1\n"
-                    "  leash: 1\n  wander_radius: 1\n  respawn: 1\n  gold: [5, 2]\n")
-        self.assert_error("teste", "gold")
+                    "  leash: 1\n  wander_radius: 1\n  respawn: 1\n  loot: [ { item: pocao_vida, qty: [5, 2] } ]\n")
+        self.assert_error("teste", "qty")
+
+    def test_enemies_cannot_drop_gold(self):
+        self.append("enemies.yaml", "teste:\n  name: T\n  mark: Z\n  hp: 1\n  speed: 1\n  aggro_radius: 1\n"
+                    "  leash: 1\n  wander_radius: 1\n  respawn: 1\n  gold: [1, 2]\n")
+        self.assert_error("teste", "não deixam moedas")
 
 
 class OrgTests(unittest.TestCase):
@@ -1479,7 +1487,7 @@ saiu:
 entrou:
   when: rank_change
   if: { cause: join }
-  do: [ { give_gold: 5 } ]
+  do: [ { give_item: pocao_vida } ]
 morte_de_sentinela:
   when: death
   if: { org: vigilia, rank: sentinela }
@@ -1487,7 +1495,7 @@ morte_de_sentinela:
 """)
         a = self.player("Aaa")
         self.say(a, "/entrar vigilia")
-        self.assertEqual(a.inventory.gold, 5)
+        self.assertEqual(a.inventory.count("pocao_vida"), 1)
         self.world._kill(a, None, None)
         self.assertIn("sentinela_caido", a.flags)
 

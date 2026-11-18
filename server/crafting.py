@@ -79,6 +79,7 @@ class CraftingSystem:
             return False
         inv.add(item, made)
         inv.add_gold(-cost)
+        self.world.economy.record("oficina", station.id, cost)
         self.world._private(p, f"Você criou {made}× {item.name}" + (f" por {cost} moedas." if cost else "."))
         self.world._fx_at(p, {"k": "pick", "id": p.id, "x": round(p.x), "y": round(p.y),
                               "t": f"+{made} {item.name}", "r": item.rarity})

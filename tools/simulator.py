@@ -225,6 +225,6 @@ class Simulator:
         if DUMMY_ID not in self.content.enemies:
             base = next(iter(self.content.enemies.values()))
             target = dataclasses.replace(base, id=DUMMY_ID, name="Alvo", hp=1000.0, speed=0.0,
-                                         skills=(), aggro_radius=0.0, loot=(), gold=(0, 0))
+                                         skills=(), aggro_radius=0.0, loot=())
             self.content = dataclasses.replace(self.content, enemies={**self.content.enemies, DUMMY_ID: target})
         return self.fight(build, DUMMY_ID, seconds)

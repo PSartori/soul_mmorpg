@@ -13,6 +13,7 @@ Uso:
   ./admin.sh bugs [--todos]         relatos de bug abertos (ou todos, inclusive os resolvidos)
   ./admin.sh bug-resolvido N        marca o relato N como resolvido
   ./admin.sh trocas [Nome] [-n N]   últimas trocas entre jogadores (de todos ou só de um personagem)
+  ./admin.sh economia [dias]        moedas existentes, quanto entrou e saiu por dia (padrão 7 dias)
 
 Serve para criar o primeiro administrador e para emergências (ex.: desbanir com o
 servidor fora do ar). Mudança de papel vale a partir do próximo login da pessoa.
@@ -29,6 +30,7 @@ from server import config as C
 from server.admin import BAN_KINDS, format_until, temporary_password
 from server.content import Content
 from server.db import Database, hash_password
+from server.economy import economy_report, report_lines
 
 
 def main(argv: list[str] | None = None, db_path: Path = C.DB_PATH) -> int:
@@ -56,6 +58,8 @@ def main(argv: list[str] | None = None, db_path: Path = C.DB_PATH) -> int:
     trades = sub.add_parser("trocas", help="últimas trocas entre jogadores")
     trades.add_argument("name", nargs="?", default=None)
     trades.add_argument("-n", type=int, default=20)
+    economy = sub.add_parser("economia", help="moedas existentes e o que entrou e saiu")
+    economy.add_argument("days", type=int, nargs="?", default=7)
     args = parser.parse_args(argv)
 
     db = Database(db_path)
@@ -161,6 +165,10 @@ def main(argv: list[str] | None = None, db_path: Path = C.DB_PATH) -> int:
             print(f"{stamp}  {a} deu {gave(a_gave)}  ⇄  {b} deu {gave(b_gave)}")
         if not rows:
             print("Nenhuma troca" + (f" de {args.name}." if args.name else "."))
+    elif args.cmd == "economia":
+        # com o servidor ligado, o último minuto ainda pode não ter sido gravado
+        report = economy_report(db, Content.load(C.DATA_DIR), args.days, time.time())
+        print("\n".join(report_lines(report)))
     elif args.cmd == "log":
         for at, actor, action, target, details in db.recent_log(args.n):
             stamp = time.strftime("%d/%m %H:%M", time.localtime(at))

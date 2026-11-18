@@ -1,6 +1,6 @@
 # Relatório de balanceamento
 
-Gerado em 17/11/2026 20:39 · níveis: 1, 10, 25, 40 · lutas de 30 s · equipamento: nenhum · 5,8 s para gerar
+Gerado em 18/11/2026 13:53 · níveis: 1, 10, 25, 40 · lutas de 30 s · equipamento: nenhum · 7,9 s para gerar
 
 Os números vêm de lutas simuladas no próprio motor do jogo. Todos os atributos no nível indicado; os lutadores ficam parados a 28 px, então alcance e esquiva **não** contam — classes de longe aparecem piores do que seriam com um jogador se movendo. *Vida efetiva* = vida ÷ multiplicador de dano recebido.
 
@@ -451,3 +451,24 @@ Cada inimigo contra cada classe **no nível do inimigo**. Chefes: luta somada fa
 | Devorador Ancião (chefe) | 50 | Aprendiz | 21,6 s | 19,8 s | 0,9 | **perde** |
 | Devorador Ancião (chefe) | 50 | Iniciado | 16,3 s | 18,9 s | 1,2 | apertado |
 | Devorador Ancião (chefe) | 50 | Assombração | 32,5 s | 17,9 s | 0,6 | **perde** |
+
+## Moedas por inimigo (vendendo o saque)
+
+Inimigos não deixam moedas: elas só entram no jogo quando alguém vende itens para uma loja de NPC. Valor esperado do saque de **um abate**, vendido na loja que paga mais por cada item (elites sorteiam o saque 2 vezes).
+
+| Inimigo | Nível | Moedas por abate | Elite | Saque vendável (melhor preço) |
+|---|---|---|---|---|
+| Espectro | 1 | 3,0 | 6,0 | Fragmento espectral (1 em Posto de caça), Poção de vida (4 em Mercearia), Poção de energia (4 em Mercearia), Espada curta (12 em Armas e armaduras), Amuleto espectral (60 em Armas e armaduras) |
+| Bruto | 4 | 10,4 | 20,9 | Couro grosso (3 em Posto de caça), Poção de vida (4 em Mercearia), Tônico veloz (10 em Mercearia), Gibão de couro (16 em Armas e armaduras), Cajado de foco (24 em Armas e armaduras), Couraça de bruto (48 em Armas e armaduras) |
+| Devorador | 9 | 15,5 | 31,0 | Presa de devorador (7 em Posto de caça), Poção de vida (4 em Mercearia), Tônico veloz (10 em Mercearia), Couraça de bruto (48 em Armas e armaduras), Amuleto espectral (60 em Armas e armaduras) |
+| Sentinela de pedra | 16 | 17,4 | 34,8 | Pó de pedra (12 em Posto de caça), Poção de vida maior (16 em Mercearia), Armadura de pedra (140 em Armas e armaduras) |
+| Vulto | 20 | 12,8 | 25,6 | Pó de pedra (12 em Posto de caça), Poção de energia (4 em Mercearia), Poção de vida maior (16 em Mercearia), Lâmina antiga (120 em Armas e armaduras) |
+| Carniçal | 25 | 19,7 | 39,3 | Presa de devorador (7 em Posto de caça), Poção de vida maior (16 em Mercearia), Lâmina antiga (120 em Armas e armaduras), Armadura de pedra (140 em Armas e armaduras) |
+| Estilhaço | 28 | 0,0 | — | nada que se venda |
+| Guardião das Ruínas | 30 | 288,0 | — | Poção de vida maior (16 em Mercearia), Pó de pedra (12 em Posto de caça), Lâmina antiga (120 em Armas e armaduras), Armadura de pedra (140 em Armas e armaduras), Anel do Guardião (320 em Armas e armaduras) |
+| Abissal | 36 | 27,9 | 55,8 | Essência do vazio (27 em Posto de caça), Poção de vida maior (16 em Mercearia), Manto do vazio (480 em Armas e armaduras) |
+| Arauto do Vazio | 42 | 43,5 | 86,9 | Essência do vazio (27 em Posto de caça), Poção de energia (4 em Mercearia), Poção de vida maior (16 em Mercearia), Manto do vazio (480 em Armas e armaduras) |
+| Cria do vazio | 46 | 0,0 | — | nada que se venda |
+| Colosso | 47 | 71,4 | 142,8 | Essência do vazio (27 em Posto de caça), Poção de vida maior (16 em Mercearia), Manto do vazio (480 em Armas e armaduras) |
+| Devorador Ancião | 50 | 601,0 | — | Poção de vida maior (16 em Mercearia), Essência do vazio (27 em Posto de caça), Manto do vazio (480 em Armas e armaduras), Presa anciã (600 em Armas e armaduras) |
+

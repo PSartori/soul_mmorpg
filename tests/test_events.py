@@ -33,7 +33,7 @@ teste_invasao:
     - { espectro: 2 }
     - { espectro: 1, bruto: 1, text: "Agora com bruto." }
   rewards:
-    - give_gold: 25
+    - give_item: { id: pocao_energia, qty: 2 }
     - message: "Obrigado, {name}."
   min_damage: 5
   win_text: "Venceram!"
@@ -110,11 +110,10 @@ class WaveTests(Base):
         self.assertTrue(any("Agora com bruto." in t for t in self.sys_texts()))
         self.world._damage(self.invaders()[0], 3, self.b)  # Beto: só 3 de dano (mínimo 5)
         self.kill_all(self.a)
-        gold_a, gold_b = self.a.inventory.gold, self.b.inventory.gold
         run(self.world, DT)
         self.assertNotIn("teste_invasao", self.world.events.running)
-        self.assertEqual(self.a.inventory.gold, gold_a + 25)
-        self.assertEqual(self.b.inventory.gold, gold_b)  # não chegou ao mínimo
+        self.assertEqual(self.a.inventory.count("pocao_energia"), 2)
+        self.assertEqual(self.b.inventory.count("pocao_energia"), 0)  # não chegou ao mínimo
         texts = self.sys_texts()
         self.assertIn("Venceram!", texts)
         self.assertIn("Obrigado, Ana.", texts)
@@ -128,11 +127,10 @@ class WaveTests(Base):
     def test_timeout_is_defeat_and_invaders_leave(self):
         self.world.events.start("teste_invasao")
         self.world._damage(self.invaders()[0], 10, self.a)
-        gold = self.a.inventory.gold
         run(self.world, 121)
         self.assertNotIn("teste_invasao", self.world.events.running)
         self.assertFalse(any(e.event_id for e in self.world.enemies.values()))
-        self.assertEqual(self.a.inventory.gold, gold)
+        self.assertEqual(self.a.inventory.count("pocao_energia"), 0)
         self.assertIn("Perderam.", self.sys_texts())
 
     def test_staff_stop_removes_without_rewards(self):
@@ -239,7 +237,8 @@ class ContentTests(unittest.TestCase):
     def test_bad_definitions(self):
         self.assert_error(EVENTS.replace("espectro: 2", "fantasma: 2"), "fantasma")
         self.assert_error(EVENTS.replace("espectro: 2", "espectro: 0"), "quantidade")
-        self.assert_error(EVENTS.replace("give_gold: 25", "voar: 25"), "voar")
+        self.assert_error(EVENTS.replace("give_item: { id: pocao_energia, qty: 2 }", "voar: 25"), "voar")
+        self.assert_error(EVENTS.replace("give_item: { id: pocao_energia, qty: 2 }", "give_gold: 25"), "give_gold")
         self.assert_error(EVENTS.replace("spawn: [6, 3, 8, 4]", "spawn: [6, 3]"), "spawn")
         self.assert_error(EVENTS.replace("  waves:\n    - { espectro: 2 }\n    - { espectro: 1, bruto: 1, "
                                          "text: \"Agora com bruto.\" }\n", "  waves: []\n"), "pelo menos uma onda")

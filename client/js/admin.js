@@ -19,6 +19,8 @@ export class AdminUI {
     this.body = document.getElementById("admin-body");
     this.result = document.getElementById("admin-result");
     this.data = null;
+    this.economy = null; // último relatório de economia (pedido pelo botão)
+    this.economyDays = 7;
     this.selected = null;
     this.timer = null;
     document.getElementById("admin-close").addEventListener("click", () => this.toggle(false));
@@ -48,6 +50,12 @@ export class AdminUI {
     this.send({ t: "admin", op, ...extra });
   }
 
+  // Relatório da economia (resposta de {op: "economy"})
+  showEconomy(report) {
+    this.economy = report;
+    if (this.isOpen) this.render();
+  }
+
   showResult(msg) {
     this.result.textContent = msg.text;
     this.result.className = msg.ok ? "ok" : "error";
@@ -75,6 +83,7 @@ export class AdminUI {
     if (this.can("reload")) sections.push(this.reloadSection());
     if (this.can("announce")) sections.push(this.announceSection());
     if (this.data.events) sections.push(this.eventsSection());
+    if (this.can("log")) sections.push(this.economySection());
     if (this.data.bans) sections.push(this.bansSection());
     if (this.data.bugs) sections.push(this.bugsSection());
     if (this.data.log) sections.push(this.logSection());
@@ -230,6 +239,72 @@ export class AdminUI {
       row.append(info, b);
       box.append(row);
     }
+    return box;
+  }
+
+  // Economia: moedas existentes, o que entrou (vendas) e saiu (compras, receitas, treinos, regras)
+  economySection() {
+    const box = el("section", "adm-box adm-economy");
+    box.append(el("h4", "", "Economia"));
+    const days = el("select");
+    for (const [label, value] of [["Hoje", 1], ["7 dias", 7], ["30 dias", 30]]) {
+      const opt = el("option", "", label);
+      opt.value = String(value);
+      opt.selected = value === this.economyDays;
+      days.append(opt);
+    }
+    const load = el("button", "", this.economy ? "Atualizar" : "Ver economia");
+    load.type = "button";
+    load.addEventListener("click", () => {
+      this.economyDays = Number(days.value);
+      this.op("economy", { days: this.economyDays });
+    });
+    const controls = el("div", "adm-row");
+    controls.append(days, load);
+    box.append(controls);
+    const rep = this.economy;
+    if (!rep) {
+      box.append(el("p", "hint", "Moedas só entram no jogo quando alguém vende itens para lojas de NPC."));
+      return box;
+    }
+    const s = rep.supply;
+    box.append(el("p", "eco-big", `${s.total} moedas existem`),
+      el("p", "hint", `${s.bags} nas bolsas de ${s.characters} personagens · ${s.banks} nos bancos`));
+    const p = rep.period;
+    box.append(el("p", "", `${rep.days === 1 ? "Hoje" : `Últimos ${rep.days} dias`}: ` +
+      `entraram ${p.in}, saíram ${p.out}, saldo ${p.net >= 0 ? "+" : ""}${p.net}`));
+    for (const alert of rep.alerts) box.append(el("p", "eco-alert", `! ${alert}`));
+
+    if (rep.days > 1) {
+      const table = el("table", "eco-table");
+      const head = el("tr");
+      for (const h of ["Dia", "Entraram", "Saíram", "Saldo"]) head.append(el("th", "", h));
+      table.append(head);
+      for (const d of rep.daily) {
+        const row = el("tr");
+        row.append(el("td", "", d.day), el("td", "", String(d.in)), el("td", "", String(d.out)),
+          el("td", d.net > 0 ? "up" : d.net < 0 ? "down" : "", `${d.net > 0 ? "+" : ""}${d.net}`));
+        table.append(row);
+      }
+      box.append(table);
+    }
+    const kinds = el("ul", "eco-list");
+    for (const k of rep.kinds) {
+      if (!k.amount) continue;
+      const sign = { in: "+", out: "−", moved: "⇄" }[k.side];
+      kinds.append(el("li", k.side, `${sign} ${k.label}: ${k.amount}`));
+    }
+    if (kinds.childElementCount) box.append(el("h5", "", "Por tipo"), kinds);
+    const list = (title, rows, fmt) => {
+      if (!rows.length) return;
+      const ul = el("ul", "eco-list");
+      for (const r of rows) ul.append(el("li", "", fmt(r)));
+      box.append(el("h5", "", title), ul);
+    };
+    list("Itens que mais trouxeram moedas", rep.top_sold, (r) => `${r.what}: ${r.amount} (${r.count} vendas)`);
+    list("Onde mais se gastou", rep.top_spent, (r) => `${r.kind} · ${r.what}: ${r.amount}`);
+    list("Mais moedas na bolsa", rep.richest, (r) => `${r.name}: ${r.gold}`);
+    list("Mais moedas no banco (conta)", rep.richest_banks, (r) => `${r.name}: ${r.gold}`);
     return box;
   }
 

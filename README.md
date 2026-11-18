@@ -72,7 +72,8 @@ A equipe (moderadores, mestres do jogo e administradores) age pela janela
 **Administração** (tecla G ou botão no painel, só para quem tem papel): lista de
 jogadores online (com a conta de cada um, para quem pode banir) e, para o escolhido,
 expulsar, silenciar, banir (com tempo, motivo e **alcance**: só o personagem, a conta
-toda ou a conta e o IP), ir até/trazer, dar item ou moedas, trocar o papel e gerar uma
+toda ou a conta e o IP), ir até/trazer, dar item ou moedas (moedas só para corrigir problemas: ficam no registro e no
+relatório de economia), trocar o papel e gerar uma
 **senha temporária** para a conta (permissão `account`, para quem esqueceu a senha);
 mais anúncio para todos, **eventos em ondas** (iniciar e encerrar; permissão `events`), lista de banidos
 (personagens, contas e IPs, com desbanir), os
@@ -130,6 +131,28 @@ inimigo (e o contrário), a matriz de PvP e o ganho de cada equipamento — por
 nível, mais uma lista de **alertas** (classe muito acima/abaixo da média, skill
 que quase não rende, item que não muda nada, nível sem inimigos por perto).
 
+A seção **Moedas por inimigo** mostra quanto o saque de um abate rende vendido na loja que paga mais (é de onde
+vêm as moedas do jogo) e avisa de inimigo cujo saque nenhuma loja compra.
+
+## Economia
+
+Moedas só entram no jogo vendendo itens para lojas de NPC. Cada movimento é anotado por dia, tipo e detalhe
+(`server/economy.py`, tabela `economy`, gravada no salvamento automático):
+
+- **entram**: vendas para lojas (por item) e moedas dadas pela equipe;
+- **saem**: compras em lojas (por item), preço de receitas (por oficina), treinadores e perdas por regras;
+- **só mudam de lugar**: trocas entre jogadores e banco (guardar/sacar).
+
+O relatório mostra quantas moedas existem (bolsas e bancos, com os valores atuais de quem está online), quanto
+entrou e saiu por dia, por tipo, os itens que mais trouxeram moedas, onde mais se gastou, quem tem mais moedas e
+**alertas** (moedas em circulação cresceram mais de 25% no período; a equipe deu moedas). Está na janela de
+administração (seção **Economia**, permissão `log`) e no terminal:
+
+```bash
+./admin.sh economia        # últimos 7 dias
+./admin.sh economia 30
+```
+
 A seção **Inimigos no próprio nível** põe cada inimigo contra cada classe no nível
 dele — normal, elite e, para chefes, fase a fase — e avisa quem sai da faixa-alvo de
 folga (normal 1,5–6; elite 1–3; chefe 0,7–1,5). Os invocados dos chefes não entram
@@ -182,7 +205,7 @@ Cada arquivo tem no topo a explicação de todos os campos.
 |---|---|
 | `data/skills.yaml` | técnicas: tipo (melee, projectile, area, dash, self), custo, recarga, dano, efeitos, treino; descrição e quem pode usar (`races`/`classes`) |
 | `data/effects.yaml` | efeitos de status: modificadores (velocidade, dano...), flags (atordoado, silenciado), dano/cura periódicos |
-| `data/enemies.yaml` | tipos de inimigo: vida, velocidade, alcance de perseguição, skills que a IA usa, letra no mapa, moedas e tabela de saque |
+| `data/enemies.yaml` | tipos de inimigo: vida, velocidade, alcance de perseguição, skills que a IA usa, letra no mapa e tabela de saque (só itens: inimigos não deixam moedas) |
 | `data/items.yaml` | itens: equipamento (slot, bônus, restrição de raça/classe), consumível (cura, energia, efeitos), material |
 | `data/organizations.yaml` | organizações: raças aceitas, nível mínimo, cargos em ordem (vagas, numerados, líder, como se conquista) |
 | `data/roles.yaml` | papéis da equipe: selo, nível na hierarquia e permissões |
@@ -220,7 +243,7 @@ humano_vira_espectral:
   `station`) e `event_end` (um evento em ondas terminou: `event`, `result` win/lose e `damage`; dispara para
   quem participou). Todo evento também tem `org` e `rank` de quem disparou.
 - **Ações:** mensagens, perder/ganhar XP, trocar raça ou classe, marcas de
-  progressão (`set_flag`), aplicar efeitos, dar itens, dar/tirar moedas, começar
+  progressão (`set_flag`), aplicar efeitos, dar itens, tirar moedas (`lose_gold`; **não existe dar moedas**), começar
   missão e ensinar uma skill (`learn_skill`).
 - **Condições especiais:** `chance`, `flags` e `not_flags`.
 
@@ -252,10 +275,11 @@ server/              Python (aiohttp)
   pathfinding.py     caminho dos inimigos: A* na grade de tiles e teste de linha livre
   npcs.py            NPCs: conversa (nós de diálogo), lojas (compra e venda) e banco (guardar e sacar)
   trade.py           troca entre jogadores: pedido, ofertas, aceite dos dois e troca de uma vez
+  economy.py         economia: anota de onde as moedas entram e para onde vão; relatório (moedas existentes)
   quests.py          missões: progresso, entrega, recompensas e marcadores ! / ?
   training.py        skills conhecidas, barra de atalhos (trava em combate) e treinadores
   crafting.py        oficinas: receitas, criação de itens (tudo ou nada) e evento craft
-  parties.py         grupos: convites, liderança, chat e quem divide abates, missões e moedas
+  parties.py         grupos: convites, liderança, chat e quem divide abates, missões e saque
   accounts.py        contas: entrar/criar, personagens da conta, troca de senha, travas e limites
   bugs.py            relatos de bug: guarda texto, personagem, mapa, posição, zona, hora e dados do navegador
   events.py          eventos em ondas: ondas, marcha, participação, vitória/derrota, recompensas e agenda
@@ -347,7 +371,7 @@ Cliente → servidor (no jogo): `move {seq, up, down, left, right}`,
 
 Servidor → cliente: `welcome {id, map, skills, effects, enemies, stat_labels, ...}`,
 `map {map, x, y}` (atravessou um portal; o mapa traz `npcs: [{id, t, x, y}]` para o minimapa), `org_data` (janela da organização),
-`profile {name, race, cls, lv, o, st, text, me, ignored, can_clear}` (perfil), `dialog {npc, name, title, text, options}` / `shop {npc, shop, sells, buys}` /
+`profile {name, race, cls, lv, o, st, text, me, ignored, can_clear}` (perfil), `admin_economy` (relatório de economia), `dialog {npc, name, title, text, options}` / `shop {npc, shop, sells, buys}` /
 `trainer {npc, trainer, teaches: [{id, price, known, missing}]}` /
 `craft {npc, station, recipes: [{i, make, qty, needs, price, missing}]}` / `bank {npc, size, slots, gold}` / `npc_close` (NPCs), `announce {text, by}`, `kick {text}` (antes de
 desconectar), `admin_data`/`admin_result` (equipe), `error {msg}`, `snap {ents, projs, drops, fx, you}`
@@ -394,7 +418,11 @@ muda), `chat {from, text, ch?, id?, to?}` (`ch`: nada = Geral, `local`/`emote` c
   interfere. **Não matam**: o perdedor fica com 1 de vida. Também terminam por
   desistência, saída do jogo, distância (15 tiles) ou tempo (3 min, empate). Ao
   fim, os efeitos dos dois são limpos e o evento `duel_end` das regras dispara.
-- **Saque**: inimigos deixam moedas e itens no chão conforme a tabela deles. Quem
+- **Moedas**: **só entram no jogo quando alguém vende um item para uma loja de NPC.** Inimigos não deixam moedas,
+  e missões, regras e eventos não dão moedas (dão itens, que podem ser vendidos). Entre jogadores, as moedas
+  circulam pela troca. Saem do jogo em compras nas lojas, receitas de oficina, treinadores e perdas por regras.
+  O validador recusa `gold` em inimigos e a ação `give_gold`. Veja **Economia** acima.
+- **Saque**: inimigos deixam itens no chão conforme a tabela deles. Quem
   matou tem 15 s de exclusividade; depois qualquer um pega (passando por cima), e
   tudo some em 60 s. Item largado cai à frente e quem largou só pega de volta
   depois de 3 s.
@@ -447,8 +475,7 @@ muda), `chat {from, text, ch?, id?, to?}` (`ch`: nada = Geral, `local`/`emote` c
     perto que lutou nos últimos 5 s (atacou ou levou dano) ganha 50% dele (`PARTY_XP_SHARE`),
     no atributo da última skill que usou — quem só fica parado perto não ganha;
   - **missões**: o abate conta para os objetivos "derrotar" de todos os membros perto;
-  - **saque**: a exclusividade de 15 s vale para o grupo todo; moedas pegas do saque do grupo
-    são divididas entre quem pegou e os membros perto (o resto da divisão fica com quem pegou);
+  - **saque**: a exclusividade de 15 s vale para o grupo todo (quem pegar primeiro fica com o item);
   - **PvP**: membros do mesmo grupo não se ferem em áreas PvP (`PARTY_FRIENDLY_FIRE`); duelo
     entre eles continua valendo.
 - **Roleplay** (`server/social.py`):
@@ -488,7 +515,8 @@ muda), `chat {from, text, ch?, id?, to?}` (`ch`: nada = Geral, `local`/`emote` c
 - **Lojas**: estoque infinito; o jogador compra pelo `value` do item (ou pelo `price`
   da loja) e vende por uma fração dele (`buy_rate`, padrão 40%, no mínimo 1 moeda).
   Compra só sai se houver moedas e espaço para tudo. O servidor recusa conteúdo em
-  que uma loja compra um item por mais do que outra o vende.
+  que uma loja compra um item por mais do que outra o vende. Vender para uma loja é a **única** forma de moedas
+  entrarem no jogo.
 - **Missões**: o NPC que dá a missão mostra **!** e a oferece na conversa ("Missão: …",
   com objetivos e recompensa); quando os objetivos se cumprem, o NPC de entrega mostra
   **?** e a opção "Entregar: …". Abates e conversas são contados quando acontecem; lugar
@@ -508,7 +536,7 @@ muda), `chat {from, text, ch?, id?, to?}` (`ch`: nada = Geral, `local`/`emote` c
   o de cada inimigo vem de `enemies.yaml` e aparece no nome, na cor da dificuldade
   para você (cinza fácil → vermelho perigoso).
 - **Elites**: cada inimigo com `elite_chance` sorteia, a cada nascimento, se vem
-  elite (★ e anel dourado): vida ×2, dano ×1,25, corpo maior, XP e moedas ×3 e o
+  elite (★ e anel dourado): vida ×2, dano ×1,25, corpo maior, XP ×3 e o
   saque sorteado duas vezes (`ELITE_*` em `config.py`).
 - **Chefes** (`boss: true`): corpo grande, barra de vida no topo da tela quando
   estão perto ou feridos, e **fases** por limite de vida (trocam skills, ficam mais

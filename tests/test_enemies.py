@@ -128,11 +128,12 @@ class EliteTests(Base):
         self.assertEqual(e.snapshot()["el"], 1)
 
     def test_elite_rewards(self):
-        e = self.world._new_enemy(dataclasses.replace(self.always, gold=(10, 10), loot=()), self.p.map_id,
-                                  *tile_center(10, 4))
+        loot = (dataclasses.replace(CONTENT.enemies["espectro"].loot[0], chance=1.0, qty_min=1, qty_max=1),)
+        e = self.world._new_enemy(dataclasses.replace(self.always, loot=loot), self.p.map_id, *tile_center(10, 4))
         self.world._damage(e, 1e9, self.p)
-        gold = sum(d.qty for d in self.world.drops.values() if d.item is None)
-        self.assertEqual(gold, round(10 * C.ELITE_REWARD))
+        drops = list(self.world.drops.values())
+        self.assertEqual(len(drops), C.ELITE_LOOT_ROLLS)  # saque sorteado mais vezes; moedas não caem
+        self.assertTrue(all(d.item is not None for d in drops))
 
     def test_elite_rerolled_on_respawn(self):
         e = self.world._new_enemy(dataclasses.replace(self.always, elite_chance=0.5, respawn=0.1), self.p.map_id,

@@ -122,6 +122,14 @@ class Database:
                 data       TEXT NOT NULL DEFAULT '{}',
                 updated_at REAL NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS economy (   -- movimentos de moedas somados por dia (server/economy.py)
+                day    TEXT NOT NULL,               -- AAAA-MM-DD (horário local)
+                kind   TEXT NOT NULL,               -- venda, loja, oficina, treinador, regra, equipe, troca, banco
+                detail TEXT NOT NULL DEFAULT '',    -- item, loja, oficina, treinador...
+                amount INTEGER NOT NULL DEFAULT 0,  -- moedas
+                count  INTEGER NOT NULL DEFAULT 0,  -- quantas vezes
+                PRIMARY KEY (day, kind, detail)
+            );
             CREATE TABLE IF NOT EXISTS trades (
                 id     INTEGER PRIMARY KEY AUTOINCREMENT,
                 at     REAL NOT NULL,
@@ -284,6 +292,32 @@ class Database:
     def load_bank(self, account_id: int) -> dict:
         row = self.conn.execute("SELECT data FROM banks WHERE account_id = ?", (account_id,)).fetchone()
         return _json(row[0]) if row else {}
+
+    def add_economy(self, rows: list[tuple[str, str, str, int, int]]) -> None:
+        """Soma (dia, categoria, detalhe, moedas, vezes) ao que já está gravado."""
+        with self.conn:
+            self.conn.executemany(
+                "INSERT INTO economy (day, kind, detail, amount, count) VALUES (?, ?, ?, ?, ?) "
+                "ON CONFLICT(day, kind, detail) DO UPDATE SET amount = amount + excluded.amount, "
+                "count = count + excluded.count", rows)
+
+    def economy_rows(self, since_day: str) -> list[tuple[str, str, str, int, int]]:
+        return self.conn.execute(
+            "SELECT day, kind, detail, amount, count FROM economy WHERE day >= ? ORDER BY day", (since_day,)
+        ).fetchall()
+
+    def gold_holdings(self) -> tuple[list[tuple[str, int]], list[tuple[str, int, int]]]:
+        """Moedas salvas: ([(personagem, moedas na bolsa)], [(conta, id da conta, moedas no banco)])."""
+        def gold_of(data: dict) -> int:
+            inv = data.get("inventory") if isinstance(data.get("inventory"), dict) else {}
+            gold = inv.get("gold") if "inventory" in data else data.get("gold")
+            return gold if isinstance(gold, int) and not isinstance(gold, bool) and gold > 0 else 0
+
+        bags = [(name, gold_of(_json(data))) for name, data in self.conn.execute("SELECT name, data FROM characters")]
+        banks = [(account or f"#{account_id}", account_id, gold_of(_json(data))) for account_id, account, data in
+                 self.conn.execute("SELECT b.account_id, a.name, b.data FROM banks b "
+                                   "LEFT JOIN accounts a ON a.id = b.account_id")]
+        return bags, banks
 
     def recent_trades(self, limit: int = 20, name: str | None = None) -> list[tuple]:
         """(at, a, b, a_gave, b_gave), as mais recentes primeiro; com name, só as dele."""

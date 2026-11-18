@@ -1,4 +1,5 @@
 """Testes de grupos: convite, liderança, chat, abates, missões, saque e fogo amigo."""
+import dataclasses
 import unittest
 
 from server import config as C
@@ -176,11 +177,12 @@ class SharingTests(Base):
         self.assertEqual(self.b.quests["primeiros_passos"], [1])
         self.assertEqual(self.a.quests["primeiros_passos"], [1])
 
-    def test_party_loot_and_gold_split(self):
+    def test_party_loot_belongs_to_the_party(self):
         self.group(self.a, self.b)
         w = self.world
         party = w.parties.of(self.a)
-        drop = w._drop(None, 9, self.enemy.map_id, self.enemy.x, self.enemy.y, owner=self.a.id, scatter=False)
+        drop = w._drop(w.content.items["couro_grosso"], 9, self.enemy.map_id, self.enemy.x, self.enemy.y,
+                       owner=self.a.id, scatter=False)
         drop.party_id = party.id
         self.c.x, self.c.y = drop.x, drop.y  # quem é de fora não pega durante a exclusividade
         w._pickup(self.c)
@@ -190,10 +192,12 @@ class SharingTests(Base):
         self.b.x, self.b.y = drop.x, drop.y
         w._pickup(self.b)
         self.assertNotIn(drop.id, w.drops)
-        self.assertEqual((self.a.inventory.gold, self.b.inventory.gold), (4, 5))  # o resto fica com quem pegou
+        self.assertEqual(self.b.inventory.count("couro_grosso"), 9)  # quem pegou fica com o item
 
     def test_spawned_loot_belongs_to_party(self):
         self.group(self.a, self.b)
+        loot = tuple(dataclasses.replace(entry, chance=1.0) for entry in self.enemy.defn.loot)
+        self.enemy.defn = dataclasses.replace(self.enemy.defn, loot=loot)  # saque garantido
         self.kill_enemy(self.a)
         drops = list(self.world.drops.values())
         self.assertTrue(drops)
