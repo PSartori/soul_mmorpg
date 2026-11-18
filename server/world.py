@@ -20,7 +20,7 @@ from itertools import chain
 from typing import Any, Iterator
 
 from . import config as C
-from .content import EQUIP_SLOTS, ClassDef, Content, ContentError, EffectApplication, ItemDef, SkillDef
+from .content import EQUIP_SLOTS, ClassDef, Content, ContentError, EffectApplication, EnemyDef, ItemDef, SkillDef
 from .admin import AdminSystem
 from .db import Database
 from .duels import DuelSystem
@@ -127,10 +127,31 @@ class World:
                 defn = by_mark.get(ref) or self.content.enemies.get(ref)
                 if defn is None:
                     raise ValueError(f"Mapa {tilemap.name!r}: nenhum inimigo {ref!r} em enemies.yaml")
-                enemy = Enemy(id=self._new_id(), name=defn.name, x=x, y=y, defn=defn, home_x=x, home_y=y,
-                              map_id=map_id)
-                enemy.hp = enemy.max_hp
-                self.enemies[enemy.id] = enemy
+                self._new_enemy(defn, map_id, x, y)
+
+    def _new_enemy(self, defn: EnemyDef, map_id: str, x: float, y: float, summoner: Enemy | None = None) -> Enemy:
+        enemy = Enemy(id=self._new_id(), name=defn.name, x=x, y=y, defn=defn, home_x=x, home_y=y,
+                      map_id=map_id, summoner_id=summoner.id if summoner else None)
+        self._reset_enemy(enemy)
+        self.enemies[enemy.id] = enemy
+        return enemy
+
+    def _reset_enemy(self, e: Enemy) -> None:
+        """Nascer (ou renascer, ou um chefe desistir da luta): sorteia elite, vida cheia, fase inicial."""
+        e.elite = e.summoner_id is None and self.rng.random() < e.defn.elite_chance
+        e.half = e.body_half()
+        e.phase = 0
+        e.hp = e.max_hp
+        e.state = "idle"
+        e.target_id = None
+        e.effects.clear()
+        e.cooldowns.clear()
+        e.calm_timer = 0.0
+        self._despawn_summons(e)
+
+    def _despawn_summons(self, boss: Enemy) -> None:
+        for minion in [m for m in self.enemies.values() if m.summoner_id == boss.id]:
+            del self.enemies[minion.id]
 
     # ================================================================ recarga de conteúdo
 
@@ -794,7 +815,7 @@ class World:
 
     def _skill_damage(self, caster: Entity, skill: SkillDef) -> float:
         raw = skill.damage_base + sum(scale * caster.stat_level(stat) for stat, scale in skill.damage_scale.items())
-        return raw * caster.modifier("damage")
+        return raw * caster.modifier("damage") * caster.power
 
     def _train_from_skill(self, p: Player, skill: SkillDef) -> None:
         for stat, xp in skill.train.items():
@@ -829,10 +850,16 @@ class World:
             return not self._map(target).is_safe(target.x, target.y)
         return True
 
+    @staticmethod
+    def _bulk(e: Entity) -> float:
+        """Quanto o corpo é maior que o normal: golpes e áreas partem da borda, não do centro."""
+        return e.half - C.ENTITY_HALF
+
     def _cast_melee(self, caster: Entity, skill: SkillDef) -> None:
         fdx, fdy = DIRECTIONS[caster.facing]
-        cx, cy = caster.x + fdx * skill.reach, caster.y + fdy * skill.reach
-        self._fx_at(caster, {"k": "swing", "id": caster.id, "r": skill.reach + skill.size})
+        reach = skill.reach + self._bulk(caster)
+        cx, cy = caster.x + fdx * reach, caster.y + fdy * reach
+        self._fx_at(caster, {"k": "swing", "id": caster.id, "r": reach + skill.size})
         damage = self._skill_damage(caster, skill)
         for target in list(self._living_targets(exclude=caster, map_id=caster.map_id)):
             if _boxes_overlap(cx, cy, skill.size, target.x, target.y, target.half) and self._can_hit(caster, target):
@@ -861,10 +888,11 @@ class World:
             self.projectiles[proj.id] = proj
 
     def _cast_area(self, caster: Entity, skill: SkillDef) -> None:
-        self._fx_at(caster, {"k": "area", "id": caster.id, "r": skill.radius, "c": skill.color})
+        radius = skill.radius + self._bulk(caster)
+        self._fx_at(caster, {"k": "area", "id": caster.id, "r": radius, "c": skill.color})
         damage = self._skill_damage(caster, skill)
         for target in list(self._living_targets(exclude=caster, map_id=caster.map_id)):
-            reach = skill.radius + target.half
+            reach = radius + target.half
             if math.hypot(target.x - caster.x, target.y - caster.y) <= reach and self._can_hit(caster, target):
                 self._skill_hit(caster, target, skill, damage)
 
@@ -950,6 +978,8 @@ class World:
             self.duels.finish(self.duels.duel_of(target), loser=target, reason="defeat")  # type: ignore[arg-type]
         elif target.hp <= 0:
             self._kill(target, source, skill, effect_id)
+        elif isinstance(target, Enemy) and target.defn.phases:
+            self._check_boss_phase(target)
 
     def _kill(
         self, target: Entity, killer: Entity | None, skill: SkillDef | None, effect_id: str | None = None
@@ -983,11 +1013,16 @@ class World:
                 "duel": was_dueling,  # estava num duelo (que a morte encerrou)
             })
         elif isinstance(target, Enemy):
-            target.dead_timer = target.defn.respawn
+            target.dead_timer = C.SUMMON_CORPSE_SECONDS if target.summoner_id else target.defn.respawn
             self._spawn_loot(target, killer)
             # Bônus de abate vai para o atributo principal (o primeiro de "train") da skill usada
             if isinstance(killer, Player) and skill and skill.train:
-                self._train(killer, next(iter(skill.train)), target.defn.kill_xp)
+                reward = C.ELITE_REWARD if target.elite else 1.0
+                self._train(killer, next(iter(skill.train)), target.defn.kill_xp * reward)
+            if target.defn.boss:
+                self._despawn_summons(target)
+                who = f" por {killer.name}" if isinstance(killer, Player) else ""
+                self._system(f"{target.name} foi derrotado{who}!")
             if isinstance(killer, Player):
                 self.quests.on_kill(killer, target.defn.id)
 
@@ -1152,12 +1187,15 @@ class World:
         owner = killer.id if isinstance(killer, Player) else None
         low, high = enemy.defn.gold
         gold = self.rng.randint(low, high) if high > 0 else 0
+        if enemy.elite:
+            gold = round(gold * C.ELITE_REWARD)
         if gold:
             self._drop(None, gold, enemy.map_id, enemy.x, enemy.y, owner)
-        for entry in enemy.defn.loot:
-            if self.rng.random() < entry.chance:
-                qty = self.rng.randint(entry.qty_min, entry.qty_max)
-                self._drop(self.content.items[entry.item], qty, enemy.map_id, enemy.x, enemy.y, owner)
+        for _ in range(C.ELITE_LOOT_ROLLS if enemy.elite else 1):
+            for entry in enemy.defn.loot:
+                if self.rng.random() < entry.chance:
+                    qty = self.rng.randint(entry.qty_min, entry.qty_max)
+                    self._drop(self.content.items[entry.item], qty, enemy.map_id, enemy.x, enemy.y, owner)
 
     def _pickup(self, p: Player) -> None:
         for drop in list(self.drops.values()):
@@ -1193,10 +1231,11 @@ class World:
         if not e.alive:
             e.dead_timer -= dt
             if e.dead_timer <= 0:
+                if e.summoner_id is not None:  # invocado: não renasce
+                    self.enemies.pop(e.id, None)
+                    return
                 e.x, e.y = e.home_x, e.home_y
-                e.hp = e.max_hp
-                e.state = "idle"
-                e.target_id = None
+                self._reset_enemy(e)
             return
 
         self._tick_cooldowns(e, dt)
@@ -1210,21 +1249,33 @@ class World:
         target = self._enemy_target(e)
         if target is None:
             e.hp = min(e.max_hp, e.hp + C.ENEMY_HP_REGEN * dt)
+            if e.defn.boss and (e.phase or e.hp < e.max_hp):
+                e.calm_timer += dt  # ex.: quem lutava morreu ou fugiu
+                if e.calm_timer >= C.BOSS_RESET_SECONDS:
+                    self._reset_enemy(e)
+                    self._near_boss(e, f"{e.name} recua e se recompõe.")
             self._enemy_wander(e, dt)
             return
+        e.calm_timer = 0.0
 
         dx, dy = target.x - e.x, target.y - e.y
         dist = math.hypot(dx, dy)
         _face(e, dx, dy)
 
-        skills = [self.content.skills[sid] for sid in e.defn.skills]
+        skills = [self.content.skills[sid] for sid in e.skills]
+        # corpos grandes (dele ou do alvo) aumentam o alcance de golpes e áreas (contados da borda)
+        extra = self._bulk(e) + self._bulk(target)
+
+        def ai_range(s: SkillDef) -> float:
+            return s.ai_range + (extra if s.type in ("melee", "area") else 0.0)
+
         for skill in skills:
-            if e.cooldowns.get(skill.id, 0) <= 0 and dist <= skill.ai_range and self._can_hit(e, target):
+            if e.cooldowns.get(skill.id, 0) <= 0 and dist <= ai_range(skill) and self._can_hit(e, target):
                 if self._use_skill(e, skill):
                     break
 
         # Aproxima até o alcance da skill de menor alcance (quem tem golpe chega perto)
-        attack_ranges = [s.ai_range for s in skills if s.type != "self"]
+        attack_ranges = [ai_range(s) for s in skills if s.type != "self"]
         keep_distance = min(attack_ranges) if attack_ranges else 0.0
         if dist > keep_distance and dist > 0:
             self._enemy_chase_step(e, dx / dist, dy / dist, dt)
@@ -1267,6 +1318,9 @@ class World:
             return p is not None and p.alive and p.map_id == e.map_id and not self._map(p).is_safe(p.x, p.y)
 
         if math.hypot(e.x - e.home_x, e.y - e.home_y) > e.defn.leash:
+            if e.defn.boss and (e.phase or e.hp < e.max_hp):
+                self._reset_enemy(e)  # chefe desistiu: volta inteiro, sem invocados, para a primeira fase
+                self._near_boss(e, f"{e.name} recua e se recompõe.")
             e.target_id = None
             return None
         current = self.players.get(e.target_id) if e.target_id is not None else None
@@ -1282,6 +1336,43 @@ class World:
         if best is not None:
             e.target_id = best.id
         return best
+
+    def _check_boss_phase(self, boss: Enemy) -> None:
+        """A vida do chefe caiu: começa a(s) fase(s) cujo limite foi cruzado."""
+        phases = boss.defn.phases
+        while boss.phase < len(phases) and boss.hp <= phases[boss.phase].hp_below * boss.max_hp:
+            phase = phases[boss.phase]
+            boss.phase += 1
+            if phase.message:
+                self._near_boss(boss, phase.message)
+            for app in phase.effects:
+                self._apply_effect(boss, app, boss)
+            self._fx_at(boss, {"k": "area", "id": boss.id, "r": 90, "c": "#ff5a5a"})
+            index = 0
+            for enemy_id, count in phase.summon:
+                for _ in range(count):
+                    self._summon(boss, self.content.enemies[enemy_id], index)
+                    index += 1
+
+    def _summon(self, boss: Enemy, defn: EnemyDef, index: int) -> None:
+        """Invocado em volta do chefe (num ponto livre), já atrás do alvo do chefe."""
+        tilemap = self._map(boss)
+        x, y = boss.x, boss.y
+        for attempt in range(8):
+            angle = (index * 2.4 + attempt * 0.8) % (2 * math.pi)
+            nx = boss.x + math.cos(angle) * C.SUMMON_SPREAD
+            ny = boss.y + math.sin(angle) * C.SUMMON_SPREAD
+            if not tilemap.box_blocked(nx, ny, C.ENTITY_HALF * defn.size, _enemy_blocks):
+                x, y = nx, ny
+                break
+        minion = self._new_enemy(defn, boss.map_id, x, y, summoner=boss)
+        minion.target_id = boss.target_id
+
+    def _near_boss(self, boss: Enemy, text: str) -> None:
+        """Aviso para quem está perto do chefe (no mesmo mapa)."""
+        for p in self.players.values():
+            if p.map_id == boss.map_id and math.hypot(p.x - boss.x, p.y - boss.y) <= C.BOSS_NEARBY:
+                self._private(p, text)
 
     def _enemy_wander(self, e: Enemy, dt: float) -> None:
         e.wander_timer -= dt

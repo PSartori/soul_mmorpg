@@ -204,6 +204,15 @@ e NPC×todos, com a mesma conta no servidor e na previsão do cliente (teste de 
 com corpos). Cada par liga/desliga em `config.py`. A decidir se jogadores devem se
 atravessar na zona segura (para ninguém bloquear a saída da cidade).
 
+**Inimigos por nível (concluído):** inimigos têm nível, multiplicador de dano e
+tamanho; elites sorteadas a cada nascimento; chefes com fases (skills, dano,
+velocidade, efeitos e invocações), barra de vida e recomposição se a luta acabar sem
+vitória. Dois mapas novos (Ruínas Esquecidas 15–30 e Fenda do Vazio 35–50), cada um
+com chefe, acampamento, NPC, loja e missão, e itens raros/épicos novos. A ferramenta
+de balanceamento testa cada inimigo no próprio nível e avisa quem sai da faixa-alvo.
+Os chefes foram pensados para empatar no nível deles: vencíveis alguns níveis acima,
+com o equipamento da região e poções.
+
 Ainda a decidir sobre a hierarquia (seção 6): limite de recusas de desafio de
 cargo (hoje pode recusar sempre), cargo vago por inatividade do ocupante, e se
 alguns cargos devem ser por torneio ou pontos de contribuição.
@@ -237,7 +246,7 @@ Combinado em 17/11/2026. A ordem pode mudar conforme as decisões em aberto.
 
 **Fase 1 — o que fazer no dia a dia (PvE)**
 - ~~Missões~~ (feito).
-- Inimigos por faixa de nível (10–50), elites e chefes com fases.
+- ~~Inimigos por faixa de nível (10–50), elites e chefes com fases~~ (feito).
 - IA com caminho de verdade (A*); hoje labirintos prendem os inimigos.
 - Treinadores e skills aprendidas com requisitos; escolher as 8 da barra.
 - Criação de itens: receitas em YAML que transformam materiais em itens.

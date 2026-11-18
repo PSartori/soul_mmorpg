@@ -221,13 +221,13 @@ function applySnapshot(msg) {
   updateHud();
 }
 
-// Corpos que bloqueiam o movimento previsto: posições do último snapshot (todos têm a mesma
-// metade, entityHalf). Quem se move pode já estar um pouco em outro lugar no servidor; aí a
+// Corpos que bloqueiam o movimento previsto: posições do último snapshot (metade do corpo em
+// e.h quando é maior que o normal, como chefes e elites). Quem se move pode já estar um pouco em outro lugar no servidor; aí a
 // correção chega no snapshot seguinte e é suavizada no desenho.
 function solids() {
   const list = [];
   for (const e of state.ents.values()) {
-    if (e.id !== state.myId && e.s !== "dead" && solidKinds.has(e.k)) list.push([e.x, e.y, entityHalf]);
+    if (e.id !== state.myId && e.s !== "dead" && solidKinds.has(e.k)) list.push([e.x, e.y, e.h ?? entityHalf]);
   }
   return list;
 }
@@ -331,7 +331,9 @@ function updateHud() {
   $("me-name").textContent = me.n + (STATE_LABELS[you.s] ?? "");
   const raceName = state.defs.races[you.race]?.name ?? "";
   const className = state.defs.classes[you.cls]?.name ?? "";
-  $("me-class").textContent = [raceName, className].filter(Boolean).join(" · ");
+  state.myLevel = playerLevel(you);
+  $("me-class").textContent = [raceName, className, `Nv ${state.myLevel}`].filter(Boolean).join(" · ");
+  updateBossBar();
   const orgEl = $("me-org");
   orgEl.hidden = !me.o;
   if (me.o) {
@@ -389,6 +391,35 @@ function updateHud() {
     lastHotbarKey = hotbarKey;
     buildHotbar(you.skills);
   }
+}
+
+// Nível do personagem: a média dos níveis dos atributos (é com ele que o nível dos inimigos se compara)
+function playerLevel(you) {
+  const levels = Object.values(you.stats ?? {}).map((s) => s.lv);
+  return levels.length ? Math.floor(levels.reduce((a, b) => a + b, 0) / levels.length) : 1;
+}
+
+// Barra de vida do chefe (topo da tela): só quando ele está perto ou já em combate (ferido)
+const BOSS_BAR_RANGE = 420;
+function updateBossBar() {
+  const bar = $("bossbar");
+  const me = state.ents.get(state.myId);
+  let boss = null;
+  let bestDist = Infinity;
+  for (const e of state.ents.values()) {
+    if (!e.boss || e.s === "dead" || !me) continue;
+    const d = Math.hypot(e.x - me.x, e.y - me.y);
+    if ((d <= BOSS_BAR_RANGE || e.hp < e.mhp) && d < bestDist) {
+      boss = e;
+      bestDist = d;
+    }
+  }
+  bar.hidden = !boss;
+  if (!boss) return;
+  const phases = state.defs.enemies[boss.t]?.phases ?? 0;
+  bar.querySelector(".name").textContent = `${boss.n} · Nv ${boss.lv}` + (phases ? ` · fase ${boss.ph + 1}/${phases + 1}` : "");
+  bar.querySelector(".fill").style.width = `${Math.max(0, Math.min(100, (100 * boss.hp) / boss.mhp))}%`;
+  bar.querySelector(".hp").textContent = `${boss.hp} / ${boss.mhp}`;
 }
 
 function statRow(key, s) {

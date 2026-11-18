@@ -101,3 +101,34 @@ cacador:
         - text: Vamos negociar.
           shop: posto_de_caca
         - text: Até mais.
+
+exploradora:
+  name: Lia
+  title: Exploradora
+  color: "#c87a5a"
+  dialogue:
+    inicio:
+      text: "Estas ruínas são mais velhas que a cidade. E alguma coisa ainda as guarda."
+      options:
+        - text: Preciso de suprimentos.
+          shop: acampamento
+        - text: O que guarda as ruínas?
+          goto: guardiao
+        - text: Até mais.
+    guardiao:
+      text: "Um colosso de pedra, na sala do canto nordeste. Quando está ferido, as próprias pedras lutam por ele. Não vá sem poções."
+      options:
+        - text: Entendi.
+          goto: inicio
+
+vigia:
+  name: Dorian
+  title: Vigia do Abismo
+  color: "#5a7ac8"
+  dialogue:
+    inicio:
+      text: "Do outro lado da fenda dorme algo que já comeu exércitos. Eu só vigio."
+      options:
+        - text: Preciso de suprimentos.
+          shop: acampamento
+        - text: Até mais.

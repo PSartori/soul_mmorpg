@@ -38,3 +38,12 @@ posto_de_caca:
     - { item: pocao_vida, price: 15 }
   buys: [material]
   buy_rate: 0.6
+
+# Acampamentos das Ruínas e da Fenda: poções fortes, caras; compra os materiais de lá.
+acampamento:
+  name: Acampamento
+  sells:
+    - { item: pocao_vida_maior, price: 60 }
+    - { item: pocao_energia, price: 15 }
+  buys: [po_de_pedra, essencia_do_vazio, presa_de_devorador]
+  buy_rate: 0.5

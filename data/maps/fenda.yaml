@@ -1,0 +1,11 @@
+# Zonas, portais e NPCs do mapa fenda.txt (formato explicado em inicio.yaml).
+
+name: Fenda do Vazio
+
+default_zone: { type: pve, name: Fenda }
+
+portals:
+  - { area: [1, 21, 2, 21], to: ruinas, at: [35, 26] }
+
+npcs:
+  - { id: vigia, at: [5, 23] }

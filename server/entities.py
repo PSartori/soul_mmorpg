@@ -58,6 +58,11 @@ class Entity:
         """Inimigos não têm atributos: o dano das skills deles é só o 'base'."""
         return 0
 
+    @property
+    def power(self) -> float:
+        """Multiplicador do dano das skills além dos efeitos (inimigos: damage, elite, fase)."""
+        return 1.0
+
     # --- efeitos de status ---
     def modifier(self, name: str) -> float:
         result = 1.0
@@ -246,6 +251,10 @@ class Enemy(Entity):
     defn: EnemyDef | None = None
     home_x: float = 0.0
     home_y: float = 0.0
+    elite: bool = False  # sorteado a cada nascimento (defn.elite_chance)
+    phase: int = 0  # chefes: quantas fases já começaram (0 = a inicial)
+    summoner_id: int | None = None  # invocado por este chefe: não renasce, some depois de morto
+    calm_timer: float = 0.0  # chefes: há quanto tempo está sem alvo
     target_id: int | None = None
     wander_dir: tuple[float, float] = (0.0, 0.0)
     wander_timer: float = 0.0
@@ -256,15 +265,44 @@ class Enemy(Entity):
 
     @property
     def max_hp(self) -> float:
-        return self.defn.hp
+        return self.defn.hp * (C.ELITE_HP if self.elite else 1.0)
 
     @property
     def base_speed(self) -> float:
-        return self.defn.speed
+        speed = self.defn.speed
+        for phase in self.defn.phases[: self.phase]:
+            speed *= phase.speed
+        return speed
+
+    @property
+    def power(self) -> float:
+        power = self.defn.damage * (C.ELITE_DAMAGE if self.elite else 1.0)
+        for phase in self.defn.phases[: self.phase]:
+            power *= phase.damage
+        return power
+
+    @property
+    def skills(self) -> tuple[str, ...]:
+        """Skills da fase atual (a última fase que trocou as skills) ou as do tipo."""
+        for phase in reversed(self.defn.phases[: self.phase]):
+            if phase.skills is not None:
+                return phase.skills
+        return self.defn.skills
+
+    def body_half(self) -> float:
+        return C.ENTITY_HALF * self.defn.size * (C.ELITE_SIZE if self.elite else 1.0)
 
     def snapshot(self) -> dict:
         snap = super().snapshot()
         snap["t"] = self.defn.id  # tipo, para o cliente escolher a aparência
+        snap["lv"] = self.defn.level
+        if self.half != C.ENTITY_HALF:
+            snap["h"] = round(self.half, 2)  # corpo maior (chefe, elite): desenho e colisão
+        if self.elite:
+            snap["el"] = 1
+        if self.defn.boss:
+            snap["boss"] = 1
+            snap["ph"] = self.phase
         return snap
 
 

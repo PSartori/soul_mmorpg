@@ -12,6 +12,7 @@ zones:
 
 portals:
   - { area: [1, 6, 2, 6], to: inicio, at: [35, 3] }
+  - { area: [34, 7, 34, 8], to: ruinas, at: [4, 4] }
 
 npcs:
   - { id: cacador, at: [5, 1] }

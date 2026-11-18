@@ -83,6 +83,16 @@ export function rankTitle(defs, o) {
   return rank.numbered && seat ? `${rank.name} ${seat}` : rank.name;
 }
 
+// Cor do nome do inimigo pela diferença de nível para você: cinza (fácil) até vermelho (perigoso)
+export function levelColor(enemyLevel, myLevel) {
+  const diff = enemyLevel - myLevel;
+  if (diff <= -6) return "#9a9aa2";
+  if (diff <= -3) return "#8fe08f";
+  if (diff <= 2) return "#f0e6c8";
+  if (diff <= 5) return "#ffb060";
+  return "#ff6060";
+}
+
 export function nameColor(name) {
   let h = 0;
   for (const c of name) h = (h * 31 + c.charCodeAt(0)) >>> 0;
@@ -183,6 +193,7 @@ export class Renderer {
     for (const t of state.trails) this.drawTrail(t, now);
     const ents = [...state.ents.values()].sort((a, b) => a.ry - b.ry);
     this.questMarks = state.questMarks ?? {};
+    this.myLevel = state.myLevel ?? 1;
     for (const e of ents) this.drawEntity(e, e.id === state.myId, now);
     for (const s of state.swings) this.drawSwing(s, state, now);
     for (const r of state.rings) this.drawRing(r, now);
@@ -308,19 +319,30 @@ export class Renderer {
 
     // corpo
     ctx.lineWidth = 2;
+    const k = (e.h ?? 10) / 10; // escala do corpo (chefes e elites são maiores)
     if (e.k === "enemy") {
+      if (e.el || e.boss) {
+        // elite: anel dourado tracejado; chefe: anel vermelho largo
+        ctx.strokeStyle = e.boss ? "rgba(255, 90, 90, 0.85)" : "rgba(255, 214, 90, 0.9)";
+        ctx.lineWidth = e.boss ? 3 : 2;
+        ctx.setLineDash(e.boss ? [] : [5, 4]);
+        ctx.lineDashOffset = now / 60;
+        ctx.beginPath(); ctx.arc(x, y, 16 * k, 0, TAU); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.lineWidth = 2;
+      }
       ctx.fillStyle = this.defs.enemies[e.t]?.color ?? "#6d2f7d";
       ctx.strokeStyle = "rgba(0,0,0,0.6)";
       ctx.beginPath();
       for (let i = 0; i < 10; i++) {
         const a = (i / 10) * TAU + now / 900;
-        const r = i % 2 ? 8 : 13;
+        const r = (i % 2 ? 8 : 13) * k;
         ctx.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r);
       }
       ctx.closePath(); ctx.fill(); ctx.stroke();
       ctx.fillStyle = "#ff6b6b";
-      ctx.fillRect(x - 4, y - 3, 3, 3);
-      ctx.fillRect(x + 1, y - 3, 3, 3);
+      ctx.fillRect(x - 4 * k, y - 3 * k, 3 * k, 3 * k);
+      ctx.fillRect(x + 1 * k, y - 3 * k, 3 * k, 3 * k);
     } else {
       ctx.fillStyle = nameColor(e.n);
       ctx.strokeStyle = isMe ? "#ffffff" : "rgba(0,0,0,0.6)";
@@ -339,26 +361,29 @@ export class Renderer {
       ctx.fillText("z", x + 10, y - 10 - ((now / 400) % 1) * 8);
     }
 
-    // barra de vida e nome
-    const w = 28;
+    // barra de vida e nome (acima do corpo, que pode ser maior que o normal)
+    const top = y - 21 - (k - 1) * 12;
+    const w = 28 * Math.max(1, k * 0.8);
     ctx.fillStyle = "rgba(0,0,0,0.6)";
-    ctx.fillRect(x - w / 2, y - 21, w, 4);
+    ctx.fillRect(x - w / 2, top, w, 4);
     ctx.fillStyle = e.k === "enemy" ? "#d9534f" : "#5cb85c";
-    ctx.fillRect(x - w / 2, y - 21, w * Math.max(0, Math.min(1, e.hp / e.mhp)), 4);
+    ctx.fillRect(x - w / 2, top, w * Math.max(0, Math.min(1, e.hp / e.mhp)), 4);
 
-    ctx.font = "11px system-ui, sans-serif";
+    ctx.font = e.boss ? "bold 12px system-ui, sans-serif" : "11px system-ui, sans-serif";
     const role = e.st ? this.defs.roles?.[e.st] : null;
     const tag = role ? `[${role.tag}] ` : "";
-    const left = x - ctx.measureText(tag + e.n).width / 2;
+    // inimigos: "★ Nome · Nv 20" (★ = elite), na cor da dificuldade para você
+    const label = e.k === "enemy" ? `${e.el ? "★ " : ""}${e.n}${e.lv ? ` · Nv ${e.lv}` : ""}` : e.n;
+    const left = x - ctx.measureText(tag + label).width / 2;
     ctx.textAlign = "left";
     ctx.fillStyle = "rgba(0,0,0,0.8)";
-    ctx.fillText(tag + e.n, left + 1, y - 25);
+    ctx.fillText(tag + label, left + 1, top - 4);
     if (role) {
       ctx.fillStyle = role.color;  // selo da equipe, antes do nome
-      ctx.fillText(tag, left, y - 26);
+      ctx.fillText(tag, left, top - 5);
     }
-    ctx.fillStyle = isMe ? "#ffe08a" : e.k === "enemy" ? "#f0c8f5" : "#ffffff";
-    ctx.fillText(e.n, left + ctx.measureText(tag).width, y - 26);
+    ctx.fillStyle = isMe ? "#ffe08a" : e.k === "enemy" ? levelColor(e.lv ?? 1, this.myLevel) : "#ffffff";
+    ctx.fillText(label, left + ctx.measureText(tag).width, top - 5);
     ctx.textAlign = "center";
 
     // cargo na organização, na cor dela

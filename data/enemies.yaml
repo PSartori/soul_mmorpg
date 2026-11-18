@@ -12,15 +12,36 @@
 #   gold           moedas que caem: N ou [mínimo, máximo]
 #   loot           itens que podem cair (items.yaml), cada um sorteado separadamente:
 #                    - { item: id, chance: 0.25, qty: [1, 2] }   (chance 0–1; qty N ou [mín, máx])
+#   level          nível mostrado ao jogador (comparável ao nível dos atributos; padrão 1).
+#                  A ferramenta de balanceamento testa cada inimigo nesse nível.
+#   damage         multiplica o dano das skills (padrão 1): reaproveita skills em inimigos mais fortes
+#   size           tamanho do corpo (padrão 1 = igual a um jogador): colisão, alcance e desenho
+#   elite_chance   chance de nascer elite (0–1): vida, dano, tamanho, XP, moedas e saque maiores
+#                  (multiplicadores ELITE_* em server/config.py)
+#   boss           true = chefe: barra de vida no topo da tela, avisa quem está perto, volta
+#                  inteiro (e para a primeira fase) se a luta se afastar demais de casa (leash)
+#   phases         só chefes. Cada fase começa quando a vida cai até hp_below (fração):
+#                    - hp_below: 0.5
+#                      message: texto para quem está perto
+#                      skills: [ ... ]        troca as skills (opcional)
+#                      damage: 1.2            multiplica o dano a partir daqui (opcional)
+#                      speed: 1.2             multiplica a velocidade (opcional)
+#                      effects: [ { id: furia, duration: 999 } ]   no próprio chefe (opcional)
+#                      summon: [ { enemy: id, count: 2 } ]       invocados não renascem
 #
 # O saque cai no chão: quem matou tem alguns segundos de exclusividade para pegar
 # (passando por cima); depois qualquer um pega, até sumir.
 
+# ---------------------------------------------------------------- Campos de Início (1–5)
+
 espectro:
   name: Espectro
+  level: 1
+  elite_chance: 0.05
   mark: E
   color: "#6d2f7d"
-  hp: 40
+  hp: 50
+  damage: 1.2
   speed: 90
   aggro_radius: 160
   leash: 320
@@ -38,6 +59,8 @@ espectro:
 
 bruto:
   name: Bruto
+  level: 4
+  elite_chance: 0.08
   mark: B
   color: "#8a4a2a"
   hp: 110
@@ -57,8 +80,12 @@ bruto:
     - { item: cajado_de_foco, chance: 0.05 }
     - { item: couraca_de_bruto, chance: 0.02 }
 
+# ---------------------------------------------------------------- Bosque Sombrio (5–12)
+
 devorador:
   name: Devorador
+  level: 9
+  elite_chance: 0.08
   mark: D
   color: "#3d6b5a"
   hp: 260
@@ -76,3 +103,235 @@ devorador:
     - { item: tonico_veloz, chance: 0.15 }
     - { item: couraca_de_bruto, chance: 0.06 }
     - { item: amuleto_espectral, chance: 0.04 }
+
+# ---------------------------------------------------------------- Ruínas Esquecidas (15–30)
+
+sentinela:
+  name: Sentinela de pedra
+  level: 16
+  elite_chance: 0.08
+  mark: N
+  color: "#8a8a7a"
+  hp: 780
+  speed: 55
+  size: 1.15
+  damage: 2.3
+  aggro_radius: 150
+  leash: 300
+  wander_radius: 48
+  respawn: 40
+  kill_xp: 90
+  skills: [pancada, endurecer]
+  gold: [20, 40]
+  loot:
+    - { item: po_de_pedra, chance: 0.6, qty: [1, 2] }
+    - { item: pocao_vida_maior, chance: 0.15 }
+    - { item: armadura_de_pedra, chance: 0.03 }
+
+vulto:
+  name: Vulto
+  level: 20
+  elite_chance: 0.08
+  mark: V
+  color: "#4a3a6a"
+  hp: 1000
+  speed: 95
+  damage: 1.6
+  aggro_radius: 220
+  leash: 380
+  wander_radius: 80
+  respawn: 40
+  kill_xp: 110
+  skills: [lanca_sombria]
+  gold: [25, 50]
+  loot:
+    - { item: po_de_pedra, chance: 0.3 }
+    - { item: pocao_energia, chance: 0.4, qty: [1, 2] }
+    - { item: pocao_vida_maior, chance: 0.2 }
+    - { item: lamina_antiga, chance: 0.03 }
+
+carnical:
+  name: Carniçal
+  level: 25
+  elite_chance: 0.08
+  mark: C
+  color: "#6a7a3a"
+  hp: 1500
+  speed: 125
+  damage: 1.5
+  aggro_radius: 190
+  leash: 360
+  wander_radius: 96
+  respawn: 45
+  kill_xp: 140
+  skills: [mordida]
+  gold: [35, 65]
+  loot:
+    - { item: presa_de_devorador, chance: 0.5, qty: [1, 2] }
+    - { item: pocao_vida_maior, chance: 0.25 }
+    - { item: lamina_antiga, chance: 0.04 }
+    - { item: armadura_de_pedra, chance: 0.04 }
+
+estilhaco:
+  name: Estilhaço
+  level: 28
+  mark: z  # só aparece invocado pelo Guardião
+  color: "#b0a080"
+  hp: 300
+  speed: 130
+  size: 0.8
+  damage: 2
+  aggro_radius: 300
+  leash: 500
+  wander_radius: 32
+  respawn: 30
+  kill_xp: 30
+  skills: [garra]
+  gold: [5, 10]
+
+guardiao:
+  name: Guardião das Ruínas
+  level: 30
+  boss: true
+  mark: G
+  color: "#a08a5a"
+  hp: 7000
+  speed: 70
+  size: 1.8
+  damage: 2.4
+  aggro_radius: 220
+  leash: 420
+  wander_radius: 32
+  respawn: 600
+  kill_xp: 400
+  skills: [pancada, uivo]
+  gold: [150, 250]
+  loot:
+    - { item: pocao_vida_maior, chance: 1.0, qty: [2, 3] }
+    - { item: po_de_pedra, chance: 1.0, qty: [3, 5] }
+    - { item: lamina_antiga, chance: 0.4 }
+    - { item: armadura_de_pedra, chance: 0.4 }
+    - { item: anel_do_guardiao, chance: 0.3 }
+  phases:
+    - hp_below: 0.6
+      message: "O Guardião golpeia o chão e pedaços das ruínas ganham vida!"
+      skills: [pancada, uivo, tremor]
+      summon: [ { enemy: estilhaco, count: 3 } ]
+    - hp_below: 0.25
+      message: "O Guardião das Ruínas está enfurecido!"
+      effects: [ { id: furia, duration: 999 } ]
+
+# ---------------------------------------------------------------- Fenda do Vazio (35–50)
+
+abissal:
+  name: Abissal
+  level: 36
+  elite_chance: 0.08
+  mark: A
+  color: "#2a3a5a"
+  hp: 2200
+  speed: 110
+  damage: 1.4
+  aggro_radius: 190
+  leash: 360
+  wander_radius: 96
+  respawn: 45
+  kill_xp: 200
+  skills: [garra_abissal]
+  gold: [50, 90]
+  loot:
+    - { item: essencia_do_vazio, chance: 0.5 }
+    - { item: pocao_vida_maior, chance: 0.3 }
+    - { item: manto_do_vazio, chance: 0.02 }
+
+arauto:
+  name: Arauto do Vazio
+  level: 42
+  elite_chance: 0.08
+  mark: H
+  color: "#3a2a6a"
+  hp: 2500
+  speed: 90
+  damage: 1.8
+  aggro_radius: 240
+  leash: 400
+  wander_radius: 80
+  respawn: 45
+  kill_xp: 240
+  skills: [rajada_do_vazio]
+  gold: [60, 110]
+  loot:
+    - { item: essencia_do_vazio, chance: 0.5, qty: [1, 2] }
+    - { item: pocao_energia, chance: 0.5, qty: [1, 3] }
+    - { item: pocao_vida_maior, chance: 0.3 }
+    - { item: manto_do_vazio, chance: 0.03 }
+
+colosso:
+  name: Colosso
+  level: 47
+  elite_chance: 0.06
+  mark: O
+  color: "#4a4a5a"
+  hp: 2800
+  speed: 50
+  size: 1.4
+  damage: 5
+  aggro_radius: 160
+  leash: 320
+  wander_radius: 48
+  respawn: 60
+  kill_xp: 320
+  skills: [pancada, endurecer, uivo]
+  gold: [90, 150]
+  loot:
+    - { item: essencia_do_vazio, chance: 0.7, qty: [1, 3] }
+    - { item: pocao_vida_maior, chance: 0.4, qty: [1, 2] }
+    - { item: manto_do_vazio, chance: 0.05 }
+
+cria_do_vazio:
+  name: Cria do vazio
+  level: 46
+  mark: y  # só aparece invocada pelo Devorador Ancião
+  color: "#2a2a4a"
+  hp: 700
+  speed: 140
+  size: 0.85
+  damage: 0.5
+  aggro_radius: 300
+  leash: 500
+  wander_radius: 32
+  respawn: 30
+  kill_xp: 60
+  skills: [garra_abissal]
+  gold: [10, 20]
+
+devorador_anciao:
+  name: Devorador Ancião
+  level: 50
+  boss: true
+  mark: X
+  color: "#1d3b30"
+  hp: 11000
+  speed: 95
+  size: 2.0
+  damage: 1.7
+  aggro_radius: 240
+  leash: 460
+  wander_radius: 32
+  respawn: 900
+  kill_xp: 900
+  skills: [mordida, uivo]
+  gold: [400, 700]
+  loot:
+    - { item: pocao_vida_maior, chance: 1.0, qty: [3, 5] }
+    - { item: essencia_do_vazio, chance: 1.0, qty: [4, 6] }
+    - { item: manto_do_vazio, chance: 0.4 }
+    - { item: presa_ancia, chance: 0.35 }
+  phases:
+    - hp_below: 0.5
+      message: "O Devorador Ancião rasga a fenda e suas crias saem do vazio!"
+      skills: [mordida, uivo, rajada_do_vazio]
+      summon: [ { enemy: cria_do_vazio, count: 3 } ]
+    - hp_below: 0.2
+      message: "O Devorador Ancião entra em frenesi!"
+      effects: [ { id: furia, duration: 999 } ]

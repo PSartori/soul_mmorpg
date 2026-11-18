@@ -68,6 +68,17 @@ VITALITY_XP_PER_DAMAGE = 0.25
 
 # --- Inimigos (o resto fica em data/enemies.yaml) ----------------------------
 ENEMY_HP_REGEN = 2.0  # por segundo, quando sem alvo
+# Elites: sorteadas a cada nascimento (elite_chance de cada inimigo)
+ELITE_HP = 2.0  # vida × isto
+ELITE_DAMAGE = 1.25  # dano × isto
+ELITE_SIZE = 1.25  # corpo × isto
+ELITE_REWARD = 3.0  # XP de abate e moedas × isto
+ELITE_LOOT_ROLLS = 2  # a tabela de saque é sorteada esta quantidade de vezes
+# Chefes (boss: true)
+BOSS_NEARBY = 900.0  # quem está a esta distância recebe os avisos de fase
+BOSS_RESET_SECONDS = 5.0  # chefe ferido sem ninguém para lutar volta inteiro depois disso
+SUMMON_SPREAD = 56.0  # invocados aparecem a esta distância do chefe
+SUMMON_CORPSE_SECONDS = 2.0  # invocados não renascem: somem depois disso
 ENEMY_DETOUR_SECONDS = 0.5  # tempo contornando um obstáculo antes de tentar ir reto de novo
 
 # --- Itens e saque ----------------------------------------------------------

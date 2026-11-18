@@ -65,7 +65,12 @@ class ReportTests(unittest.TestCase):
         text = Report(BASE, [1, 10], 5.0, ()).generate()
         for section in ("## Alertas", "## Nível 1", "## Nível 10", "### Classes", "### PvE", "### PvP", "### Equipamentos"):
             self.assertIn(section, text)
-        self.assertIn("não é desafio", text)  # os inimigos atuais ficam fáceis no nível 10
+        own_level = text.split("## Inimigos no próprio nível")[1]  # cada inimigo testado no nível dele
+        for enemy in BASE.enemies.values():
+            label = f"{enemy.name} (chefe)" if enemy.boss else enemy.name
+            self.assertIn(f"| {label} | {enemy.level} |", own_level)
+        self.assertIn("(chefe)", own_level)
+        self.assertIn("(elite)", own_level)
 
     def test_cli_writes_file(self):
         tmp = Path(tempfile.mkdtemp())

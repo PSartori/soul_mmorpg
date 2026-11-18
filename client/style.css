@@ -539,3 +539,24 @@ ul.objectives li.done { color: #7bd65a; list-style: none; margin-left: -14px; }
 #tracker .name { font-weight: 700; color: #ffe08a; }
 #tracker .ready { font-weight: 600; color: #7bd65a; }
 #tracker ul.objectives { padding-left: 14px; }
+
+/* ---------------------------------------------------------------- chefes */
+#bossbar {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1;
+  width: min(420px, 70%);
+  padding: 4px 8px 6px;
+  text-align: center;
+  background: rgba(20, 10, 10, .75);
+  border: 1px solid #a33c3c;
+  border-radius: 6px;
+  pointer-events: none;
+}
+#bossbar[hidden] { display: none; }
+#bossbar .name { display: block; font-size: 13px; font-weight: 700; color: #ffb0b0; text-shadow: 0 1px 1px #000; }
+#bossbar .track { position: relative; height: 12px; margin-top: 3px; background: #2a1414; border-radius: 3px; overflow: hidden; }
+#bossbar .fill { position: absolute; inset: 0 auto 0 0; background: linear-gradient(#d9534f, #a32f2f); transition: width .15s linear; }
+#bossbar .hp { position: relative; font-size: 10px; line-height: 12px; color: #fff; text-shadow: 0 1px 1px #000; }

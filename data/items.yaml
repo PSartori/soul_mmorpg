@@ -40,6 +40,16 @@ pocao_energia:
   use: { energy: 30 }
   cooldown: 5
 
+pocao_vida_maior:
+  name: Poção de vida maior
+  description: Recupera 200 de vida.
+  type: consumable
+  rarity: uncommon
+  value: 40
+  stack: 5
+  use: { heal: 200 }
+  cooldown: 8
+
 tonico_veloz:
   name: Tônico veloz
   description: Deixa você mais rápido por 10 segundos.
@@ -70,6 +80,19 @@ presa_de_devorador:
   type: material
   rarity: uncommon
   value: 12
+
+po_de_pedra:
+  name: Pó de pedra
+  description: Restos de uma sentinela. Ainda vibra.
+  type: material
+  value: 20
+
+essencia_do_vazio:
+  name: Essência do vazio
+  description: Fria ao toque, pesada como chumbo.
+  type: material
+  rarity: uncommon
+  value: 45
 
 # ---------------------------------------------------------------- equipamentos
 
@@ -119,3 +142,51 @@ amuleto_espectral:
   rarity: rare
   value: 150
   bonus: { speed: 12, max_energy: 10 }
+
+lamina_antiga:
+  name: Lâmina antiga
+  description: Forjada antes das ruínas serem ruínas.
+  type: equipment
+  slot: weapon
+  rarity: rare
+  value: 300
+  modifiers: { damage: 1.2 }
+
+armadura_de_pedra:
+  name: Armadura de pedra
+  description: Pesada, mas quase nada a atravessa.
+  type: equipment
+  slot: armor
+  rarity: rare
+  value: 350
+  bonus: { max_hp: 120 }
+  modifiers: { damage_taken: 0.88, speed: 0.95 }
+
+anel_do_guardiao:
+  name: Anel do Guardião
+  description: Arrancado do Guardião das Ruínas.
+  type: equipment
+  slot: accessory
+  rarity: epic
+  value: 800
+  bonus: { max_energy: 40 }
+  modifiers: { damage: 1.1, energy_regen: 1.3 }
+
+manto_do_vazio:
+  name: Manto do vazio
+  description: Parece absorver a luz e os golpes.
+  type: equipment
+  slot: armor
+  rarity: epic
+  value: 1200
+  bonus: { max_hp: 250 }
+  modifiers: { damage_taken: 0.82 }
+
+presa_ancia:
+  name: Presa anciã
+  description: Do Devorador Ancião. Ainda está com fome.
+  type: equipment
+  slot: weapon
+  rarity: epic
+  value: 1500
+  modifiers: { damage: 1.3 }

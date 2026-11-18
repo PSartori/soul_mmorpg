@@ -38,7 +38,7 @@ Desperto, Espectral, Vigília, Coro Sombrio, Espectro, Devorador...) são
 - **Conteúdo é dado, não código.** Skills, efeitos, itens, inimigos, raças, classes,
   regras, organizações, papéis da equipe, NPCs, lojas, missões e mapas ficam em `data/`, validados ao
   carregar (um erro de digitação aponta arquivo, item e campo).
-- **Cada etapa termina testada**: testes automáticos (hoje 318) e verificação no
+- **Cada etapa termina testada**: testes automáticos (hoje 352) e verificação no
   navegador, e só então commit.
 
 ---
@@ -78,7 +78,8 @@ Desperto, Espectral, Vigília, Coro Sombrio, Espectro, Devorador...) são
 | `ceb9c05` | Interface | Duelos e organizações por menus e botões, no lugar dos comandos |
 | `2f9d345` | NPCs e lojas | NPCs com diálogo (condições e ações), lojas de compra e venda |
 | `4f487ce` | Missões | Oferta e entrega pelos NPCs, objetivos, diário, recompensas, save v5 |
-| — | Colisão | Jogadores, inimigos e NPCs não se atravessam (servidor e previsão) |
+| `3e2b17f` | Colisão | Jogadores, inimigos e NPCs não se atravessam (servidor e previsão) |
+| — | Inimigos por nível | Nível, elites, chefes com fases, Ruínas e Fenda (níveis 15–50) |
 
 ### Sistemas prontos
 
@@ -98,8 +99,9 @@ Desperto, Espectral, Vigília, Coro Sombrio, Espectro, Devorador...) são
   matam.
 - **Organizações**: cargos por nomeação ou por disputa em duelo, chat próprio,
   título acima do nome.
-- **Mundo**: dois mapas ligados por portais (Campos de Início e Bosque Sombrio), três
-  tipos de inimigo com saque.
+- **Mundo**: quatro mapas ligados por portais, do nível 1 ao 50 (Campos de Início,
+  Bosque Sombrio, Ruínas Esquecidas e Fenda do Vazio), inimigos com nível, elites
+  sorteadas e dois chefes com fases e invocações.
 - **NPCs e lojas**: NPCs parados nos mapas (`data/npcs.yaml`), conversa por botões
   (clique ou tecla E) com opções que dependem de raça, classe, organização, moedas,
   nível total e marcas, e que podem dar itens, marcar progressão ou trocar
@@ -124,8 +126,10 @@ Desperto, Espectral, Vigília, Coro Sombrio, Espectro, Devorador...) são
   Campos de Início; Bruno (caçador, paga melhor por materiais) no Bosque Sombrio.
 - **Missões**: Primeiros passos → Notícias do bosque → Caça ao Devorador (Vó Celeste e
   Bruno), Couro para a forja (Otto) e Fragmentos para a mercearia (Hilda, repetível).
-- **Inimigos**: Espectro, Bruto, Devorador. **Itens**: 11, entre poções, materiais e
-  equipamentos.
+- **Inimigos**: Espectro (1), Bruto (4), Devorador (9), Sentinela de pedra (16),
+  Vulto (20), Carniçal (25), Abissal (36), Arauto do Vazio (42), Colosso (47); chefes
+  Guardião das Ruínas (30) e Devorador Ancião (50), com os invocados Estilhaço e Cria
+  do vazio. **Itens**: 19, entre poções, materiais e equipamentos (até épicos).
 - **Regras de exemplo**: Humano morto por Espectro vira Espectral; Espectral morto
   por Desperto volta a Humano; perda de XP ao morrer em PvE/PvP; marca de agressor.
 
@@ -140,10 +144,11 @@ Do `docs/balanceamento.md` (lutas simuladas no próprio motor):
 
 - **O golpe básico domina o dano no começo** (78–90% no nível 1); as skills de
   energia pesam pouco porque a energia é curta.
-- **Inimigos não acompanham a progressão**: a partir do nível 10 o Espectro é
-  trivial, e no 25 até o Devorador. Faltam inimigos para níveis altos.
-- **O Devorador** cobre a faixa intermediária: vence qualquer classe no nível 1 e dá
-  uma luta razoável no nível 10.
+- **Inimigos por faixa de nível** (resolvido): cada inimigo é testado no próprio
+  nível e todos estão na faixa-alvo (normais folgados, elites apertadas, chefes
+  perto do empate).
+- **A Assombração fica para trás** em níveis altos (dano/s ~35% abaixo das outras),
+  e perde para várias elites e chefes no próprio nível.
 - **PvP fica rápido demais em níveis altos** (lutas de ~2,5 s no nível 25).
 - Limitação da ferramenta: os lutadores ficam parados, então alcance e esquiva não
   contam.
@@ -183,7 +188,8 @@ O roteiro completo, por fases, está em `docs/design.md` (seção 12).
    amigos jogarem de verdade.
 2. **Liberações e teto de progressão** — é o que mais define o jogo; depende das
    decisões em aberto.
-3. **Inimigos para níveis altos** e ajustes que o balanceamento apontar.
+3. **Ajustes de classes** que o balanceamento aponta (golpe básico dominando, Assombração
+   fraca) e **IA com caminho de verdade** (A*).
 4. Arte e som em paralelo, a qualquer momento.
 
 ---

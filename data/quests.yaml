@@ -89,3 +89,27 @@ caca_ao_devorador:
     - give_gold: 40
     - give_item: tonico_veloz
   complete_text: "Dois a menos. Você leva jeito para a caça."
+
+o_guardiao:
+  name: O Guardião das Ruínas
+  giver: exploradora
+  if: { total_level: 60 }
+  description: "Derrube o Guardião das Ruínas, na sala do canto nordeste. Leve poções: na metade da luta as pedras ganham vida."
+  objectives:
+    - { kill: guardiao }
+  rewards:
+    - give_gold: 300
+    - give_item: { id: pocao_vida_maior, qty: 3 }
+  complete_text: "Você conseguiu?! Então o caminho para a Fenda está livre. Que o vazio tenha piedade."
+
+o_devorador_anciao:
+  name: O Devorador Ancião
+  giver: vigia
+  if: { quest_done: o_guardiao }
+  description: "O Devorador Ancião dorme no covil a nordeste, do outro lado da fenda. Ninguém voltou de lá. Seja o primeiro."
+  objectives:
+    - { kill: devorador_anciao }
+  rewards:
+    - give_gold: 800
+    - give_item: manto_do_vazio
+  complete_text: "Eu vi a fenda tremer quando ele caiu. Leve isto: é o melhor que tenho."

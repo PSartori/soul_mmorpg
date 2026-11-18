@@ -28,7 +28,9 @@ TOP_SOURCE_SHARE = 0.75  # uma única fonte responde por 75%+ do dano
 LOW_SKILL_SHARE = 0.05  # skill de dano que rende menos de 5% do total
 PVP_RATIO = 2.0  # um lado vence em menos da metade do tempo do outro
 ITEM_MIN_GAIN = 0.01  # equipamento que muda menos de 1% em dano e em vida efetiva
-TRIVIAL_MARGIN = 20.0  # inimigo que você mata 20× mais rápido do que ele te mata: não é desafio
+PVE_BAND = 10  # na tabela PvE de cada nível, só inimigos até 10 níveis de distância
+# Folga-alvo de cada inimigo lutando contra personagens do mesmo nível (mediana das classes)
+TARGET_MARGIN = {"normal": (1.5, 6.0), "elite": (1.0, 3.0), "boss": (0.7, 1.5)}
 
 
 def num(x: float, digits: int = 1) -> str:
@@ -144,19 +146,18 @@ class Report:
                      "*Você mata em*: tempo para zerar a vida do inimigo. *Ele mata você em*: o contrário. "
                      "*Folga*: quantas vezes você é mais rápido (≥ 3 fácil, ≥ 1,5 ok, ≥ 1 apertado, < 1 perde).", ""]
             rows = []
+            near = [e for e in enemies if abs(self.content.enemies[e].level - level) <= PVE_BAND]
             for c in classes:
-                for enemy_id in enemies:
+                for enemy_id in near:
                     r = sim.fight(self.build(c, level), enemy_id, self.seconds)
                     you, it = r.time_to_kill(r.a, r.b), r.time_to_kill(r.b, r.a)
                     margin = it / you if you > 0 else float("inf")
                     verdict = pve_verdict(margin)
                     rows.append([self.content.classes[c].name, self.content.enemies[enemy_id].name,
                                  num(you) + " s", num(it) + " s", num(margin), verdict])
-                    if margin < 1:
-                        self.note("loses", c, enemy_id, level, margin)
-                    elif margin >= TRIVIAL_MARGIN:
-                        self.note("trivial", c, enemy_id, level, margin)
             body += table(["Classe", "Inimigo", "Você mata em", "Ele mata você em", "Folga", "Veredito"], rows)
+            if not any(abs(self.content.enemies[e].level - level) <= 3 for e in enemies):
+                self.alerts.append(f"Nível {level}: nenhum inimigo entre os níveis {max(1, level - 3)} e {level + 3}.")
 
             # ---- PvP
             body += ["### PvP (mesmo nível, lutando parados)", "",
@@ -199,6 +200,8 @@ class Report:
                         self.alerts.append(f"Nível {level}: **{item.name}** quase não muda dano nem vida efetiva.")
                 body += table(["Item", "Classe", "Dano/s", "Vida efetiva"], rows)
 
+        body += self._enemies_at_own_level(sim, classes)
+
         # ---- skills que nunca entram na rotação
         for c in classes:
             for sid in self.content.classes[c].skills:
@@ -223,6 +226,58 @@ class Report:
         alerts = alerts or ["Nenhum alerta."]
         return "\n".join(header + [f"- {a}" for a in alerts] + [""] + body)
 
+    def _enemy_fight(self, sim: Simulator, class_id: str, enemy_id: str, elite: bool) -> tuple[float, float]:
+        """(você mata em, ele mata você em), no nível do inimigo. Chefes: fase a fase, pela vida de cada uma."""
+        enemy = self.content.enemies[enemy_id]
+        build = self.build(class_id, enemy.level)
+        limits = [1.0] + [p.hp_below for p in enemy.phases] + [0.0]
+        you_total, hits = 0.0, 0.0  # tempo para matar; dano que ele causa nesse tempo
+        player_hp = 0.0
+        for phase in range(len(limits) - 1):
+            r = sim.fight(build, enemy_id, self.seconds, elite=elite, phase=phase)
+            player_hp = r.a.max_hp
+            share = limits[phase] - limits[phase + 1]
+            t = r.time_to_kill(r.a, r.b) * share
+            you_total += t
+            hits += r.dps(r.b) * t
+        dps_on_you = hits / you_total if you_total and you_total != float("inf") else 0.0
+        return you_total, (player_hp / dps_on_you if dps_on_you > 0 else float("inf"))
+
+    def _enemies_at_own_level(self, sim: Simulator, classes: list[str]) -> list[str]:
+        """Cada inimigo contra personagens do mesmo nível dele (normal, elite e chefes por fase)."""
+        summoned = {eid for e in self.content.enemies.values() for p in e.phases for eid, _ in p.summon}
+        body = ["## Inimigos no próprio nível", "",
+                "Cada inimigo contra cada classe **no nível do inimigo**. Chefes: luta somada fase a fase "
+                "(sem contar os invocados). Folga-alvo (mediana das classes): normal "
+                f"{num(TARGET_MARGIN['normal'][0])}–{num(TARGET_MARGIN['normal'][1])}, elite "
+                f"{num(TARGET_MARGIN['elite'][0])}–{num(TARGET_MARGIN['elite'][1])}, chefe "
+                f"{num(TARGET_MARGIN['boss'][0])}–{num(TARGET_MARGIN['boss'][1])}.", ""]
+        rows = []
+        for enemy in sorted(self.content.enemies.values(), key=lambda e: (e.level, e.id)):
+            kinds = ["boss"] if enemy.boss else ["normal"] + (["elite"] if enemy.elite_chance > 0 else [])
+            for kind in kinds:
+                margins = []
+                for c in classes:
+                    you, it = self._enemy_fight(sim, c, enemy.id, elite=kind == "elite")
+                    margin = it / you if you > 0 else float("inf")
+                    margins.append(margin)
+                    label = {"normal": "", "elite": " (elite)", "boss": " (chefe)"}[kind]
+                    rows.append([f"{enemy.name}{label}", str(enemy.level), self.content.classes[c].name,
+                                 num(you) + " s", num(it) + " s", num(margin), pve_verdict(margin)])
+                median = statistics.median(margins)
+                low, high = TARGET_MARGIN[kind]
+                if enemy.id in summoned and kind == "normal":
+                    continue  # invocados vêm em grupo, junto do chefe: não têm faixa própria
+                what = {"normal": "", "elite": " (elite)", "boss": " (chefe)"}[kind]
+                if median < low:
+                    self.alerts.append(f"**{enemy.name}{what}** (nível {enemy.level}) está difícil demais para o próprio "
+                                       f"nível: folga {num(median)} (alvo {num(low)}–{num(high)}).")
+                elif median > high:
+                    self.alerts.append(f"**{enemy.name}{what}** (nível {enemy.level}) está fácil demais para o próprio "
+                                       f"nível: folga {num(median)} (alvo {num(low)}–{num(high)}).")
+        return body + table(["Inimigo", "Nível", "Classe", "Você mata em", "Ele mata você em", "Folga", "Veredito"],
+                            rows)
+
     def _grouped_alerts(self) -> list[str]:
         out = []
         cls_name = lambda c: self.content.classes[c].name  # noqa: E731
@@ -234,12 +289,6 @@ class Report:
             elif kind == "low":
                 out.append(f"**{self._source_name(what)}** rende pouco para {cls_name(who)}: {_levels(values, share)} "
                            "do dano (contando os efeitos que ela aplica).")
-            elif kind == "loses":
-                out.append(f"**{cls_name(who)}** perde para {self.content.enemies[what].name}: folga "
-                           f"{_levels(values, num)}.")
-            elif kind == "trivial":
-                out.append(f"{self.content.enemies[what].name} não é desafio para {cls_name(who)}: folga "
-                           f"{_levels(values, lambda v: num(v, 0) + '×')}. Faltam inimigos para esse nível.")
         return out
 
     def _has_utility(self, skill) -> bool:

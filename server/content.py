@@ -105,6 +105,19 @@ class SkillDef:
 
 
 @dataclass(frozen=True)
+class BossPhase:
+    """Fase de um chefe: começa quando a vida cai até hp_below (fração da vida máxima)."""
+
+    hp_below: float
+    skills: tuple[str, ...] | None = None  # troca as skills (None = mantém as anteriores)
+    damage: float = 1.0  # multiplicador de dano a partir desta fase (sobre o damage do inimigo)
+    speed: float = 1.0  # multiplicador de velocidade a partir desta fase
+    message: str = ""  # aviso para quem está perto
+    summon: tuple[tuple[str, int], ...] = ()  # (inimigo, quantos) que aparecem em volta
+    effects: tuple[EffectApplication, ...] = ()  # efeitos aplicados no chefe ao entrar na fase
+
+
+@dataclass(frozen=True)
 class EnemyDef:
     id: str
     name: str
@@ -120,6 +133,12 @@ class EnemyDef:
     skills: tuple[str, ...]
     gold: tuple[int, int] = (0, 0)  # moedas que caem: [mínimo, máximo]
     loot: tuple[LootEntry, ...] = ()
+    level: int = 1  # nível mostrado ao jogador (comparável ao nível dos atributos)
+    damage: float = 1.0  # multiplica o dano das skills (inimigos não têm atributos)
+    size: float = 1.0  # tamanho do corpo (1 = igual a um jogador)
+    elite_chance: float = 0.0  # chance de nascer elite (mais forte e com mais recompensa)
+    boss: bool = False
+    phases: tuple[BossPhase, ...] = ()  # do primeiro limite de vida para o último
 
 
 @dataclass(frozen=True)
@@ -351,7 +370,7 @@ class Content:
         return {
             "skills": {sid: s.client_info() for sid, s in self.skills.items()},
             "effects": {eid: {"name": e.name, "color": e.color} for eid, e in self.effects.items()},
-            "enemies": {e.id: {"color": e.color} for e in self.enemies.values()},
+            "enemies": {e.id: {"color": e.color, "phases": len(e.phases)} for e in self.enemies.values()},
             "races": {r.id: {"name": r.name} for r in self.races.values()},
             "classes": {c.id: {"name": c.name, "race": c.race} for c in self.classes.values()},
             "items": {i.id: i.client_info() for i in self.items.values()},
@@ -461,6 +480,22 @@ class Content:
             for entry in e.loot:
                 if entry.item not in self.items:
                     raise ContentError(f"enemies.yaml > {e.id}: item de saque '{entry.item}' não existe em items.yaml")
+            for i, phase in enumerate(e.phases):
+                where = f"enemies.yaml > {e.id}.phases[{i}]"
+                for sid in phase.skills or ():
+                    if sid not in self.skills:
+                        raise ContentError(f"{where}: skill '{sid}' não existe em skills.yaml")
+                    if self.skills[sid].type not in AI_SKILL_TYPES:
+                        raise ContentError(f"{where}: a IA não sabe usar skills do tipo '{self.skills[sid].type}'")
+                for enemy_id, _ in phase.summon:
+                    other = self.enemies.get(enemy_id)
+                    if other is None:
+                        raise ContentError(f"{where}: summon '{enemy_id}' não existe em enemies.yaml")
+                    if other.boss:
+                        raise ContentError(f"{where}: um chefe não pode invocar outro chefe ({enemy_id})")
+                for app in phase.effects:
+                    if app.effect not in self.effects:
+                        raise ContentError(f"{where}: efeito '{app.effect}' não existe em effects.yaml")
         for item in self.items.values():
             where = f"items.yaml > {item.id}"
             for race in item.races:
@@ -724,6 +759,18 @@ def _parse_enemy(eid: str, raw: Any) -> EnemyDef:
     mark = f.text("mark")
     if len(mark) != 1 or mark in RESERVED_MARKS or not mark.isprintable() or mark.isspace():
         raise ContentError(f"{f.where}: mark deve ser 1 caractere livre (não pode ser {''.join(sorted(RESERVED_MARKS))})")
+    boss = f.flag("boss", False)
+    elite_chance = f.num("elite_chance", 0.0)
+    if not 0 <= elite_chance <= 1:
+        raise ContentError(f"{f.where}: 'elite_chance' deve estar entre 0 e 1 (ex.: 0.1 = 10%)")
+    if boss and elite_chance:
+        raise ContentError(f"{f.where}: chefes não nascem elite (tire elite_chance)")
+    phases = tuple(_parse_phase(f"{f.where}.phases[{i}]", raw) for i, raw in enumerate(f.list("phases")))
+    if phases and not boss:
+        raise ContentError(f"{f.where}: 'phases' só vale para chefes (boss: true)")
+    limits = [p.hp_below for p in phases]
+    if limits != sorted(limits, reverse=True) or len(set(limits)) != len(limits):
+        raise ContentError(f"{f.where}: as fases devem vir em ordem, de hp_below maior para menor (ex.: 0.6, 0.3)")
     enemy = EnemyDef(
         id=eid,
         name=f.text("name"),
@@ -739,9 +786,38 @@ def _parse_enemy(eid: str, raw: Any) -> EnemyDef:
         skills=tuple(f.str_list("skills")),
         gold=_int_range(f, "gold", (0, 0)),
         loot=tuple(_parse_loot(f)),
+        level=f.int("level", 1, minimum=1),
+        damage=f.num("damage", 1.0),
+        size=f.num("size", 1.0, minimum=0.5),
+        elite_chance=elite_chance,
+        boss=boss,
+        phases=phases,
     )
     f.done()
     return enemy
+
+
+def _parse_phase(where: str, raw: Any) -> BossPhase:
+    f = _Fields(where, raw)
+    hp_below = f.num("hp_below")
+    if not 0 < hp_below < 1:
+        raise ContentError(f"{where}: 'hp_below' deve estar entre 0 e 1 (ex.: 0.5 = metade da vida)")
+    summon = []
+    for i, entry in enumerate(f.list("summon")):
+        s = _Fields(f"{where}.summon[{i}]", entry if isinstance(entry, dict) else {"enemy": entry})
+        summon.append((s.text("enemy"), s.int("count", 1, minimum=1)))
+        s.done()
+    phase = BossPhase(
+        hp_below=hp_below,
+        skills=tuple(f.str_list("skills")) if "skills" in f.raw else None,
+        damage=f.num("damage", 1.0),
+        speed=f.num("speed", 1.0),
+        message=f.text("message", ""),
+        summon=tuple(summon),
+        effects=_effect_apps(f, "effects"),
+    )
+    f.done()
+    return phase
 
 
 def _int_range(f: _Fields, key: str, default: tuple[int, int]) -> tuple[int, int]:

@@ -89,7 +89,12 @@ Gera um relatório (Markdown) com vida, energia e dano por segundo de cada class
 de onde vem o dano de cada uma, quanto tempo cada classe leva para matar cada
 inimigo (e o contrário), a matriz de PvP e o ganho de cada equipamento — por
 nível, mais uma lista de **alertas** (classe muito acima/abaixo da média, skill
-que quase não rende, inimigo fácil ou difícil demais, item que não muda nada).
+que quase não rende, item que não muda nada, nível sem inimigos por perto).
+
+A seção **Inimigos no próprio nível** põe cada inimigo contra cada classe no nível
+dele — normal, elite e, para chefes, fase a fase — e avisa quem sai da faixa-alvo de
+folga (normal 1,5–6; elite 1–3; chefe 0,7–1,5). Os invocados dos chefes não entram
+na conta da luta do chefe.
 
 As lutas rodam no próprio motor do jogo, então os números acompanham qualquer
 mudança nos YAML. Opções: `--levels 1 20 50`, `--seconds 60`,
@@ -318,10 +323,27 @@ desconectar), `admin_data`/`admin_result` (equipe), `error {msg}`, `snap {ents, 
   concluir. Sem NPC de entrega, a missão conclui sozinha. Até 10 em andamento
   (`MAX_ACTIVE_QUESTS`); repetíveis esperam o `cooldown` (horário real). Concluir
   dispara o evento `quest_complete` das regras. Progresso fica no save (v5).
-- **Mapas**: `inicio` (Campos de Início, onde nascem personagens novos) e `bosque`
-  (Bosque Sombrio, mais perigoso, com Devoradores), ligados por portais. Cada mapa
-  tem seus inimigos, saque e projéteis; o mapa onde o personagem está é salvo.
-  Duelo termina se um dos dois mudar de mapa.
+- **Mapas**, ligados por portais, em ordem de perigo: `inicio` (Campos de Início,
+  níveis 1–5, onde nascem personagens novos), `bosque` (Bosque Sombrio, 5–12),
+  `ruinas` (Ruínas Esquecidas, 15–30, com o chefe Guardião das Ruínas) e `fenda`
+  (Fenda do Vazio, 35–50, com o chefe Devorador Ancião). Ruínas e Fenda têm um
+  acampamento seguro com NPC, loja e uma missão para o chefe. Cada mapa tem seus
+  inimigos, saque e projéteis; o mapa onde o personagem está é salvo. Duelo termina
+  se um dos dois mudar de mapa.
+- **Nível**: o do personagem é a média dos níveis dos atributos (aparece no painel);
+  o de cada inimigo vem de `enemies.yaml` e aparece no nome, na cor da dificuldade
+  para você (cinza fácil → vermelho perigoso).
+- **Elites**: cada inimigo com `elite_chance` sorteia, a cada nascimento, se vem
+  elite (★ e anel dourado): vida ×2, dano ×1,25, corpo maior, XP e moedas ×3 e o
+  saque sorteado duas vezes (`ELITE_*` em `config.py`).
+- **Chefes** (`boss: true`): corpo grande, barra de vida no topo da tela quando
+  estão perto ou feridos, e **fases** por limite de vida (trocam skills, ficam mais
+  fortes ou rápidos, aplicam efeitos como fúria e invocam ajudantes, que não
+  renascem). Avisam quem está perto a cada fase e o servidor anuncia quem os
+  derrotou. Se a luta se afastar demais de casa, ou ficarem 5 s sem ninguém para
+  lutar (ex.: quem lutava morreu), voltam inteiros, na primeira fase e sem invocados.
+- **Corpos grandes** (chefes, elites): golpes e áreas partem da borda do corpo, não
+  do centro, para alcançarem quem está encostado.
 - **Visão**: cada jogador só recebe o que está no mesmo mapa e a até 900 px dele
   (`VIEW_RADIUS`), o que mantém o tráfego proporcional ao que está por perto, e não
   ao total de jogadores.

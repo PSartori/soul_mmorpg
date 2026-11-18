@@ -1,0 +1,12 @@
+# Zonas, portais e NPCs do mapa ruinas.txt (formato explicado em inicio.yaml).
+
+name: Ruínas Esquecidas
+
+default_zone: { type: pve, name: Ruínas }
+
+portals:
+  - { area: [1, 7, 2, 7], to: bosque, at: [32, 7] }
+  - { area: [37, 27, 38, 28], to: fenda, at: [4, 24] }
+
+npcs:
+  - { id: exploradora, at: [5, 2] }

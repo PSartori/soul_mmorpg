@@ -109,25 +109,33 @@ class Simulator:
         world.players[p.id] = p
         return p, skipped
 
-    def enemy(self, world: World, enemy_id: str, x: float, y: float) -> Enemy:
+    def enemy(self, world: World, enemy_id: str, x: float, y: float, elite: bool = False, phase: int = 0) -> Enemy:
+        """Inimigo do tipo pedido; `elite` e `phase` (chefes) fixos durante a luta."""
         defn = self.content.enemies[enemy_id]
         e = Enemy(id=world._new_id(), name=defn.name, x=x, y=y, defn=defn, home_x=x, home_y=y,
-                  map_id=world.start_map_id)
+                  map_id=world.start_map_id, elite=elite, phase=phase)
+        e.half = e.body_half()
         e.hp = e.max_hp
         world.enemies[e.id] = e
         return e
 
     # ------------------------------------------------------------ luta
 
-    def fight(self, a: Build, b: Build | str, seconds: float = 30.0) -> FightResult:
-        """a é sempre um jogador; b é outro jogador (Build) ou um tipo de inimigo (id)."""
+    def fight(self, a: Build, b: Build | str, seconds: float = 30.0, elite: bool = False,
+              phase: int = 0) -> FightResult:
+        """a é sempre um jogador; b é outro jogador (Build) ou um tipo de inimigo (id).
+
+        Para inimigos: `elite` e `phase` (fase de chefe, 0 = inicial) ficam fixos na luta
+        (a vida é restaurada a cada tick, então a fase não muda sozinha). Invocados não entram.
+        """
         world = self._world()
         x, y = ARENA_SPOT
         pa, skipped_a = self.player(world, a, "A", x, y)
         if isinstance(b, Build):
             pb, skipped_b = self.player(world, b, "B", x + GAP, y)
         else:
-            pb, skipped_b = self.enemy(world, b, x + GAP, y), []
+            pb, skipped_b = self.enemy(world, b, x + GAP, y, elite, phase), []
+            pb.x += world._bulk(pb)  # corpo maior: o centro fica mais longe, as bordas a GAP
         side_a = Side("A", max_hp=pa.max_hp, skipped_equipment=skipped_a)
         side_b = Side("B", max_hp=pb.max_hp, skipped_equipment=skipped_b)
         sides = {pa.id: side_a, pb.id: side_b}
@@ -153,6 +161,8 @@ class Simulator:
                 if not fighter.alive:  # não deveria acontecer; garante que a medição continue
                     fighter.state = "idle"
                 fighter.hp = HUGE_HP
+                if isinstance(fighter, Enemy):
+                    fighter.target_id = pa.id  # não reage a vida "infinita" mudando de fase
             for me, other in ((pa, pb), (pb, pa)):
                 if isinstance(me, Player):
                     _face(me, other.x - me.x, other.y - me.y)
