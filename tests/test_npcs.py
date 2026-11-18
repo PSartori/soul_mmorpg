@@ -109,6 +109,19 @@ class Base(unittest.TestCase):
         return self.last("shop", self.send(op="choose", i=0))
 
 
+class MinimapTests(Base):
+    def test_map_payload_lists_npcs_for_the_minimap(self):
+        info = self.world.welcome_payload(self.p)["map"]
+        self.assertEqual(info["npcs"], [{"id": self.npc.id, "t": "vendedor", "x": self.npc.x, "y": self.npc.y}])
+
+    def test_reload_sends_new_npc_ids_with_the_map(self):
+        old_id = self.npc.id
+        self.world.npcs.spawn()  # recarga: os NPCs nascem de novo, com ids novos
+        new = next(iter(self.world.npcs.entities.values()))
+        self.assertNotEqual(new.id, old_id)
+        self.assertEqual(self.world.welcome_payload(self.p)["map"]["npcs"][0]["id"], new.id)
+
+
 class DialogTests(Base):
     def test_talk_shows_text_and_visible_options(self):
         dialog = self.last("dialog", self.send(op="talk", id=self.npc.id))

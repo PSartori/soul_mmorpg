@@ -897,3 +897,33 @@ button.link {
 #chat-log .emote { color: #d7c2ff; font-style: italic; }
 #chat-log .clickable { cursor: pointer; }
 #chat-log .clickable:hover { text-decoration: underline; }
+
+/* ---------------------------------------------------------------- minimapa */
+#minimap {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 1;
+  padding: 4px;
+  background: rgba(14, 15, 20, .85);
+  border: 1px solid #353946;
+  border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .45);
+  cursor: zoom-in;
+  user-select: none;
+}
+#minimap[hidden] { display: none; }
+#minimap canvas { display: block; border-radius: 3px; }
+#minimap .mm-head { display: flex; align-items: center; gap: 6px; margin: 0 2px 3px; font-size: 11px; font-weight: 600; color: #cfd3dc; }
+#minimap .mm-head span:first-child { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#minimap .mm-key { padding: 0 4px; font-size: 10px; color: var(--muted); border: 1px solid #353946; border-radius: 3px; }
+#minimap.large {
+  top: 50%;
+  left: 50%;
+  z-index: 5;
+  padding: 6px;
+  transform: translate(-50%, -50%);
+  cursor: zoom-out;
+}
+#minimap.large .mm-head { font-size: 13px; }
+#admin { z-index: 2; } /* a janela da equipe fica por cima do minimapa pequeno */

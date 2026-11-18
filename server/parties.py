@@ -278,6 +278,14 @@ class PartySystem:
             ],
         }
 
+    def mates_on_map(self, p: Player) -> list[list]:
+        """[id, x, y] dos outros membros vivos no mesmo mapa (minimapa), mesmo fora da visão."""
+        party = self.of(p)
+        if party is None:
+            return []
+        return [[m.id, round(m.x), round(m.y)] for m in self.members(party)
+                if m is not p and m.alive and m.map_id == p.map_id]
+
     def snapshot_for(self, p: Player) -> tuple[bool, dict | None]:
         """(mudou, dados). O grupo só vai ao cliente quando muda (inclusive quando acaba: None)."""
         info = self.client_info(p)

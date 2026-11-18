@@ -150,6 +150,7 @@ lutadores ficam parados, então alcance e esquiva não contam.
 | E | conversar com o NPC mais próximo (também dá para clicar nele) |
 | J | diário de missões: em andamento (objetivos, recompensa, a quem entregar, abandonar) e concluídas |
 | K | skills: as que você conhece e a barra (arraste uma skill para um espaço, ou clique nela e depois no espaço; × tira) |
+| N | minimapa: pequeno → grande → escondido (o jogo lembra a escolha); clicar nele amplia ou diminui, Esc fecha o grande |
 | P | seu perfil: descrição do personagem (aparência, história) e a lista de quem você ignora |
 | G | janela de administração (só para a equipe) |
 | O | janela da organização: entrar, sair, cargos e ocupantes, assumir vaga, disputar, promover, rebaixar, expulsar |
@@ -281,6 +282,7 @@ client/              JavaScript puro, sem build
   js/account.js      telas de conta e de personagens, janela Conta (trocar senha, trocar de personagem)
   js/bugs.js         janela de relatar bug (e os últimos erros de JavaScript da página, que vão junto)
   js/roleplay.js     balões de fala, janela de perfil (P) e opções de roleplay no menu do jogador
+  js/minimap.js      minimapa (N): terreno, portais, PvP, NPCs com marcas de missão, jogadores, grupo e inimigos
   js/input.js        teclado
   js/net.js          WebSocket
 data/                conteúdo do jogo (veja acima)
@@ -333,7 +335,7 @@ Cliente → servidor (no jogo): `move {seq, up, down, left, right}`,
 `meditate`, `rest`, `chat {text}`.
 
 Servidor → cliente: `welcome {id, map, skills, effects, enemies, stat_labels, ...}`,
-`map {map, x, y}` (atravessou um portal), `org_data` (janela da organização),
+`map {map, x, y}` (atravessou um portal; o mapa traz `npcs: [{id, t, x, y}]` para o minimapa), `org_data` (janela da organização),
 `profile {name, race, cls, lv, o, st, text, me, ignored, can_clear}` (perfil), `dialog {npc, name, title, text, options}` / `shop {npc, shop, sells, buys}` /
 `trainer {npc, trainer, teaches: [{id, price, known, missing}]}` /
 `craft {npc, station, recipes: [{i, make, qty, needs, price, missing}]}` / `npc_close` (NPCs), `announce {text, by}`, `kick {text}` (antes de
@@ -341,7 +343,8 @@ desconectar), `admin_data`/`admin_result` (equipe), `error {msg}`, `snap {ents, 
 (20×/s, só o que está perto; `you.skills` é a barra, com null nos espaços vazios; `you.inv`, `you.q` —
 diário e marcadores das missões —, `you.known` — skills conhecidas, com `ok` se a raça/classe atual
 pode usar — e `you.party` — membros do grupo com vida, nível e mapa; null = sem grupo — só vêm quando
-mudam; `you.pinv` é o convite de grupo esperando resposta; `you.ign` — lista de ignorados — também só vem quando
+mudam; `you.pinv` é o convite de grupo esperando resposta; `you.mates` — `[id, x, y]` dos membros do grupo no
+mesmo mapa, mesmo longe, para o minimapa; `you.ign` — lista de ignorados — também só vem quando
 muda), `chat {from, text, ch?, id?, to?}` (`ch`: nada = Geral, `local`/`emote` com o `id` de quem falou para o balão,
 `pm` com `to` no eco para quem mandou, ou o nome do canal da organização/grupo), `sys {text}`.
 
@@ -479,6 +482,10 @@ muda), `chat {from, text, ch?, id?, to?}` (`ch`: nada = Geral, `local`/`emote` c
   lutar (ex.: quem lutava morreu), voltam inteiros, na primeira fase e sem invocados.
 - **Corpos grandes** (chefes, elites): golpes e áreas partem da borda do corpo, não
   do centro, para alcançarem quem está encostado.
+- **Minimapa** (`client/js/minimap.js`): o mapa inteiro no canto de cima, à esquerda. Terreno, portais, áreas
+  PvP e todos os NPCs (com **!** e **?** das missões) vêm com o mapa; jogadores e inimigos, do snapshot (só os
+  que estão por perto); os membros do grupo no mesmo mapa vêm em `you.mates`, mesmo longe. O grande mostra
+  os nomes dos NPCs e dos destinos dos portais. Mostra o mapa todo, sem névoa de exploração.
 - **Visão**: cada jogador só recebe o que está no mesmo mapa e a até 900 px dele
   (`VIEW_RADIUS`), o que mantém o tráfego proporcional ao que está por perto, e não
   ao total de jogadores.
@@ -525,4 +532,5 @@ barras de vida, marcas de missão e números são desenhados no canvas 2D por ci
 - Não dá para apagar personagem nem renomear conta pelo jogo.
 - Perfil só de quem está online; sem campos separados (idade, aparência...), só um texto livre.
 - Sem balão para os canais Geral, Organização e Grupo (só Local e Ação).
+- Minimapa sem névoa de exploração (mostra o mapa todo desde a chegada) e sem clicar para andar até um ponto.
 - Arte provisória (formas geométricas).

@@ -16,6 +16,10 @@
       <div id="viewport">
         <canvas id="canvas3d" hidden></canvas>
         <canvas id="canvas" width="960" height="640"></canvas>
+        <div id="minimap" hidden>
+          <div class="mm-head"><span id="minimap-title"></span><span class="mm-key">N</span></div>
+          <canvas id="minimap-canvas"></canvas>
+        </div>
         <section id="inventory" hidden aria-label="Inventário">
           <header>
             <h3>Inventário</h3>
@@ -156,6 +160,7 @@
         <b>J</b> missões ·
         <b>K</b> skills ·
         <b>P</b> perfil ·
+        <b>N</b> minimapa (pequeno, grande, escondido; clique nele para ampliar) ·
         <b>E</b> conversar ·
         <b>Enter</b> chat (canal <b>Local</b>: só quem está perto, em balão; <b>Ação</b>: narra o que você faz) ·
         <b>V</b> visão 2D/3D (no 3D: <b>Q</b>/<b>Z</b> giram a câmera, rodinha do mouse dá zoom)

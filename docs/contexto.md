@@ -38,7 +38,7 @@ Desperto, Espectral, Vigília, Coro Sombrio, Espectro, Devorador...) são
 - **Conteúdo é dado, não código.** Skills, efeitos, itens, inimigos, raças, classes,
   regras, organizações, papéis da equipe, NPCs, lojas, treinadores, oficinas, missões e mapas ficam em `data/`, validados ao
   carregar (um erro de digitação aponta arquivo, item e campo).
-- **Cada etapa termina testada**: testes automáticos (hoje 475) e verificação no
+- **Cada etapa termina testada**: testes automáticos (hoje 479) e verificação no
   navegador, e só então commit.
 
 ---
@@ -87,7 +87,8 @@ Desperto, Espectral, Vigília, Coro Sombrio, Espectro, Devorador...) são
 | `526cfad` | Grupos | Convite pelo menu, painel com a vida dos membros, chat do grupo, abates/missões/moedas divididos, sem fogo amigo |
 | `9ba88c1` | Contas e proteções | Conta com até 4 personagens, troca e senha temporária, bans por conta/IP, travas de senha, limites de mensagens e chat |
 | `3fa50f1` | Relatar bug | Botão no painel; o relato vai com mapa, posição, hora e dados do navegador; equipe vê, vai até o local e resolve |
-| — | Roleplay | Fala local em balão, ações (/me), mensagem privada, ignorar e perfil do personagem (janela P), save v7 |
+| `e44704b` | Roleplay | Fala local em balão, ações (/me), mensagem privada, ignorar e perfil do personagem (janela P), save v7 |
+| — | Minimapa | Mapa inteiro no canto (tecla N: pequeno, grande, escondido), com você, grupo, jogadores, NPCs e marcas de missão, inimigos por perto, portais e PvP |
 
 ### Sistemas prontos
 
@@ -134,6 +135,10 @@ Desperto, Espectral, Vigília, Coro Sombrio, Espectro, Devorador...) são
   matam.
 - **Organizações**: cargos por nomeação ou por disputa em duelo, chat próprio,
   título acima do nome.
+- **Minimapa**: o mapa inteiro no canto da tela, no 2D e no 3D; tecla N alterna pequeno → grande →
+  escondido, clique amplia ou diminui, Esc fecha o grande. Mostra você (branco com contorno amarelo e
+  para onde olha), o grupo (verde, mesmo longe), outros jogadores, todos os NPCs do mapa com os **!** e **?**
+  das missões, inimigos por perto, portais e áreas PvP; no grande, os nomes dos NPCs e dos destinos.
 - **Mundo**: quatro mapas ligados por portais, do nível 1 ao 50 (Campos de Início,
   Bosque Sombrio, Ruínas Esquecidas e Fenda do Vazio), inimigos com nível, elites
   sorteadas e dois chefes com fases e invocações. Os inimigos acham caminho (A*) em

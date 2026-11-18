@@ -15,6 +15,7 @@ import { PartyInvitePanel, PartyPanel, partyMenuItems } from "./party.js";
 import { AccountScreens, AccountWindow } from "./account.js";
 import { BugWindow } from "./bugs.js";
 import { LOCAL_COLOR, PM_COLOR, ProfileWindow, bubbleTtl, roleplayMenuItems } from "./roleplay.js";
+import { Minimap } from "./minimap.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -36,10 +37,17 @@ const state = {
   partyIds: new Set(), // quem é do meu grupo (nomes destacados)
   bubbles: new Map(), // id do personagem -> balão de fala {text, emote, born, ttl}
   ignored: new Set(), // nomes (minúsculos) que eu ignoro
+  mates: [], // [id, x, y] dos membros do grupo no mesmo mapa (minimapa, mesmo longe)
   statLabels: {},
 };
 
 const renderer = new Renderer($("canvas"));
+const minimap = new Minimap({
+  root: $("minimap"),
+  canvas: $("minimap-canvas"),
+  title: $("minimap-title"),
+  getDefs: () => state.defs,
+});
 let conn = null;
 
 // ------------------------------------------------------------------ visão 2D / 3D (protótipo)
@@ -123,6 +131,7 @@ function handleMessage(msg) {
       renderer.setMap(msg.map);
       renderer.defs = state.defs;
       currentMap = msg.map;
+      minimap.setMap(msg.map);
       if (renderer3d) {
         renderer3d.defs = state.defs;
         renderer3d.setMap(msg.map);
@@ -237,6 +246,7 @@ function applyContent(msg) {
 function changeMap(msg) {
   renderer.setMap(msg.map);
   currentMap = msg.map;
+  minimap.setMap(msg.map);
   renderer3d?.setMap(msg.map);
   physics = new Physics(msg.map, entityHalf, tickRate);
   pending = [];
@@ -311,6 +321,7 @@ function applySnapshot(msg) {
 
   state.projs = msg.projs;
   state.drops = msg.drops ?? [];
+  state.mates = msg.you.mates ?? [];
   state.snapTime = now;
   for (const fx of msg.fx) handleFx(fx, now);
 
@@ -926,9 +937,11 @@ const input = setupInput({
     else if (name === "quests") toggleQuests();
     else if (name === "skills") toggleSkills();
     else if (name === "profile") profileWindow.toggleOwn();
+    else if (name === "minimap") minimap.cycle();
     else if (name === "view") setView(view === "3d" ? "2d" : "3d");
     else if (name === "rotate-left" || name === "rotate-right") renderer3d?.rotate(name === "rotate-left" ? -1 : 1);
     else if (name === "escape") {
+      if (minimap.isLarge) minimap.setMode("small");
       closeCornerWindows();
       adminUI.toggle(false);
       playerMenu.close();
@@ -988,6 +1001,7 @@ function frame(now) {
   }
 
   (active3d() ? renderer3d : renderer).draw(state, now);
+  if (inGame) minimap.draw(state, now, pred);
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);

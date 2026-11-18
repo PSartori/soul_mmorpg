@@ -243,11 +243,19 @@ class World:
         return self.maps.get(e.map_id) or self.map
 
     def _map_payload(self, tilemap: TileMap) -> dict:
-        """Mapa para o cliente, com o nome do destino de cada portal."""
+        """Mapa para o cliente, com o nome do destino de cada portal e onde ficam os NPCs.
+
+        Os NPCs não se movem: o minimapa mostra todos (com as marcas de missão ! e ?),
+        mesmo os que estão longe demais para vir no snapshot.
+        """
         info = tilemap.client_info()
         for portal in info["portals"]:
             dest = self.maps.get(portal["to"])
             portal["title"] = (dest.title or dest.name) if dest else portal["to"]
+        info["npcs"] = [
+            {"id": n.id, "t": n.defn.id if n.defn else "", "x": n.x, "y": n.y}
+            for n in self.npcs.entities.values() if self.maps.get(n.map_id) is tilemap
+        ]
         return info
 
     def _solids(self, e: Entity) -> list[Solid]:
@@ -645,6 +653,8 @@ class World:
             changed, party = self.parties.snapshot_for(player)
             if changed:  # o grupo só vai quando muda (null = saiu ou acabou)
                 you["party"] = party
+            if mates := self.parties.mates_on_map(player):  # minimapa: o grupo mesmo longe
+                you["mates"] = mates
             changed, ignored = self.social.snapshot_for(player)
             if changed:  # lista de ignorados também
                 you["ign"] = ignored

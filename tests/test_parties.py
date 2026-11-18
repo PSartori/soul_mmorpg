@@ -219,5 +219,27 @@ class FriendlyFireTests(Base):
         self.assertTrue(self.world._can_hit(self.a, self.b))
 
 
+
+
+class MinimapTests(Base):
+    def you(self, p):
+        run(self.world, DT)
+        return [m for t, m in self.world.drain_outbox() if t == p.id and m["t"] == "snap"][-1]["you"]
+
+    def test_mates_on_same_map_even_far_away(self):
+        self.assertNotIn("mates", self.you(self.a))  # sem grupo: nada
+        self.group(self.a, self.b, self.c)
+        self.place(self.a, 2, 2)
+        self.place(self.b, 8, 4)
+        self.c.map_id = "outro"  # outro mapa: não aparece
+        mates = self.you(self.a)["mates"]
+        self.assertEqual(mates, [[self.b.id, round(self.b.x), round(self.b.y)]])
+
+    def test_dead_mates_are_not_shown(self):
+        self.group(self.a, self.b)
+        self.world._kill(self.b, None, None)  # renasce só depois de RESPAWN_SECONDS
+        self.assertNotIn("mates", self.you(self.a))
+
+
 if __name__ == "__main__":
     unittest.main()
