@@ -38,7 +38,7 @@ Desperto, Espectral, Vigília, Coro Sombrio, Espectro, Devorador...) são
 - **Conteúdo é dado, não código.** Skills, efeitos, itens, inimigos, raças, classes,
   regras, organizações, papéis da equipe, NPCs, lojas, treinadores, oficinas, missões e mapas ficam em `data/`, validados ao
   carregar (um erro de digitação aponta arquivo, item e campo).
-- **Cada etapa termina testada**: testes automáticos (hoje 479) e verificação no
+- **Cada etapa termina testada**: testes automáticos (hoje 505) e verificação no
   navegador, e só então commit.
 
 ---
@@ -88,7 +88,8 @@ Desperto, Espectral, Vigília, Coro Sombrio, Espectro, Devorador...) são
 | `9ba88c1` | Contas e proteções | Conta com até 4 personagens, troca e senha temporária, bans por conta/IP, travas de senha, limites de mensagens e chat |
 | `3fa50f1` | Relatar bug | Botão no painel; o relato vai com mapa, posição, hora e dados do navegador; equipe vê, vai até o local e resolve |
 | `e44704b` | Roleplay | Fala local em balão, ações (/me), mensagem privada, ignorar e perfil do personagem (janela P), save v7 |
-| — | Minimapa | Mapa inteiro no canto (tecla N: pequeno, grande, escondido), com você, grupo, jogadores, NPCs e marcas de missão, inimigos por perto, portais e PvP |
+| `ddaba3b` | Minimapa | Mapa inteiro no canto (tecla N: pequeno, grande, escondido), com você, grupo, jogadores, NPCs e marcas de missão, inimigos por perto, portais e PvP |
+| — | Troca e banco | Troca entre jogadores (pedido pelo menu, os dois aceitam, salva na hora e fica registrada) e banco da conta no banqueiro e nos acampamentos |
 
 ### Sistemas prontos
 
@@ -116,6 +117,14 @@ Desperto, Espectral, Vigília, Coro Sombrio, Espectro, Devorador...) são
   canal "Grupo" no chat. Membros perto dividem o bônus de abate (quem lutou ganha 50%), os
   abates contam para as missões de todos, o saque do grupo é de qualquer membro e as moedas
   são divididas; não se ferem em áreas PvP.
+- **Troca entre jogadores**: "Propor troca" no menu do jogador (ou `/troca Nome`), aviso com
+  Aceitar/Recusar; cada um põe itens da bolsa e moedas; os dois aceitam e qualquer mudança desfaz os
+  aceites. O servidor confere tudo de novo e faz a troca de uma vez (ou nada, se não couber); os dois
+  personagens e o registro da troca são salvos juntos, na hora (`./admin.sh trocas`). Cancela se alguém
+  se afastar, sair, for derrotado ou entrar em duelo; quem ignora não recebe pedidos.
+- **Banco**: um por **conta** (todos os personagens dela), 40 espaços e moedas, aberto pelo banqueiro
+  Matias nos Campos de Início e pelos NPCs dos acampamentos das Ruínas e da Fenda. Cada depósito ou
+  saque salva personagem e banco juntos, na hora.
 - **Contas e proteções**: conta com até 4 personagens (tela de escolher/criar), troca de
   senha no jogo e senha temporária pela equipe; bans por personagem, conta ou conta + IP;
   senha conferida fora do loop do jogo; travas de tentativas de senha, limite de contas por
@@ -164,10 +173,10 @@ Desperto, Espectral, Vigília, Coro Sombrio, Espectro, Devorador...) são
 - **Classes**: Aprendiz, Iniciado, Assombração.
 - **Organizações**: Vigília (Humanos e Despertos) e Coro Sombrio (Espectrais).
 - **NPCs**: Hilda (mercadora), Otto (ferreiro e forja), Vó Celeste (dá 3 poções uma vez e
-  faz poções) e Ivo
-  (treinador: Onda de choque, Leque de energia, Foco) nos Campos de Início; Bruno (caçador,
+  faz poções), Ivo
+  (treinador: Onda de choque, Leque de energia, Foco) e Matias (banqueiro) nos Campos de Início; Bruno (caçador,
   paga melhor por materiais) e Eco (treinador dos Espectrais: Leque) no Bosque Sombrio;
-  Dorian (altar do vazio) na Fenda.
+  Dorian (altar do vazio) na Fenda. Lia (Ruínas) e Dorian também abrem o banco.
 - **Receitas**: Forja (Gibão de couro, Espada curta, Couraça de bruto e, secreta depois do
   Guardião, Armadura de pedra), Ervas e infusões (poções e Tônico veloz) e Altar do vazio
   (Manto do vazio).

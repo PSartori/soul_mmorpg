@@ -34,6 +34,7 @@ from .crafting import CraftingSystem
 from .parties import PartySystem
 from .bugs import BugReports
 from .social import SocialSystem
+from .trade import TradeSystem
 from .entities import (
     DIRECTIONS, MOVE_KEYS, ActiveEffect, Enemy, Entity, GroundItem, MoveKeys, Player, Projectile,
 )
@@ -125,6 +126,7 @@ class World:
         self.parties = PartySystem(self)  # grupos de jogadores
         self.bugs = BugReports(self)  # relatos de bug dos jogadores
         self.social = SocialSystem(self)  # roleplay: fala local, ações, privado, ignorar e perfil
+        self.trades = TradeSystem(self)  # troca entre jogadores
 
         self._spawn_enemies()
         self.npcs.spawn()
@@ -212,6 +214,8 @@ class World:
         for p in list(self.players.values()):
             p.staff_role = content.roles.get(p.staff_role.id) if p.staff_role else None
             p.inventory = Inventory.from_dict(p.inventory.to_dict(), content.items)
+            if p.bank is not None:
+                p.bank = Inventory.from_dict(p.bank.to_dict(), content.items, size=C.BANK_SIZE)
             old_class = p.class_id
             self._set_class(p, self._resolve_class({"race": p.race_id, "class": p.class_id}))
             if p.class_id != old_class:
@@ -377,6 +381,7 @@ class World:
         if tilemap.box_blocked(player.x, player.y, player.half, _player_blocks):
             player.x, player.y = tilemap.spawn
 
+        player.bank = Inventory.from_dict(self.db.load_bank(account_id), self.content.items, size=C.BANK_SIZE)
         self.admin.load_player(player)
         self.quests.normalize(player)
         self.players[player.id] = player
@@ -422,6 +427,7 @@ class World:
         self.duels.on_logout(player)  # antes de sair da lista: o duelo termina com ele presente
         self.npcs.on_logout(player)
         self.parties.on_logout(player)
+        self.trades.on_logout(player)
         self.players.pop(player.id, None)
         self._save(player)
         self._system(f"{player.name} saiu do jogo.")
@@ -505,6 +511,8 @@ class World:
             self.bugs.report(player, data)
         elif kind == "social":
             self.social.handle_op(player, data)
+        elif kind == "trade":
+            self.trades.handle_op(player, data)
 
     def _chat_allowed(self, p: Player) -> bool:
         """No máximo C.CHAT_BURST mensagens de chat a cada C.CHAT_WINDOW segundos."""
@@ -522,11 +530,26 @@ class World:
             self._save(player)
 
     def _save(self, player: Player) -> None:
+        self.save_players([player])
+
+    def _save_data(self, player: Player) -> dict:
         data = player.to_dict()
         if not player.alive:  # quem sai morto volta no ponto de nascimento
             data["x"], data["y"] = self._map(player).spawn
             data["hp"] = player.max_hp
-        self.db.save_character(player.name, data)
+        return data
+
+    def save_players(self, players: list[Player], trade: tuple | None = None) -> None:
+        """Salva os personagens e os bancos das contas deles numa transação só.
+
+        Banco e troca chamam isto na hora (não esperam o salvamento automático): um item
+        que mudou de lugar fica salvo nos dois lados juntos, ou em nenhum.
+        """
+        self.db.save_together(
+            [(p.name, self._save_data(p)) for p in players],
+            [(p.account_id, p.bank.to_dict()) for p in players if p.bank is not None and p.account_id is not None],
+            trade,
+        )
 
     def drain_outbox(self) -> list[Outgoing]:
         out, self._outbox = self._outbox, []
@@ -588,9 +611,14 @@ class World:
                     self._private(player, "Use: /ignorar Nome (ou clique no jogador)")
             elif command == "/designorar":
                 self.social.unignore(player, args[0] if args else "")
+            elif command == "/troca":
+                if args:
+                    self.trades.invite(player, args[0])
+                else:
+                    self._private(player, "Use: /troca Nome (ou clique no jogador)")
             else:
                 self._private(player, f"Comando desconhecido: {command}. Disponíveis: /who, /me, /l, /p Nome, /r, "
-                                      "/ignorar Nome, /designorar Nome, /duelo Nome, "
+                                      "/ignorar Nome, /designorar Nome, /troca Nome, /duelo Nome, "
                                       "/aceitar, /recusar, /render, /grupo Nome, /g, /org, /entrar, /sair, /o, /assumir, "
                                       "/disputar, /promover, /rebaixar, /expulsar")
             return
@@ -605,6 +633,7 @@ class World:
             self._update_player(player, dt)
         self.duels.update()
         self.parties.update()
+        self.trades.update()
         self.npcs.update()
         self.quests.update()
         for enemy in list(self.enemies.values()):
@@ -650,6 +679,10 @@ class World:
             you["duel"] = self.duels.client_info(player)
             you["invite"] = self.duels.invite_for(player)  # desafio esperando resposta
             you["pinv"] = self.parties.invite_for(player)  # convite de grupo esperando resposta
+            you["tinv"] = self.trades.invite_for(player)  # pedido de troca esperando resposta
+            changed, trade = self.trades.snapshot_for(player)
+            if changed:  # a troca só vai quando muda (null = acabou)
+                you["trade"] = trade
             changed, party = self.parties.snapshot_for(player)
             if changed:  # o grupo só vai quando muda (null = saiu ou acabou)
                 you["party"] = party

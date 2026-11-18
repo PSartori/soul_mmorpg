@@ -126,6 +126,8 @@ class Player(Entity):
     ignored: list[str] = field(default_factory=list)  # personagens que ele ignora (nomes)
     social_sent: str = ""  # última lista de ignorados enviada ao cliente (só manda quando muda)
     last_pm: str | None = None  # com quem trocou a última mensagem privada (/r responde)
+    bank: Inventory | None = None  # banco da conta (carregado ao entrar; salvo junto com o personagem)
+    trade_sent: str = ""  # último estado da troca enviado ao cliente (só manda quando muda)
     actions: list[tuple] = field(default_factory=list)  # ações pedidas, executadas no próximo tick
     # Movimento: o cliente manda um comando numerado por tick; o servidor executa um por tick
     # e devolve o número do último executado ("ack") para o cliente corrigir a previsão.

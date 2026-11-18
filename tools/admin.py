@@ -12,6 +12,7 @@ Uso:
   ./admin.sh log [N]                últimas N ações da equipe (padrão 20)
   ./admin.sh bugs [--todos]         relatos de bug abertos (ou todos, inclusive os resolvidos)
   ./admin.sh bug-resolvido N        marca o relato N como resolvido
+  ./admin.sh trocas [Nome] [-n N]   últimas trocas entre jogadores (de todos ou só de um personagem)
 
 Serve para criar o primeiro administrador e para emergências (ex.: desbanir com o
 servidor fora do ar). Mudança de papel vale a partir do próximo login da pessoa.
@@ -52,6 +53,9 @@ def main(argv: list[str] | None = None, db_path: Path = C.DB_PATH) -> int:
     bugs.add_argument("--todos", action="store_true", help="inclui os já resolvidos")
     bug_close = sub.add_parser("bug-resolvido", help="marca um relato de bug como resolvido")
     bug_close.add_argument("id", type=int)
+    trades = sub.add_parser("trocas", help="últimas trocas entre jogadores")
+    trades.add_argument("name", nargs="?", default=None)
+    trades.add_argument("-n", type=int, default=20)
     args = parser.parse_args(argv)
 
     db = Database(db_path)
@@ -142,6 +146,21 @@ def main(argv: list[str] | None = None, db_path: Path = C.DB_PATH) -> int:
             return 1
         db.log_admin("terminal", "resolveu o relato de bug", f"#{args.id}")
         print(f"Relato #{args.id} marcado como resolvido.")
+    elif args.cmd == "trocas":
+        items = Content.load(C.DATA_DIR).items
+
+        def gave(offer: dict) -> str:
+            parts = [f"{qty}× {items[i].name if i in items else i}" for i, qty in offer.get("items", {}).items()]
+            if offer.get("gold"):
+                parts.append(f"{offer['gold']} moedas")
+            return ", ".join(parts) or "nada"
+
+        rows = db.recent_trades(args.n, args.name)
+        for at, a, b, a_gave, b_gave in reversed(rows):
+            stamp = time.strftime("%d/%m %H:%M", time.localtime(at))
+            print(f"{stamp}  {a} deu {gave(a_gave)}  ⇄  {b} deu {gave(b_gave)}")
+        if not rows:
+            print("Nenhuma troca" + (f" de {args.name}." if args.name else "."))
     elif args.cmd == "log":
         for at, actor, action, target, details in db.recent_log(args.n):
             stamp = time.strftime("%d/%m %H:%M", time.localtime(at))

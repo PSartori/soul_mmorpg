@@ -38,3 +38,4 @@ npcs:
   - { id: ferreiro, at: [8, 2] }
   - { id: ancia, at: [3, 6] }
   - { id: mestre, at: [8, 7] }
+  - { id: banqueiro, at: [2, 8] }

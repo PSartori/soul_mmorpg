@@ -92,7 +92,8 @@ Outros: `./admin.sh staff`, `./admin.sh bans`, `./admin.sh unban Nome` (personag
 com esse nome), `./admin.sh unban-ip IP`, `./admin.sh conta Personagem` (de que conta é e
 os outros personagens dela), `./admin.sh senha Conta` (senha temporária) e
 `./admin.sh log`, `./admin.sh bugs` (relatos abertos; `--todos` inclui os resolvidos) e
-`./admin.sh bug-resolvido N`. Papéis são por personagem; mudança de papel pelo terminal vale no
+`./admin.sh bug-resolvido N`, `./admin.sh trocas [Nome] [-n N]` (últimas trocas entre jogadores, de todos ou de
+um personagem). Papéis são por personagem; mudança de papel pelo terminal vale no
 próximo login.
 
 ## Contas e proteções
@@ -160,7 +161,8 @@ lutadores ficam parados, então alcance e esquiva não contam.
 | Rodinha do mouse | na visão 3D, aproxima ou afasta a câmera |
 | **Botão "Relatar bug"** | no painel: descreva o problema; mapa, posição, hora e dados do navegador vão junto |
 | **Clique num jogador** | menu: ver perfil, mensagem privada, ignorar (ou deixar de ignorar), desafiar para duelo, convidar para o grupo (ou, se for do seu grupo e você liderar, passar a liderança e tirar), disputar o cargo dele e, para líderes, promover, rebaixar e expulsar |
-| **Clique num NPC** | conversa; as respostas são botões, e alguns abrem a loja (comprar e vender), o treinador (aprender skills) ou a oficina (criar itens) |
+| **Clique num NPC** | conversa; as respostas são botões, e alguns abrem a loja (comprar e vender), o treinador (aprender skills), a oficina (criar itens) ou o banco (guardar itens e moedas) |
+| **Propor troca** (menu do jogador) | abre a janela de troca: clique nos itens da sua bolsa para oferecer, ajuste quantidades e moedas; os dois aceitam |
 | **Clique num nome no chat** | escolhe a pessoa para mensagem privada (responder) |
 | **Arrastar na barra** | arrastar uma skill para outro espaço troca as duas de lugar; clicar num espaço vazio abre as skills |
 
@@ -183,7 +185,7 @@ Cada arquivo tem no topo a explicação de todos os campos.
 | `data/items.yaml` | itens: equipamento (slot, bônus, restrição de raça/classe), consumível (cura, energia, efeitos), material |
 | `data/organizations.yaml` | organizações: raças aceitas, nível mínimo, cargos em ordem (vagas, numerados, líder, como se conquista) |
 | `data/roles.yaml` | papéis da equipe: selo, nível na hierarquia e permissões |
-| `data/npcs.yaml` | NPCs: nome, título, cor e diálogo em nós (opções com condições, ações, `goto` e `shop`) |
+| `data/npcs.yaml` | NPCs: nome, título, cor e diálogo em nós (opções com condições, ações, `goto`, `shop`, `trainer`, `craft` e `bank`) |
 | `data/shops.yaml` | lojas: o que vendem (preço = `value` do item ou próprio) e o que compram (`buys`, `buy_rate`) |
 | `data/trainers.yaml` | treinadores: que skills ensinam, por quantas moedas e com que requisitos (atributos, outras skills, condições) |
 | `data/crafting.yaml` | oficinas: receitas (item criado, materiais, preço, requisitos, receitas secretas com `hidden`) |
@@ -245,7 +247,8 @@ server/              Python (aiohttp)
   rules.py           vocabulário das regras (eventos, campos, ações) e comparação
   duels.py           desafios e duelos
   pathfinding.py     caminho dos inimigos: A* na grade de tiles e teste de linha livre
-  npcs.py            NPCs: conversa (nós de diálogo) e lojas (compra e venda)
+  npcs.py            NPCs: conversa (nós de diálogo), lojas (compra e venda) e banco (guardar e sacar)
+  trade.py           troca entre jogadores: pedido, ofertas, aceite dos dois e troca de uma vez
   quests.py          missões: progresso, entrega, recompensas e marcadores ! / ?
   training.py        skills conhecidas, barra de atalhos (trava em combate) e treinadores
   crafting.py        oficinas: receitas, criação de itens (tudo ou nada) e evento craft
@@ -275,6 +278,8 @@ client/              JavaScript puro, sem build
   js/admin.js        janela de administração
   js/social.js       menu do jogador, aviso de desafio e janela da organização
   js/npc.js          conversa com NPCs e janela da loja
+  js/bank.js         janela do banco (baú da conta, bolsa e moedas)
+  js/trade.js        aviso de pedido de troca e janela da troca
   js/quests.js       diário de missões, acompanhamento no painel e oferta na conversa
   js/skills.js       janela de skills (K), arrastar para a barra e janela do treinador
   js/crafting.js     janela da oficina (receitas, materiais que tem, criar uma ou várias vezes)
@@ -328,7 +333,8 @@ name null = saiu da conta), `account_result {ok, text}` (troca de senha) ou `err
 Cliente → servidor (no jogo): `move {seq, up, down, left, right}`,
 `skill {id, f}`, `duel {op: challenge|accept|decline|forfeit, target}`,
 `org {op: info|join|leave|claim|dispute|promote|demote|expel, ...}`,
-`npc {op: talk|choose|buy|sell|learn|craft|close, id|i|item|slot|skill, qty|times}`, `quest {op: abandon, id}`,
+`npc {op: talk|choose|buy|sell|learn|craft|deposit|withdraw|deposit_gold|withdraw_gold|close, id|i|item|slot|skill|amount, qty|times}`,
+`trade {op: invite|accept|decline|set|gold|confirm|cancel, target|item|qty|amount|v}`, `quest {op: abandon, id}`,
 `skills {op: bar, slot, id}` (id null = esvazia), `party {op: invite|accept|decline|leave|kick|lead, target}`,
 `chat {text, ch: party}`, `bug {text, client: {view, agent, screen, errors}}`, `chat {text, ch: local|emote|org|party}`,
 `chat {text, ch: pm, to}`, `social {op: profile|set_profile|ignore|unignore, name|text}`, `admin {op, ...}` (equipe), `item {op: use|drop, slot: n}`, `item {op: unequip, slot: weapon|armor|accessory}`,
@@ -338,12 +344,13 @@ Servidor → cliente: `welcome {id, map, skills, effects, enemies, stat_labels, 
 `map {map, x, y}` (atravessou um portal; o mapa traz `npcs: [{id, t, x, y}]` para o minimapa), `org_data` (janela da organização),
 `profile {name, race, cls, lv, o, st, text, me, ignored, can_clear}` (perfil), `dialog {npc, name, title, text, options}` / `shop {npc, shop, sells, buys}` /
 `trainer {npc, trainer, teaches: [{id, price, known, missing}]}` /
-`craft {npc, station, recipes: [{i, make, qty, needs, price, missing}]}` / `npc_close` (NPCs), `announce {text, by}`, `kick {text}` (antes de
+`craft {npc, station, recipes: [{i, make, qty, needs, price, missing}]}` / `bank {npc, size, slots, gold}` / `npc_close` (NPCs), `announce {text, by}`, `kick {text}` (antes de
 desconectar), `admin_data`/`admin_result` (equipe), `error {msg}`, `snap {ents, projs, drops, fx, you}`
 (20×/s, só o que está perto; `you.skills` é a barra, com null nos espaços vazios; `you.inv`, `you.q` —
 diário e marcadores das missões —, `you.known` — skills conhecidas, com `ok` se a raça/classe atual
 pode usar — e `you.party` — membros do grupo com vida, nível e mapa; null = sem grupo — só vêm quando
-mudam; `you.pinv` é o convite de grupo esperando resposta; `you.mates` — `[id, x, y]` dos membros do grupo no
+mudam; `you.pinv` é o convite de grupo esperando resposta; `you.tinv` é o pedido de troca esperando resposta;
+`you.trade` — `{with, mine, theirs, v, ok_me, ok_them}`, null = sem troca — só vem quando muda; `you.mates` — `[id, x, y]` dos membros do grupo no
 mesmo mapa, mesmo longe, para o minimapa; `you.ign` — lista de ignorados — também só vem quando
 muda), `chat {from, text, ch?, id?, to?}` (`ch`: nada = Geral, `local`/`emote` com o `id` de quem falou para o balão,
 `pm` com `to` no eco para quem mandou, ou o nome do canal da organização/grupo), `sys {text}`.
@@ -449,6 +456,19 @@ muda), `chat {from, text, ch?, id?, to?}` (`ch`: nada = Geral, `local`/`emote` c
     perfil" (só de quem está online). Silenciado não muda o perfil; a equipe com `mute` pode apagar
     ("Apagar descrição" no perfil; fica no registro).
   - Comandos digitados começam com `/` em qualquer canal.
+- **Banco** (opção `bank: true` num NPC): um por **conta**, dividido pelos personagens dela (`BANK_SIZE` = 40
+  espaços, mais moedas). Abre no banqueiro Matias (Campos de Início) e nos NPCs dos acampamentos (Lia nas Ruínas,
+  Dorian na Fenda): é o mesmo baú em qualquer um. Clique move a pilha inteira, Shift + clique só 1; move o que
+  couber. Itens equipados ficam com o personagem. Cada depósito ou saque salva o personagem e o banco juntos
+  (uma transação), na hora: se o servidor cair, o item não fica nos dois lugares nem some.
+- **Troca entre jogadores** (`server/trade.py`): "Propor troca" no menu do jogador ou `/troca Nome`, a até 4
+  tiles (`TRADE_RANGE`); o outro responde no aviso (expira em 30 s). Cada um põe itens da bolsa (até 8
+  diferentes, `TRADE_MAX_ITEMS`) e moedas. Os dois aceitam; **qualquer mudança desfaz os dois aceites** e o
+  aceite vale só para a versão que o jogador viu. Na hora de trocar, o servidor confere de novo (ainda tem os
+  itens? cabe tudo nas duas bolsas?) e faz tudo de uma vez ou nada. Os dois personagens e o registro da troca
+  (tabela `trades`, `./admin.sh trocas`) são salvos juntos, na hora. Se alguém usar, largar ou vender algo da
+  oferta, ela diminui sozinha. A troca é cancelada se alguém se afastar mais de 10 tiles, sair, for derrotado,
+  mudar de mapa ou entrar em duelo. Quem ignora alguém não recebe pedidos de troca dessa pessoa.
 - **Lojas**: estoque infinito; o jogador compra pelo `value` do item (ou pelo `price`
   da loja) e vende por uma fração dele (`buy_rate`, padrão 40%, no mínimo 1 moeda).
   Compra só sai se houver moedas e espaço para tudo. O servidor recusa conteúdo em
@@ -520,6 +540,8 @@ barras de vida, marcas de missão e números são desenhados no canvas 2D por ci
 - Trocar de raça/classe por escolha já é possível por NPC (ação `set_race`/`set_class`
   num diálogo), mas o conteúdo atual não tem nenhum NPC assim.
 - Lojas com estoque infinito e preço fixo.
+- Banco sem abas nem ordenação, e sem expansão de espaços (fica em `BANK_SIZE`).
+- Troca sem mercado/leilão: só entre dois jogadores perto um do outro.
 - Missões não exigem grupo (o grupo só divide os abates); sem missões com tempo limite ou que falham.
 - Saque de itens do grupo é de quem pegar primeiro (sem rodízio nem sorteio).
 - Outros jogadores são desenhados com suavização simples, não interpolação com atraso fixo.

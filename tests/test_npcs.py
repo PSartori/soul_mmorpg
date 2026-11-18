@@ -354,7 +354,7 @@ class NpcContentTests(unittest.TestCase):
 
     def test_goto_and_shop_together(self):
         self.assert_error(NPCS_YAML.replace("shop: loja", "shop: loja\n          goto: depois"), SHOPS_YAML,
-                          "só um de goto, shop, trainer ou craft")
+                          "só um de goto, shop, trainer, craft ou bank")
 
     def test_bad_condition_and_action(self):
         self.assert_error(NPCS_YAML.replace("race: desperto", "killer: enemy"), SHOPS_YAML,

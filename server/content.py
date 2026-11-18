@@ -334,6 +334,7 @@ class DialogOption:
     shop: str | None = None  # abre esta loja
     trainer: str | None = None  # abre este treinador (data/trainers.yaml)
     craft: str | None = None  # abre esta oficina (data/crafting.yaml)
+    bank: bool = False  # abre o banco da conta (guardar itens e moedas)
 
 
 @dataclass(frozen=True)
@@ -1445,13 +1446,14 @@ def _parse_npc(nid: str, raw: Any, refs: _RuleRefs) -> NpcDef:
             o = _Fields(f"{n.where}.options[{i}]", opt_raw)
             conditions = _dialog_conditions(o, refs, "nas condições de diálogo")
             goto, shop, trainer, craft = (o.text(k, None) for k in ("goto", "shop", "trainer", "craft"))
-            if sum(x is not None for x in (goto, shop, trainer, craft)) > 1:
-                raise ContentError(f"{o.where}: use só um de goto, shop, trainer ou craft")
+            bank = o.flag("bank", False)
+            if sum(x is not None for x in (goto, shop, trainer, craft)) + bank > 1:
+                raise ContentError(f"{o.where}: use só um de goto, shop, trainer, craft ou bank")
             options.append(DialogOption(
                 text=o.text("text"),
                 rule=Rule(id=f"{nid}.{node_id}[{i}]", when="talk", conditions=conditions,
                           actions=_parse_actions(o, "talk", refs)),
-                goto=goto, shop=shop, trainer=trainer, craft=craft,
+                goto=goto, shop=shop, trainer=trainer, craft=craft, bank=bank,
             ))
             o.done()
         nodes[node_id] = DialogNode(id=node_id, text=n.text("text"), options=tuple(options))

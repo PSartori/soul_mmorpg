@@ -24,7 +24,9 @@
 #           goto: nó seguinte          | shop: abre a loja (data/shops.yaml)
 #                                      | trainer: abre o treinador (data/trainers.yaml)
 #                                      | craft: abre a oficina (data/crafting.yaml)
-#                 (sem goto, shop, trainer nem craft, a conversa termina depois das ações)
+#                                      | bank: true  abre o banco da conta (guardar itens e moedas;
+#                                        o mesmo banco em qualquer NPC e para todos os personagens da conta)
+#                 (sem goto, shop, trainer, craft nem bank, a conversa termina depois das ações)
 #       Nó sem opções mostra só um botão para encerrar.
 #
 # Para algo acontecer uma vez só, use uma marca: if { not_flags: [x] } + do [ set_flag: x ].
@@ -118,6 +120,8 @@ exploradora:
       options:
         - text: Preciso de suprimentos.
           shop: acampamento
+        - text: Quero mexer no meu baú do banco.
+          bank: true
         - text: O que guarda as ruínas?
           goto: guardiao
         - text: Até mais.
@@ -137,9 +141,30 @@ vigia:
       options:
         - text: Preciso de suprimentos.
           shop: acampamento
+        - text: Quero mexer no meu baú do banco.
+          bank: true
         - text: O que é aquele altar?
           craft: altar_do_vazio
         - text: Até mais.
+
+banqueiro:
+  name: Matias
+  title: Banqueiro
+  color: "#b8a26a"
+  dialogue:
+    inicio:
+      text: "O que você deixar comigo fica guardado para todos os personagens da sua conta. E os acampamentos levam e trazem os baús."
+      options:
+        - text: Quero abrir meu baú.
+          bank: true
+        - text: É seguro?
+          goto: seguro
+        - text: Até mais.
+    seguro:
+      text: "Mais seguro que a sua bolsa. Ninguém tira nada daqui além de você."
+      options:
+        - text: Entendi.
+          goto: inicio
 
 mestre:
   name: Ivo

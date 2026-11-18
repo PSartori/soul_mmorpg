@@ -16,6 +16,8 @@ import { AccountScreens, AccountWindow } from "./account.js";
 import { BugWindow } from "./bugs.js";
 import { LOCAL_COLOR, PM_COLOR, ProfileWindow, bubbleTtl, roleplayMenuItems } from "./roleplay.js";
 import { Minimap } from "./minimap.js";
+import { BankWindow } from "./bank.js";
+import { TradeInvitePanel, TradeWindow, tradeMenuItems } from "./trade.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -176,6 +178,11 @@ function handleMessage(msg) {
       closeCornerWindows();
       craftWindow.show(msg);
       break;
+    case "bank":
+      hideNpcWindows();
+      closeCornerWindows();
+      bankWindow.show(msg);
+      break;
     case "npc_close":
       hideNpcWindows();
       break;
@@ -282,6 +289,8 @@ function leaveGame() {
   hideNpcWindows();
   invitePanel.update(null);
   partyInvitePanel.update(null);
+  tradeInvitePanel.update(null);
+  tradeWindow.update(null);
   partyPanel.update(null);
   state.partyIds = new Set();
   state.bubbles.clear();
@@ -331,6 +340,10 @@ function applySnapshot(msg) {
   shopWindow.refresh();
   trainerWindow.refresh();
   craftWindow.refresh();
+  bankWindow.refresh();
+  if ("trade" in msg.you) tradeWindow.update(msg.you.trade);  // só vem quando muda (null = acabou)
+  else tradeWindow.refresh();
+  tradeInvitePanel.update(msg.you.tinv);
   skillsWindow.update(msg.you.known);
   if ("party" in msg.you) {  // só vem quando muda (null = sem grupo)
     partyPanel.update(msg.you.party);
@@ -772,8 +785,19 @@ const craftWindow = new CraftWindow({
   send: (msg) => conn?.send(msg),
   heading: npcHeading,
 });
-// Janelas abertas por NPCs: conversa, loja, treinador e oficina (uma de cada vez)
-const npcWindows = () => [dialogBox, shopWindow, trainerWindow, craftWindow];
+const bankWindow = new BankWindow({
+  getDefs: () => state.defs,
+  getInventory: () => inventoryUI.inv,
+  send: (msg) => conn?.send(msg),
+  heading: npcHeading,
+});
+const tradeWindow = new TradeWindow({
+  getDefs: () => state.defs,
+  getInventory: () => inventoryUI.inv,
+  send: (msg) => conn?.send(msg),
+});
+// Janelas abertas por NPCs: conversa, loja, treinador, oficina e banco (uma de cada vez)
+const npcWindows = () => [dialogBox, shopWindow, trainerWindow, craftWindow, bankWindow];
 function hideNpcWindows() {
   for (const win of npcWindows()) win.hide();
 }
@@ -818,7 +842,7 @@ function openInCorner(win, force) {
   win.toggle(force);
   if (!win.isOpen) return;
   for (const other of cornerWindows()) if (other !== win) other.toggle(false);
-  if (shopWindow.isOpen || trainerWindow.isOpen || craftWindow.isOpen) closeNpc();
+  if (shopWindow.isOpen || trainerWindow.isOpen || craftWindow.isOpen || bankWindow.isOpen) closeNpc();
 }
 const toggleOrg = () => openInCorner(orgWindow);
 const toggleInventory = () => openInCorner(inventoryUI);
@@ -850,6 +874,7 @@ $("org-open").addEventListener("click", (ev) => {
 });
 const invitePanel = new InvitePanel({ root: $("invite"), send: (msg) => conn?.send(msg) });
 const partyInvitePanel = new PartyInvitePanel({ root: $("party-invite"), send: (msg) => conn?.send(msg) });
+const tradeInvitePanel = new TradeInvitePanel({ root: $("trade-invite"), send: (msg) => conn?.send(msg) });
 const partyPanel = new PartyPanel({
   root: $("party"),
   send: (msg) => conn?.send(msg),
@@ -867,7 +892,10 @@ const playerMenu = new PlayerMenu({
   getYou: () => state.you,
   send: (msg) => conn?.send(msg),
   openAdmin: (name) => adminUI.openFor(name),
-  extraItems: (target) => partyMenuItems(partyPanel, target, (msg) => conn?.send(msg)),
+  extraItems: (target) => [
+    ...tradeMenuItems(target, (msg) => conn?.send(msg), tradeWindow.isOpen),
+    ...partyMenuItems(partyPanel, target, (msg) => conn?.send(msg)),
+  ],
   roleplayItems: (target) => roleplayMenuItems({
     target,
     send: (msg) => conn?.send(msg),

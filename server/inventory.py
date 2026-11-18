@@ -98,10 +98,19 @@ class Inventory:
             "gold": self.gold,
         }
 
+    def clone(self) -> Inventory:
+        """Cópia independente (para simular uma troca antes de fazê-la de verdade)."""
+        copy = Inventory(size=self.size, equipment=dict(self.equipment), gold=self.gold)
+        copy.slots = [ItemStack(s.item, s.qty) if s else None for s in self.slots]
+        return copy
+
     @classmethod
-    def from_dict(cls, data: dict, items: dict[str, ItemDef]) -> Inventory:
-        """Carrega o que for válido. Itens que não existem mais no conteúdo são descartados."""
-        inv = cls()
+    def from_dict(cls, data: dict, items: dict[str, ItemDef], size: int = C.INVENTORY_SIZE) -> Inventory:
+        """Carrega o que for válido. Itens que não existem mais no conteúdo são descartados.
+
+        `size`: quantos espaços (o banco usa C.BANK_SIZE).
+        """
+        inv = cls(size=size)
         raw_slots = data.get("slots") if isinstance(data.get("slots"), list) else []
         for i, raw in enumerate(raw_slots[: inv.size]):
             if isinstance(raw, list) and len(raw) == 2 and raw[0] in items and isinstance(raw[1], int) and raw[1] > 0:

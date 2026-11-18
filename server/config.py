@@ -105,6 +105,13 @@ SHOP_MAX_QTY = 999  # máximo de unidades numa compra ou venda
 CRAFT_MAX_TIMES = 99  # máximo de criações de uma vez numa oficina
 PARTY_MAX = 5  # membros por grupo
 PARTY_INVITE_SECONDS = 30.0  # o convite para o grupo expira
+
+# --- Banco e troca (server/npcs.py, server/trade.py) -------------------------
+BANK_SIZE = 40  # espaços do banco (um por conta, dividido pelos personagens dela)
+TRADE_RANGE = 4 * TILE_SIZE  # distância para propor ou aceitar uma troca
+TRADE_LEAVE_RANGE = 10 * TILE_SIZE  # afastou-se mais que isso: a troca é cancelada
+TRADE_INVITE_SECONDS = 30.0  # o pedido de troca expira
+TRADE_MAX_ITEMS = 8  # itens diferentes que cada um pode oferecer numa troca
 PARTY_SHARE_RANGE = 480.0  # membros a esta distância dividem abates, missões e moedas (15 tiles)
 PARTY_XP_SHARE = 0.5  # fração do bônus de abate que cada membro perto (e lutando) ganha
 PARTY_FRIENDLY_FIRE = False  # True: membros do mesmo grupo se ferem em áreas PvP

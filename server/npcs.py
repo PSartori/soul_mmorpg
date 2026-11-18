@@ -13,11 +13,17 @@ NPC fica vem do mapa. Fluxo, tudo por botões no cliente ({"t": "npc", "op": ...
   sell {slot, qty}      vende para a loja aberta um item da bolsa
   learn {skill}         aprende uma skill do treinador aberto (server/training.py)
   craft {i, times}      cria `times` vezes a receita i da oficina aberta (server/crafting.py)
+  deposit {slot, qty}   guarda no banco aberto um item da bolsa (o que couber)
+  withdraw {slot, qty}  tira do banco aberto para a bolsa (o que couber)
+  deposit_gold {amount} / withdraw_gold {amount}   guarda ou saca moedas
   close                 encerra
 
 O servidor responde com "dialog" (fala + opções visíveis), "shop" (o que a loja
 vende e quanto paga), "trainer" (o que ensina e o que falta para aprender), "craft"
-(receitas da oficina) ou "npc_close". A conversa também fecha se o jogador se
+(receitas da oficina), "bank" (o que está guardado) ou "npc_close".
+
+O banco é da conta: todos os personagens dela veem as mesmas coisas guardadas. Cada
+depósito ou saque salva o personagem e o banco juntos, na hora. A conversa também fecha se o jogador se
 afastar, morrer, mudar de mapa ou se o conteúdo for recarregado.
 """
 from __future__ import annotations
@@ -44,6 +50,7 @@ class Conversation:
     offer: str | None = None  # missão sendo oferecida (esperando Aceitar)
     trainer: str | None = None  # treinador aberto
     station: str | None = None  # oficina aberta
+    bank: bool = False  # banco aberto
 
 
 def _qty(value: object) -> int | None:
@@ -109,6 +116,10 @@ class NpcSystem:
             self.learn(p, data.get("skill"))
         elif op == "craft":
             self.craft(p, data.get("i"), data.get("times", 1))
+        elif op in ("deposit", "withdraw"):
+            self.bank_move(p, op, data.get("slot"), _qty(data.get("qty", 1)))
+        elif op in ("deposit_gold", "withdraw_gold"):
+            self.bank_gold(p, op, data.get("amount"))
 
     def talk(self, p: Player, entity_id: object) -> None:
         npc = self.entities.get(entity_id) if isinstance(entity_id, int) and not isinstance(entity_id, bool) else None
@@ -150,6 +161,8 @@ class NpcSystem:
             self._open_trainer(p, npc, self.world.content.trainers[option.trainer])
         elif option.craft:
             self._open_station(p, npc, self.world.content.crafting[option.craft])
+        elif option.bank:
+            self._open_bank(p, npc)
         elif option.goto:
             talk.node = option.goto
             self._send_node(p, npc, option.goto)
@@ -216,6 +229,63 @@ class NpcSystem:
         if self.world.crafting.craft(p, station, index, times) and p.id in self.talks:
             self._open_station(p, npc, station)  # reenvia: requisitos e receitas escondidas podem ter mudado
 
+    # ------------------------------------------------------------ banco
+
+    def _bank_open(self, p: Player) -> Npc | None:
+        """O NPC do banco, se p está com o banco aberto e perto dele."""
+        talk, npc = self._current(p)
+        return npc if talk and talk.bank and p.bank is not None else None
+
+    def bank_move(self, p: Player, op: str, slot: object, qty: int | None) -> None:
+        """deposit: bolsa -> banco; withdraw: banco -> bolsa. Move o que couber."""
+        npc = self._bank_open(p)
+        if npc is None or qty is None or isinstance(slot, bool) or not isinstance(slot, int):
+            return
+        assert p.bank is not None
+        source, dest = (p.inventory, p.bank) if op == "deposit" else (p.bank, p.inventory)
+        stack = source.slots[slot] if 0 <= slot < source.size else None
+        if stack is None:
+            return
+        room = dest.room_for(stack.item)
+        if room == 0:
+            self.world._private(p, "O banco está cheio." if op == "deposit" else "Inventário cheio.")
+            return
+        moved = source.take(slot, min(qty, room))
+        assert moved is not None
+        dest.add(moved.item, moved.qty)
+        self._bank_changed(p, npc)
+
+    def bank_gold(self, p: Player, op: str, amount: object) -> None:
+        npc = self._bank_open(p)
+        if npc is None or isinstance(amount, bool) or not isinstance(amount, int) or amount < 1:
+            return
+        assert p.bank is not None
+        source, dest = (p.inventory, p.bank) if op == "deposit_gold" else (p.bank, p.inventory)
+        amount = min(amount, source.gold)
+        if amount == 0:
+            self.world._private(p, "Você não tem moedas na bolsa." if op == "deposit_gold"
+                                else "Não há moedas guardadas no banco.")
+            return
+        source.add_gold(-amount)
+        dest.add_gold(amount)
+        self._bank_changed(p, npc)
+
+    def _bank_changed(self, p: Player, npc: Npc) -> None:
+        self.world._save(p)  # personagem e banco juntos, na hora (nunca duplica nem perde)
+        self._open_bank(p, npc)
+
+    def _open_bank(self, p: Player, npc: Npc) -> None:
+        talk = self.talks[p.id]
+        talk.node, talk.shop, talk.trainer, talk.station, talk.bank = None, None, None, None, True
+        bank = p.bank
+        if bank is None:  # não deveria acontecer: todo personagem no mundo tem conta
+            self._close(p.id)
+            return
+        self.world._outbox.append((p.id, {
+            "t": "bank", **self._header(npc), "size": bank.size,
+            "slots": bank.client_info()["slots"], "gold": bank.gold,
+        }))
+
     # ------------------------------------------------------------ auxiliares
 
     def _current(self, p: Player) -> tuple[Conversation | None, Npc | None]:
@@ -250,6 +320,7 @@ class NpcSystem:
 
     def _back_to_start(self, p: Player, npc: Npc, talk: Conversation) -> None:
         talk.node, talk.offer, talk.shop, talk.trainer, talk.station = npc.defn.start, None, None, None, None
+        talk.bank = False
         self._send_node(p, npc, npc.defn.start)
 
     def _send_node(self, p: Player, npc: Npc, node_id: str) -> None:
@@ -278,7 +349,7 @@ class NpcSystem:
 
     def _open_shop(self, p: Player, npc: Npc, shop: ShopDef) -> None:
         talk = self.talks[p.id]
-        talk.node, talk.shop, talk.trainer, talk.station = None, shop.id, None, None
+        talk.node, talk.shop, talk.trainer, talk.station, talk.bank = None, shop.id, None, None, False
         items = self.world.content.items
         self.world._outbox.append((p.id, {
             "t": "shop", **self._header(npc), "shop": shop.name,
@@ -289,7 +360,7 @@ class NpcSystem:
 
     def _open_trainer(self, p: Player, npc: Npc, trainer: TrainerDef) -> None:
         talk = self.talks[p.id]
-        talk.node, talk.shop, talk.trainer, talk.station = None, None, trainer.id, None
+        talk.node, talk.shop, talk.trainer, talk.station, talk.bank = None, None, trainer.id, None, False
         self.world._outbox.append((p.id, {
             "t": "trainer", **self._header(npc), "trainer": trainer.name,
             # cada skill: preço, se já sabe e o que falta (textos prontos para mostrar)
@@ -298,7 +369,7 @@ class NpcSystem:
 
     def _open_station(self, p: Player, npc: Npc, station: CraftStation) -> None:
         talk = self.talks[p.id]
-        talk.node, talk.shop, talk.trainer, talk.station = None, None, None, station.id
+        talk.node, talk.shop, talk.trainer, talk.station, talk.bank = None, None, None, station.id, False
         self.world._outbox.append((p.id, {
             "t": "craft", **self._header(npc), "station": station.name,
             "recipes": self.world.crafting.payload(p, station),

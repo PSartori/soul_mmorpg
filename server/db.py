@@ -114,6 +114,24 @@ class Database:
             );
             """
         )
+        # Banco de cada conta (itens e moedas guardados) e registro das trocas entre jogadores
+        self.conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS banks (
+                account_id INTEGER PRIMARY KEY,
+                data       TEXT NOT NULL DEFAULT '{}',
+                updated_at REAL NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS trades (
+                id     INTEGER PRIMARY KEY AUTOINCREMENT,
+                at     REAL NOT NULL,
+                a      TEXT NOT NULL,
+                b      TEXT NOT NULL,
+                a_gave TEXT NOT NULL,  -- {"items": {id: qtd}, "gold": n}
+                b_gave TEXT NOT NULL
+            );
+            """
+        )
         # Vínculo com organizações fica fora do save: cargos são globais e valem com o ocupante offline
         self.conn.execute(
             """
@@ -232,11 +250,51 @@ class Database:
         return CharacterRecord(name=name, data=data or {}, account_id=account_id)
 
     def save_character(self, name: str, data: dict) -> None:
-        self.conn.execute(
-            "UPDATE characters SET data = ?, updated_at = ? WHERE name = ?",
-            (json.dumps(data), time.time(), name),
-        )
-        self.conn.commit()
+        self.save_together([(name, data)])
+
+    def save_together(
+        self,
+        characters: list[tuple[str, dict]],
+        banks: list[tuple[int, dict]] = (),  # type: ignore[assignment]
+        trade: tuple[str, str, dict, dict] | None = None,
+    ) -> None:
+        """Salva personagens, bancos e o registro de uma troca de uma vez só (tudo ou nada).
+
+        Assim, se o servidor cair no meio, nunca fica um item nos dois lugares (duplicado)
+        nem em nenhum (perdido): depositar no banco e trocar salvam tudo junto.
+        """
+        now = time.time()
+        with self.conn:  # uma transação: commit no fim, rollback se der erro
+            for name, data in characters:
+                self.conn.execute("UPDATE characters SET data = ?, updated_at = ? WHERE name = ?",
+                                  (json.dumps(data), now, name))
+            for account_id, data in banks:
+                self.conn.execute(
+                    "INSERT INTO banks (account_id, data, updated_at) VALUES (?, ?, ?) "
+                    "ON CONFLICT(account_id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at",
+                    (account_id, json.dumps(data), now),
+                )
+            if trade:
+                a, b, a_gave, b_gave = trade
+                self.conn.execute("INSERT INTO trades (at, a, b, a_gave, b_gave) VALUES (?, ?, ?, ?, ?)",
+                                  (now, a, b, json.dumps(a_gave), json.dumps(b_gave)))
+
+    # ------------------------------------------------------------ banco e trocas
+
+    def load_bank(self, account_id: int) -> dict:
+        row = self.conn.execute("SELECT data FROM banks WHERE account_id = ?", (account_id,)).fetchone()
+        return _json(row[0]) if row else {}
+
+    def recent_trades(self, limit: int = 20, name: str | None = None) -> list[tuple]:
+        """(at, a, b, a_gave, b_gave), as mais recentes primeiro; com name, só as dele."""
+        if name:
+            rows = self.conn.execute(
+                "SELECT at, a, b, a_gave, b_gave FROM trades WHERE a = ? COLLATE NOCASE OR b = ? COLLATE NOCASE "
+                "ORDER BY id DESC LIMIT ?", (name, name, limit)).fetchall()
+        else:
+            rows = self.conn.execute(
+                "SELECT at, a, b, a_gave, b_gave FROM trades ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+        return [(at, a, b, _json(ag), _json(bg)) for at, a, b, ag, bg in rows]
 
     # ------------------------------------------------------------ organizações
 
