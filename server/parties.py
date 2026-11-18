@@ -123,6 +123,8 @@ class PartySystem:
             w._private(p, f"O grupo já está cheio ({C.PARTY_MAX}).")
         elif self.of(target):
             w._private(p, f"{target.name} já está num grupo.")
+        elif w.social.ignores(target, p):
+            w._private(p, f"{target.name} não está aceitando convites seus.")
         else:
             self.invites[target.id] = PartyInvite(party.id if party else None, p.id,
                                                   w.time + C.PARTY_INVITE_SECONDS)
@@ -216,9 +218,8 @@ class PartySystem:
             w._private(p, muted)
             return
         if text:
-            for m in self.members(party):
-                w._outbox.append((m.id, {"t": "chat", "from": p.name, "text": text, "ch": "Grupo",
-                                         "color": PARTY_COLOR}))
+            w.social.deliver(p, self.members(party), {"t": "chat", "from": p.name, "text": text, "ch": "Grupo",
+                                                      "color": PARTY_COLOR})
 
     # ------------------------------------------------------------ ciclo
 

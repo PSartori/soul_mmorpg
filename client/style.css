@@ -797,7 +797,7 @@ button.link {
 #char-new { display: flex; flex-direction: column; gap: 8px; }
 #char-new[hidden] { display: none; }
 
-#account {
+#account, #profile {
   position: absolute;
   top: 12px;
   right: 12px;
@@ -856,3 +856,44 @@ button.link {
 .adm-bug .meta { font-size: 11px; color: var(--muted); }
 .adm-bug .text { margin: 2px 0; white-space: pre-wrap; }
 .adm-bug .error { font-size: 11px; color: var(--error); }
+
+/* ---------------------------------------------------------------- roleplay: perfil e chat */
+#profile { width: min(340px, calc(100% - 24px)); max-height: calc(100% - 24px); overflow-y: auto; }
+#profile[hidden] { display: none; }
+#profile header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+#profile h3 { margin: 0; flex: 1; font-size: 15px; }
+#profile h4 { margin: 8px 0 4px; font-size: 13px; }
+#profile-close { padding: 2px 8px; background: var(--panel-2); border-color: #353946; }
+#profile p { margin: 2px 0; }
+#profile .hint { font-size: 11px; color: var(--muted); }
+#profile .profile-name { margin-top: 0; font-size: 14px; color: var(--accent); }
+#profile .profile-meta { color: var(--muted); font-size: 12px; }
+#profile .profile-org { font-size: 12px; font-weight: 600; }
+#profile .profile-label { display: block; margin: 10px 0 4px; font-size: 12px; color: var(--muted); }
+#profile-text {
+  width: 100%;
+  resize: vertical;
+  padding: 6px 8px;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid #353946;
+  border-radius: 4px;
+  font: inherit;
+}
+#profile .profile-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 4px; }
+#profile .profile-desc {
+  margin: 10px 0;
+  padding: 8px;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  background: var(--panel-2);
+  border-radius: 4px;
+}
+#profile .profile-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+#profile .profile-ignored { margin-top: 10px; border-top: 1px solid #2c303b; padding-top: 4px; }
+#profile .profile-ignored-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 0; }
+#profile button.small { padding: 2px 8px; font-size: 11px; }
+#profile button.danger { background: #8a2f2f; border-color: #a33c3c; }
+#chat-log .emote { color: #d7c2ff; font-style: italic; }
+#chat-log .clickable { cursor: pointer; }
+#chat-log .clickable:hover { text-decoration: underline; }

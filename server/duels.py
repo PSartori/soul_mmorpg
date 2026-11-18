@@ -131,6 +131,8 @@ class DuelSystem:
             w._private(p, f"{target.name} já está num duelo.")
         elif not p.alive or not target.alive:
             w._private(p, "Os dois precisam estar de pé para duelar.")
+        elif w.social.ignores(target, p):
+            w._private(p, f"{target.name} não está aceitando desafios seus.")
         elif self._distance(p, target) > C.DUEL_CHALLENGE_RANGE:
             w._private(p, f"Chegue mais perto de {target.name} para desafiar.")
         else:

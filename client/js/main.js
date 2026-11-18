@@ -14,6 +14,7 @@ import { CraftWindow } from "./crafting.js";
 import { PartyInvitePanel, PartyPanel, partyMenuItems } from "./party.js";
 import { AccountScreens, AccountWindow } from "./account.js";
 import { BugWindow } from "./bugs.js";
+import { LOCAL_COLOR, PM_COLOR, ProfileWindow, bubbleTtl, roleplayMenuItems } from "./roleplay.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -33,6 +34,8 @@ const state = {
   },
   questMarks: {}, // id do NPC -> "!" (tem missão) ou "?" (missão pronta para entregar)
   partyIds: new Set(), // quem é do meu grupo (nomes destacados)
+  bubbles: new Map(), // id do personagem -> balão de fala {text, emote, born, ttl}
+  ignored: new Set(), // nomes (minúsculos) que eu ignoro
   statLabels: {},
 };
 
@@ -200,7 +203,10 @@ function handleMessage(msg) {
       applySnapshot(msg);
       break;
     case "chat":
-      addChatLine(msg.text, msg.from, msg.ch ? { name: msg.ch, color: msg.color } : null);
+      onChat(msg);
+      break;
+    case "profile":
+      profileWindow.update(msg);
       break;
     case "sys":
       addChatLine(msg.text);
@@ -242,6 +248,7 @@ function changeMap(msg) {
   state.rings = [];
   state.trails = [];
   state.floaters = [];
+  state.bubbles.clear();
 }
 
 let kickText = null; // motivo de expulsão/ban, mostrado quando a conexão cair
@@ -267,6 +274,9 @@ function leaveGame() {
   partyInvitePanel.update(null);
   partyPanel.update(null);
   state.partyIds = new Set();
+  state.bubbles.clear();
+  state.ignored = new Set();
+  setPmTarget(null);
   state.you = null;
   state.ents.clear();
   pred = null;
@@ -314,6 +324,10 @@ function applySnapshot(msg) {
   if ("party" in msg.you) {  // só vem quando muda (null = sem grupo)
     partyPanel.update(msg.you.party);
     state.partyIds = partyPanel.memberIds;
+  }
+  if (msg.you.ign) {  // lista de ignorados: só vem quando muda
+    state.ignored = new Set(msg.you.ign.map((n) => n.toLowerCase()));
+    profileWindow.setIgnored(msg.you.ign);
   }
   if (msg.you.q) {
     questLog.update(msg.you.q);
@@ -468,9 +482,15 @@ function updateHud() {
   // canal "Organização" no chat só para quem é de uma
   const orgOption = $("chat-channel").querySelector('option[value="org"]');
   orgOption.hidden = !me.o;
-  if (!me.o && $("chat-channel").value === "org") $("chat-channel").value = "";
+  if (!me.o && $("chat-channel").value === "org") {
+    $("chat-channel").value = "";
+    updateChatPlaceholder();
+  }
   $("chat-channel").querySelector('option[value="party"]').hidden = !partyPanel.inParty;
-  if (!partyPanel.inParty && $("chat-channel").value === "party") $("chat-channel").value = "";
+  if (!partyPanel.inParty && $("chat-channel").value === "party") {
+    $("chat-channel").value = "";
+    updateChatPlaceholder();
+  }
   setBar("bar-hp", you.hp, you.mhp, "Vida");
   setBar("bar-energy", you.en, you.men, "Energia");
   setBar("bar-fatigue", you.fat, you.mfat, "Cansaço");
@@ -592,7 +612,32 @@ function updateHotbarCooldowns(now) {
   }
 }
 
-function addChatLine(text, from = null, channel = null) {
+// Mensagem de chat do servidor. ch: nada (Geral), "local", "emote" (ação), "pm" (privada;
+// com `to` quando fui eu que mandei) ou o nome do canal (organização, grupo)
+function onChat(msg) {
+  if (msg.ch === "local" || msg.ch === "emote") {
+    const emote = msg.ch === "emote";
+    state.bubbles.set(msg.id, { text: msg.text, emote, born: performance.now(), ttl: bubbleTtl(msg.text) });
+    if (emote) addChatLine(msg.text, msg.from, null, { emote: true });
+    else addChatLine(msg.text, msg.from, { name: "Local", color: LOCAL_COLOR });
+  } else if (msg.ch === "pm") {
+    const other = msg.to ?? msg.from;
+    addChatLine(msg.text, null, { name: msg.to ? `Para ${msg.to}` : `De ${msg.from}`, color: PM_COLOR },
+      { replyTo: other });
+  } else {
+    addChatLine(msg.text, msg.from, msg.ch ? { name: msg.ch, color: msg.color } : null);
+  }
+}
+
+// Nome clicável no chat: escolhe a pessoa como destino de mensagem privada
+function replyLink(node, name) {
+  if (!name || name === state.ents.get(state.myId)?.n) return;
+  node.classList.add("clickable");
+  node.title = `Mensagem privada para ${name}`;
+  node.addEventListener("click", () => setPmTarget(name, true));
+}
+
+function addChatLine(text, from = null, channel = null, opts = {}) {
   const log = $("chat-log");
   const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 30;
   const line = document.createElement("div");
@@ -601,13 +646,23 @@ function addChatLine(text, from = null, channel = null) {
     tag.className = "channel";
     tag.style.setProperty("--org", channel.color);
     tag.textContent = `[${channel.name}] `;
+    replyLink(tag, opts.replyTo);
     line.append(tag);
   }
-  if (from) {
+  if (opts.emote) {
+    line.className = "emote";
+    const who = document.createElement("span");
+    who.textContent = from;
+    replyLink(who, from);
+    line.append("* ", who, ` ${text} *`);
+  } else if (from) {
     const who = document.createElement("span");
     who.className = "from";
     who.textContent = `${from}: `;
+    replyLink(who, from);
     line.append(who, document.createTextNode(text));
+  } else if (channel) {
+    line.append(document.createTextNode(text));
   } else {
     line.className = "sys";
     line.textContent = text;
@@ -629,11 +684,45 @@ const accountWindow = new AccountWindow({ send: (msg) => conn?.send(msg) });
 const bugWindow = new BugWindow({ send: (msg) => conn?.send(msg), getView: () => view });
 
 const chatInput = $("chat-input");
+const chatChannel = $("chat-channel");
+const pmOption = chatChannel.querySelector('option[value="pm"]');
+let pmTarget = null; // destino do canal "Privado"
+const CHAT_PLACEHOLDERS = {
+  "": "Enter para conversar (todos)",
+  local: "Fala para quem está perto",
+  emote: "Descreva uma ação. Ex.: acena para todos",
+  org: "Mensagem para a organização",
+  party: "Mensagem para o grupo",
+};
+function updateChatPlaceholder() {
+  const ch = chatChannel.value;
+  chatInput.placeholder = ch === "pm" ? `Mensagem privada para ${pmTarget}` : CHAT_PLACEHOLDERS[ch] ?? "";
+}
+// Escolhe com quem falar em privado (menu do jogador, perfil ou nome no chat); null limpa
+function setPmTarget(name, focus = false) {
+  pmTarget = name;
+  pmOption.hidden = !name;
+  if (name) {
+    pmOption.textContent = `Para ${name}`;
+    chatChannel.value = "pm";
+  } else if (chatChannel.value === "pm") {
+    chatChannel.value = "";
+  }
+  updateChatPlaceholder();
+  if (focus) chatInput.focus();
+}
+chatChannel.addEventListener("change", () => {
+  updateChatPlaceholder();
+  chatChannel.blur();
+});
+updateChatPlaceholder();
+
 chatInput.addEventListener("keydown", (ev) => {
   ev.stopPropagation(); // não deixa as teclas do chat moverem o personagem
   if (ev.key === "Enter") {
     const text = chatInput.value.trim();
-    if (text && conn) conn.send({ t: "chat", text, ch: $("chat-channel").value || undefined });
+    const ch = chatChannel.value || undefined;
+    if (text && conn) conn.send({ t: "chat", text, ch, to: ch === "pm" ? pmTarget : undefined });
     chatInput.value = "";
     chatInput.blur();
   } else if (ev.key === "Escape") {
@@ -703,8 +792,14 @@ $("inv-open").addEventListener("click", (ev) => {
 });
 
 const orgWindow = new OrgWindow({ getDefs: () => state.defs, send: (msg) => conn?.send(msg) });
-// Inventário, organização, diário, skills, loja e treinador ocupam o mesmo canto: abrir um fecha os outros
-const cornerWindows = () => [inventoryUI, orgWindow, questLog, skillsWindow, accountWindow, bugWindow];
+const profileWindow = new ProfileWindow({
+  getDefs: () => state.defs,
+  send: (msg) => conn?.send(msg),
+  whisper: (name) => setPmTarget(name, true),
+  openInCorner: (win) => openInCorner(win, true),
+});
+// Inventário, organização, diário, skills, perfil, loja e treinador ocupam o mesmo canto: abrir um fecha os outros
+const cornerWindows = () => [inventoryUI, orgWindow, questLog, skillsWindow, profileWindow, accountWindow, bugWindow];
 function closeCornerWindows() {
   for (const win of cornerWindows()) win.toggle(false);
 }
@@ -720,6 +815,10 @@ const toggleQuests = () => openInCorner(questLog);
 const toggleSkills = (force) => openInCorner(skillsWindow, force);
 $("skills-open").addEventListener("click", (ev) => {
   toggleSkills();
+  ev.currentTarget.blur();
+});
+$("profile-open").addEventListener("click", (ev) => {
+  profileWindow.toggleOwn();
   ev.currentTarget.blur();
 });
 $("account-open").addEventListener("click", (ev) => {
@@ -758,6 +857,12 @@ const playerMenu = new PlayerMenu({
   send: (msg) => conn?.send(msg),
   openAdmin: (name) => adminUI.openFor(name),
   extraItems: (target) => partyMenuItems(partyPanel, target, (msg) => conn?.send(msg)),
+  roleplayItems: (target) => roleplayMenuItems({
+    target,
+    send: (msg) => conn?.send(msg),
+    whisper: (name) => setPmTarget(name, true),
+    ignored: state.ignored,
+  }),
 });
 
 // O que está sob o mouse: outro jogador ou um NPC (tolerância de 22 px)
@@ -820,6 +925,7 @@ const input = setupInput({
     else if (name === "talk") talkToNearest();
     else if (name === "quests") toggleQuests();
     else if (name === "skills") toggleSkills();
+    else if (name === "profile") profileWindow.toggleOwn();
     else if (name === "view") setView(view === "3d" ? "2d" : "3d");
     else if (name === "rotate-left" || name === "rotate-right") renderer3d?.rotate(name === "rotate-left" ? -1 : 1);
     else if (name === "escape") {
@@ -874,6 +980,7 @@ function frame(now) {
   state.rings = state.rings.filter(alive);
   state.trails = state.trails.filter(alive);
   state.floaters = state.floaters.filter(alive);
+  for (const [id, bubble] of state.bubbles) if (now - bubble.born >= bubble.ttl) state.bubbles.delete(id);
 
   if (now - lastHotbarUpdate > 80) {
     lastHotbarUpdate = now;

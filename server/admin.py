@@ -111,6 +111,7 @@ class AdminSystem:
             "reset_password": ("account", self._reset_password),
             "bug_close": ("log", self._bug_close),
             "bug_goto": ("teleport", self._bug_goto),
+            "clear_profile": ("mute", self._clear_profile),
         }
         if op not in ops:
             return
@@ -278,6 +279,20 @@ class AdminSystem:
             self.world._private(target, "Você pode falar de novo.")
         self._record(p, "tirou o silêncio de", name)
         self._reply(p, True, f"{name} pode falar de novo.")
+
+    def _clear_profile(self, p: Player, data: dict) -> None:
+        """Apaga a descrição do perfil de alguém (texto ofensivo, por exemplo)."""
+        found = self._target(p, data, online=True)
+        if not found:
+            return
+        name, target = found
+        assert target is not None
+        target.profile = ""
+        self.world._private(target, "A equipe apagou a descrição do seu perfil.")
+        self._record(p, "apagou o perfil de", name)
+        self._reply(p, True, f"Descrição de {name} apagada.")
+        self.world._private(p, f"Descrição de {name} apagada.")
+        self.world.social.send_profile(p, target)
 
     def _ban(self, p: Player, data: dict) -> None:
         """Bane o personagem; com scope "account", a conta toda; com "ip", a conta e o IP dela."""

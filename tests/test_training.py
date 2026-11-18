@@ -147,7 +147,7 @@ class StartAndSaveTests(Base):
 
     def test_v5_save_keeps_old_class_skills(self):
         data = migrate({"v": 5, "race": "humano", "class": "aprendiz"})
-        self.assertEqual(data["v"], 6)
+        self.assertGreaterEqual(data["v"], 6)  # migra até a versão atual
         self.assertEqual(data["skills"]["known"], ["golpe", "rajada", "passo", "onda", "foco"])
         self.assertEqual(data["skills"]["bar"], ["golpe", "rajada", "passo", "onda", "foco"])
         self.assertEqual(migrate({"v": 5, "class": "sumiu"})["skills"], {"known": [], "bar": []})

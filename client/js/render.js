@@ -1,5 +1,6 @@
 // Desenho no canvas. Arte provisória feita só com formas, até termos sprites.
 import { RARITY_COLORS } from "./inventory.js";
+import { drawBubble } from "./roleplay.js";
 
 const DIR = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
 const FACING_ANGLE = { right: 0, down: Math.PI / 2, left: Math.PI, up: -Math.PI / 2 };
@@ -201,6 +202,11 @@ export class Renderer {
     for (const r of state.rings) this.drawRing(r, now);
     for (const p of state.projs) this.drawProjectile(p, now - state.snapTime);
     for (const f of state.floaters) this.drawFloater(f, now);
+    // balões de fala por cima de tudo, acima do nome (e do cargo)
+    for (const [id, bubble] of state.bubbles ?? []) {
+      const e = state.ents.get(id);
+      if (e && e.s !== "dead") drawBubble(ctx, e.rx, e.ry - (e.o ? 46 : 34), bubble, now, camY + 4);
+    }
     ctx.restore();
 
     if (me && me.s === "dead") {

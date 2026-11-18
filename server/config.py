@@ -126,6 +126,11 @@ DISPUTE_COOLDOWN_SECONDS = 300.0  # quem perde uma disputa de cargo espera isto 
 # --- Chat -------------------------------------------------------------------
 CHAT_MAX_LEN = 200
 
+# --- Roleplay (server/social.py) --------------------------------------------
+LOCAL_CHAT_RANGE = 12 * TILE_SIZE  # fala local e ações (/me): quem está a até esta distância ouve
+PROFILE_MAX_LEN = 600  # caracteres da descrição do perfil
+IGNORE_MAX = 100  # personagens que cada um pode ignorar
+
 # Contas e proteções
 MAX_CHARACTERS = 4  # personagens por conta
 PASSWORD_MIN = 6  # caracteres mínimos da senha (contas antigas com senha menor continuam entrando)

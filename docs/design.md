@@ -274,7 +274,7 @@ Combinado em 17/11/2026. A ordem pode mudar conforme as decisões em aberto.
 - Penalidades de morte reais.
 
 **Fase 4 — mundo vivo e social**
-- Ferramentas de roleplay: fala local em balão, /me, mensagem privada, ignorar, perfil.
+- ~~Ferramentas de roleplay: fala local em balão, /me, mensagem privada, ignorar, perfil~~ (feito).
 - Invasões e eventos em ondas, iniciados pela equipe ou por agenda.
 - Hierarquia sem abuso: limite de recusas, cargo vago por inatividade, torneios.
 - Fama e ranking (abates, mortes, chefes).

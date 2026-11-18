@@ -122,6 +122,10 @@ class Player(Entity):
     ip: str = ""  # de onde está conectado (bans por IP)
     chat_times: deque[float] = field(default_factory=deque)  # horários das últimas mensagens de chat
     party_sent: str = ""  # último estado do grupo enviado ao cliente (só manda quando muda)
+    profile: str = ""  # descrição do personagem (perfil), escrita pelo jogador
+    ignored: list[str] = field(default_factory=list)  # personagens que ele ignora (nomes)
+    social_sent: str = ""  # última lista de ignorados enviada ao cliente (só manda quando muda)
+    last_pm: str | None = None  # com quem trocou a última mensagem privada (/r responde)
     actions: list[tuple] = field(default_factory=list)  # ações pedidas, executadas no próximo tick
     # Movimento: o cliente manda um comando numerado por tick; o servidor executa um por tick
     # e devolve o número do último executado ("ack") para o cliente corrigir a previsão.
@@ -212,6 +216,7 @@ class Player(Entity):
             "quests": {"active": {qid: list(p) for qid, p in self.quests.items()},
                        "done": {qid: {"n": d[0], "at": d[1]} for qid, d in self.quests_done.items()}},
             "inventory": self.inventory.to_dict(),
+            "social": {"profile": self.profile, "ignore": list(self.ignored)},
             "map": self.map_id,
             "x": self.x,
             "y": self.y,
@@ -243,6 +248,11 @@ class Player(Entity):
             qid: [d["n"], float(d["at"])] for qid, d in done.items()
             if isinstance(d, dict) and isinstance(d.get("n"), int) and isinstance(d.get("at"), (int, float))
         }
+        social = data.get("social") if isinstance(data.get("social"), dict) else {}
+        if isinstance(social.get("profile"), str):
+            self.profile = social["profile"][: C.PROFILE_MAX_LEN]
+        if isinstance(social.get("ignore"), list):
+            self.ignored = [n for n in social["ignore"] if isinstance(n, str)][: C.IGNORE_MAX]
         for key in ("x", "y", "hp", "energy", "fatigue"):
             value = data.get(key)
             if isinstance(value, (int, float)):

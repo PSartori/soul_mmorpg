@@ -71,6 +71,13 @@
             <p id="bug-result"></p>
           </form>
         </section>
+        <section id="profile" hidden aria-label="Perfil">
+          <header>
+            <h3 id="profile-title">Perfil</h3>
+            <button type="button" id="profile-close" aria-label="Fechar">✕</button>
+          </header>
+          <div id="profile-body"></div>
+        </section>
         <section id="quests" hidden aria-label="Diário de missões">
           <header>
             <h3>Missões</h3>
@@ -112,6 +119,7 @@
           <button type="button" id="org-open">Organização (O)</button>
           <button type="button" id="quests-open">Missões (J)</button>
           <button type="button" id="skills-open">Skills (K)</button>
+          <button type="button" id="profile-open">Perfil (P)</button>
           <button type="button" id="view-toggle">Visão 3D (V)</button>
           <button type="button" id="account-open">Conta</button>
           <button type="button" id="bug-open">Relatar bug</button>
@@ -128,8 +136,11 @@
         <div id="chat-send">
           <select id="chat-channel" aria-label="Canal">
             <option value="">Geral</option>
+            <option value="local">Local</option>
+            <option value="emote">Ação</option>
             <option value="org" hidden>Organização</option>
             <option value="party" hidden>Grupo</option>
+            <option value="pm" hidden>Privado</option>
           </select>
           <input id="chat-input" maxlength="200" placeholder="Enter para conversar" autocomplete="off">
         </div>
@@ -144,10 +155,12 @@
         <b>O</b> organização ·
         <b>J</b> missões ·
         <b>K</b> skills ·
+        <b>P</b> perfil ·
         <b>E</b> conversar ·
-        <b>Enter</b> chat ·
+        <b>Enter</b> chat (canal <b>Local</b>: só quem está perto, em balão; <b>Ação</b>: narra o que você faz) ·
         <b>V</b> visão 2D/3D (no 3D: <b>Q</b>/<b>Z</b> giram a câmera, rodinha do mouse dá zoom)
-        <br><b>Clique num jogador</b> para desafiar, convidar para o grupo, disputar cargo ou (líderes) promover e expulsar.
+        <br><b>Clique num jogador</b> para ver o perfil, mandar mensagem privada, ignorar, desafiar, convidar para o grupo, disputar cargo ou (líderes) promover e expulsar.
+        <b>Clique num nome no chat</b> para responder em privado.
         <b>Clique num NPC</b> (ou <b>E</b> perto dele) para conversar, negociar, treinar e criar itens.
       </section>
     </aside>

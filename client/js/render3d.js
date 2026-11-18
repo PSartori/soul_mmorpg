@@ -9,6 +9,7 @@
 // servidor só entende cima/baixo/esquerda/direita (ver rotateKeys).
 import * as THREE from "three";
 import { RARITY_COLORS } from "./inventory.js";
+import { drawBubble } from "./roleplay.js";
 import { PARTY_NAME_COLOR, TILE_BASE, drawTile, levelColor, nameColor, rankTitle, tileNoise } from "./render.js";
 
 const TAU = Math.PI * 2;
@@ -601,6 +602,12 @@ export class Renderer3D {
     }
     const ents = [...state.ents.values()].sort((a, b) => this.depth(b) - this.depth(a));
     for (const e of ents) this.drawLabels(e, e.id === state.myId, now);
+    // balões de fala acima do nome (e do cargo)
+    for (const [id, bubble] of state.bubbles ?? []) {
+      const e = state.ents.get(id);
+      const head = e && e.s !== "dead" ? this.headScreen(e, 0.06) : null;
+      if (head) drawBubble(ctx, head.x, head.y - (e.o ? 28 : 16), bubble, now, 4);
+    }
     for (const f of state.floaters) {
       const p = this.toScreen(f.x / ts, 1.3, f.y / ts);
       if (!p) continue;

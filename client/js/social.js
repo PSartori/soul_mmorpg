@@ -27,9 +27,11 @@ function rankTitle(org, rankId, seat) {
 // ------------------------------------------------------------------ menu do jogador
 
 export class PlayerMenu {
-  constructor({ container, getDefs, getMe, getYou, send, openAdmin, extraItems = () => [] }) {
+  constructor({ container, getDefs, getMe, getYou, send, openAdmin, extraItems = () => [],
+    roleplayItems = () => ({ first: [], last: [] }) }) {
     this.container = container;
     this.extraItems = extraItems; // opções de outros sistemas (ex.: grupo)
+    this.roleplayItems = roleplayItems; // perfil e mensagem privada (no topo) e ignorar (no fim)
     this.getDefs = getDefs;
     this.getMe = getMe;
     this.getYou = getYou;
@@ -72,6 +74,8 @@ export class PlayerMenu {
     const items = [];
     const name = target.n;
     if (!me || !you) return items;
+    const roleplay = this.roleplayItems(target);
+    items.push(...roleplay.first);
 
     if (!you.duel && !target.du) {
       items.push(["Desafiar para duelo", () => this.send({ t: "duel", op: "challenge", target: name })]);
@@ -106,6 +110,7 @@ export class PlayerMenu {
       }
     }
 
+    items.push(...roleplay.last);
     if (you.staff) items.push(["Abrir na administração", () => this.openAdmin(name)]);
     return items;
   }

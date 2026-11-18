@@ -150,20 +150,23 @@ lutadores ficam parados, então alcance e esquiva não contam.
 | E | conversar com o NPC mais próximo (também dá para clicar nele) |
 | J | diário de missões: em andamento (objetivos, recompensa, a quem entregar, abandonar) e concluídas |
 | K | skills: as que você conhece e a barra (arraste uma skill para um espaço, ou clique nela e depois no espaço; × tira) |
+| P | seu perfil: descrição do personagem (aparência, história) e a lista de quem você ignora |
 | G | janela de administração (só para a equipe) |
 | O | janela da organização: entrar, sair, cargos e ocupantes, assumir vaga, disputar, promover, rebaixar, expulsar |
-| Enter | chat; o seletor ao lado escolhe o canal (Geral, Organização ou Grupo) |
+| Enter | chat; o seletor ao lado escolhe o canal: Geral (todos), **Local** (só quem está perto, em balão), **Ação** (narra o que você faz: "\* Ana acena \*"), Organização, Grupo ou **Privado** (com quem você escolheu) |
 | V | troca entre a visão 2D e a 3D (protótipo; o jogo lembra a escolha) |
 | Q / Z | na visão 3D, gira a câmera 90° para um lado ou para o outro |
 | Rodinha do mouse | na visão 3D, aproxima ou afasta a câmera |
 | **Botão "Relatar bug"** | no painel: descreva o problema; mapa, posição, hora e dados do navegador vão junto |
-| **Clique num jogador** | menu: desafiar para duelo, convidar para o grupo (ou, se for do seu grupo e você liderar, passar a liderança e tirar), disputar o cargo dele e, para líderes, promover, rebaixar e expulsar |
+| **Clique num jogador** | menu: ver perfil, mensagem privada, ignorar (ou deixar de ignorar), desafiar para duelo, convidar para o grupo (ou, se for do seu grupo e você liderar, passar a liderança e tirar), disputar o cargo dele e, para líderes, promover, rebaixar e expulsar |
 | **Clique num NPC** | conversa; as respostas são botões, e alguns abrem a loja (comprar e vender), o treinador (aprender skills) ou a oficina (criar itens) |
+| **Clique num nome no chat** | escolhe a pessoa para mensagem privada (responder) |
 | **Arrastar na barra** | arrastar uma skill para outro espaço troca as duas de lugar; clicar num espaço vazio abre as skills |
 
 Um desafio recebido aparece na tela com **Aceitar** e **Recusar**; durante o duelo o
 painel mostra **Desistir**. Os antigos comandos de chat (`/duelo`, `/aceitar`,
-`/recusar`, `/render`, `/grupo Nome`, `/g`, `/org`, `/entrar`, `/sair`, `/o`, `/assumir`, `/disputar`,
+`/recusar`, `/render`, `/grupo Nome`, `/g`, `/me ação`, `/l fala`, `/p Nome texto`, `/r texto`, `/ignorar Nome`,
+`/designorar Nome`, `/org`, `/entrar`, `/sair`, `/o`, `/assumir`, `/disputar`,
 `/promover`, `/rebaixar`, `/expulsar`, `/who`) continuam funcionando como atalho.
 
 ## Conteúdo (data/)
@@ -248,6 +251,7 @@ server/              Python (aiohttp)
   parties.py         grupos: convites, liderança, chat e quem divide abates, missões e moedas
   accounts.py        contas: entrar/criar, personagens da conta, troca de senha, travas e limites
   bugs.py            relatos de bug: guarda texto, personagem, mapa, posição, zona, hora e dados do navegador
+  social.py          roleplay: fala local e ações (com balão), mensagem privada, ignorar e perfil
   requirements.py    requisitos de treinadores e receitas (atributos, skills, condições) em texto
   inventory.py       inventário: espaços que empilham, equipamento e moedas
   orgs.py            organizações, cargos e disputas (vínculos na tabela memberships)
@@ -276,6 +280,7 @@ client/              JavaScript puro, sem build
   js/party.js        painel do grupo, aviso de convite e opções de grupo no menu do jogador
   js/account.js      telas de conta e de personagens, janela Conta (trocar senha, trocar de personagem)
   js/bugs.js         janela de relatar bug (e os últimos erros de JavaScript da página, que vão junto)
+  js/roleplay.js     balões de fala, janela de perfil (P) e opções de roleplay no menu do jogador
   js/input.js        teclado
   js/net.js          WebSocket
 data/                conteúdo do jogo (veja acima)
@@ -323,19 +328,22 @@ Cliente → servidor (no jogo): `move {seq, up, down, left, right}`,
 `org {op: info|join|leave|claim|dispute|promote|demote|expel, ...}`,
 `npc {op: talk|choose|buy|sell|learn|craft|close, id|i|item|slot|skill, qty|times}`, `quest {op: abandon, id}`,
 `skills {op: bar, slot, id}` (id null = esvazia), `party {op: invite|accept|decline|leave|kick|lead, target}`,
-`chat {text, ch: party}`, `bug {text, client: {view, agent, screen, errors}}`, `chat {text, ch}`, `admin {op, ...}` (equipe), `item {op: use|drop, slot: n}`, `item {op: unequip, slot: weapon|armor|accessory}`,
+`chat {text, ch: party}`, `bug {text, client: {view, agent, screen, errors}}`, `chat {text, ch: local|emote|org|party}`,
+`chat {text, ch: pm, to}`, `social {op: profile|set_profile|ignore|unignore, name|text}`, `admin {op, ...}` (equipe), `item {op: use|drop, slot: n}`, `item {op: unequip, slot: weapon|armor|accessory}`,
 `meditate`, `rest`, `chat {text}`.
 
 Servidor → cliente: `welcome {id, map, skills, effects, enemies, stat_labels, ...}`,
 `map {map, x, y}` (atravessou um portal), `org_data` (janela da organização),
-`dialog {npc, name, title, text, options}` / `shop {npc, shop, sells, buys}` /
+`profile {name, race, cls, lv, o, st, text, me, ignored, can_clear}` (perfil), `dialog {npc, name, title, text, options}` / `shop {npc, shop, sells, buys}` /
 `trainer {npc, trainer, teaches: [{id, price, known, missing}]}` /
 `craft {npc, station, recipes: [{i, make, qty, needs, price, missing}]}` / `npc_close` (NPCs), `announce {text, by}`, `kick {text}` (antes de
 desconectar), `admin_data`/`admin_result` (equipe), `error {msg}`, `snap {ents, projs, drops, fx, you}`
 (20×/s, só o que está perto; `you.skills` é a barra, com null nos espaços vazios; `you.inv`, `you.q` —
 diário e marcadores das missões —, `you.known` — skills conhecidas, com `ok` se a raça/classe atual
 pode usar — e `you.party` — membros do grupo com vida, nível e mapa; null = sem grupo — só vêm quando
-mudam; `you.pinv` é o convite de grupo esperando resposta), `chat {from, text}`, `sys {text}`.
+mudam; `you.pinv` é o convite de grupo esperando resposta; `you.ign` — lista de ignorados — também só vem quando
+muda), `chat {from, text, ch?, id?, to?}` (`ch`: nada = Geral, `local`/`emote` com o `id` de quem falou para o balão,
+`pm` com `to` no eco para quem mandou, ou o nome do canal da organização/grupo), `sys {text}`.
 
 ### Regras atuais
 
@@ -427,6 +435,17 @@ mudam; `you.pinv` é o convite de grupo esperando resposta), `chat {from, text}`
     são divididas entre quem pegou e os membros perto (o resto da divisão fica com quem pegou);
   - **PvP**: membros do mesmo grupo não se ferem em áreas PvP (`PARTY_FRIENDLY_FIRE`); duelo
     entre eles continua valendo.
+- **Roleplay** (`server/social.py`):
+  - **Local**: quem está no mesmo mapa e a até 12 tiles (`LOCAL_CHAT_RANGE`) vê no chat e num balão acima
+    do personagem (some em 4–10 s, conforme o tamanho). **Ação** (`/me`) tem o mesmo alcance e balão, em itálico.
+  - **Privado**: só os dois veem; quem recebeu responde clicando no nome ou com `/r`.
+  - **Ignorar**: quem você ignora não te manda nada (Geral, Local, Ação, Organização, Grupo, Privado),
+    nem desafios e convites de grupo (ignorar também apaga os que estão na tela). Avisos do sistema e
+    anúncios sempre chegam. Não dá para ignorar a equipe. Até 100 nomes (`IGNORE_MAX`), também de quem está offline.
+  - **Perfil**: descrição livre de até 600 caracteres (`PROFILE_MAX_LEN`), vista por quem clica em "Ver
+    perfil" (só de quem está online). Silenciado não muda o perfil; a equipe com `mute` pode apagar
+    ("Apagar descrição" no perfil; fica no registro).
+  - Comandos digitados começam com `/` em qualquer canal.
 - **Lojas**: estoque infinito; o jogador compra pelo `value` do item (ou pelo `price`
   da loja) e vende por uma fração dele (`buy_rate`, padrão 40%, no mínimo 1 moeda).
   Compra só sai se houver moedas e espaço para tudo. O servidor recusa conteúdo em
@@ -465,7 +484,8 @@ mudam; `you.pinv` é o convite de grupo esperando resposta), `chat {from, text}`
   ao total de jogadores.
 - **Morte**: renasce no ponto de nascimento (`S`) do mapa onde está, depois de 3 s.
 - **Salvamento**: ao sair e automaticamente a cada 60 s. Save v6 guarda skills conhecidas e
-  barra; personagens de antes continuam com as skills que a classe dava e a mesma barra.
+  barra; personagens de antes continuam com as skills que a classe dava e a mesma barra. Save v7 guarda
+  o perfil e a lista de ignorados (começam vazios).
 
 ## Visão 3D (protótipo)
 
@@ -503,4 +523,6 @@ barras de vida, marcas de missão e números são desenhados no canvas 2D por ci
 - Login sem HTTPS: na VPS, colocar atrás de um proxy com TLS (ex.: Caddy) antes de abrir ao público.
 - Recuperação de senha só pela equipe (senha temporária); sem e-mail ainda.
 - Não dá para apagar personagem nem renomear conta pelo jogo.
+- Perfil só de quem está online; sem campos separados (idade, aparência...), só um texto livre.
+- Sem balão para os canais Geral, Organização e Grupo (só Local e Ação).
 - Arte provisória (formas geométricas).

@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-SAVE_VERSION = 6
+SAVE_VERSION = 7
 
 
 class SaveVersionError(ValueError):
@@ -72,12 +72,19 @@ def _v5_to_v6(data: dict) -> dict:
     return data
 
 
+def _v6_to_v7(data: dict) -> dict:
+    """v7: perfil (descrição do personagem) e lista de ignorados, começando vazios."""
+    data.setdefault("social", {"profile": "", "ignore": []})
+    return data
+
+
 MIGRATIONS: dict[int, Callable[[dict], dict]] = {
     1: _v1_to_v2,
     2: _v2_to_v3,
     3: _v3_to_v4,
     4: _v4_to_v5,
     5: _v5_to_v6,
+    6: _v6_to_v7,
 }
 
 

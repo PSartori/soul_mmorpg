@@ -1,6 +1,6 @@
 # Contexto geral do projeto
 
-Resumo de tudo o que foi conversado e construído até 18/11/2026 (atualizado com o relato de bug): de onde o projeto
+Resumo de tudo o que foi conversado e construído até 18/11/2026 (atualizado com as ferramentas de roleplay): de onde o projeto
 veio, como trabalhamos, o que foi decidido, o que existe hoje e o que vem a seguir.
 Para detalhes técnicos, veja o `README.md`; para a visão do jogo e as decisões em
 aberto, o `docs/design.md`; para números de balanceamento, o `docs/balanceamento.md`.
@@ -38,7 +38,7 @@ Desperto, Espectral, Vigília, Coro Sombrio, Espectro, Devorador...) são
 - **Conteúdo é dado, não código.** Skills, efeitos, itens, inimigos, raças, classes,
   regras, organizações, papéis da equipe, NPCs, lojas, treinadores, oficinas, missões e mapas ficam em `data/`, validados ao
   carregar (um erro de digitação aponta arquivo, item e campo).
-- **Cada etapa termina testada**: testes automáticos (hoje 449) e verificação no
+- **Cada etapa termina testada**: testes automáticos (hoje 475) e verificação no
   navegador, e só então commit.
 
 ---
@@ -86,7 +86,8 @@ Desperto, Espectral, Vigília, Coro Sombrio, Espectro, Devorador...) são
 | `671f705` | Visão 3D (protótipo) | Mundo 3D com personagens 2D virados para a câmera (three.js), zoom, giro de 90°, troca com o 2D (V) |
 | `526cfad` | Grupos | Convite pelo menu, painel com a vida dos membros, chat do grupo, abates/missões/moedas divididos, sem fogo amigo |
 | `9ba88c1` | Contas e proteções | Conta com até 4 personagens, troca e senha temporária, bans por conta/IP, travas de senha, limites de mensagens e chat |
-| — | Relatar bug | Botão no painel; o relato vai com mapa, posição, hora e dados do navegador; equipe vê, vai até o local e resolve |
+| `3fa50f1` | Relatar bug | Botão no painel; o relato vai com mapa, posição, hora e dados do navegador; equipe vê, vai até o local e resolve |
+| — | Roleplay | Fala local em balão, ações (/me), mensagem privada, ignorar e perfil do personagem (janela P), save v7 |
 
 ### Sistemas prontos
 
@@ -121,6 +122,11 @@ Desperto, Espectral, Vigília, Coro Sombrio, Espectro, Devorador...) são
 - **Relatar bug**: botão no painel; o relato guarda personagem, conta, mapa, posição, zona,
   hora, visão 2D/3D, navegador e os últimos erros de JavaScript. A equipe é avisada, vê a
   lista na administração (ir até o local, resolvido) ou usa `./admin.sh bugs`.
+- **Roleplay**: canais **Local** (só quem está a até 12 tiles, com balão acima da cabeça, no 2D e no
+  3D) e **Ação** ("\* Ana acena \*", também em balão); **mensagem privada** pelo menu do jogador, pelo
+  perfil ou clicando num nome no chat; **ignorar** (sem mensagens de nenhum canal, desafios nem convites;
+  a equipe não pode ser ignorada); **perfil** com descrição livre (janela P e "Ver perfil" no menu), que
+  a equipe pode apagar. Ignorados e perfil vão no save (v7).
 - **Regras em YAML** (`data/rules.yaml`): "quando X, se Y, faça Z" para morte, abate,
   subida de nível, fim de duelo e mudança de cargo — penalidades, transformações,
   recompensas.

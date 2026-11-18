@@ -33,6 +33,7 @@ from .training import TrainingSystem
 from .crafting import CraftingSystem
 from .parties import PartySystem
 from .bugs import BugReports
+from .social import SocialSystem
 from .entities import (
     DIRECTIONS, MOVE_KEYS, ActiveEffect, Enemy, Entity, GroundItem, MoveKeys, Player, Projectile,
 )
@@ -123,6 +124,7 @@ class World:
         self.crafting = CraftingSystem(self)  # oficinas e receitas (data/crafting.yaml)
         self.parties = PartySystem(self)  # grupos de jogadores
         self.bugs = BugReports(self)  # relatos de bug dos jogadores
+        self.social = SocialSystem(self)  # roleplay: fala local, ações, privado, ignorar e perfil
 
         self._spawn_enemies()
         self.npcs.spawn()
@@ -460,13 +462,22 @@ class World:
                 player.actions.append(("item", op, slot))
         elif kind == "chat":
             text = str(data.get("text", ""))[: C.CHAT_MAX_LEN].strip()
-            if text and not self._chat_allowed(player):
+            if not text or not self._chat_allowed(player):
                 return
-            if text and data.get("ch") == "org":
+            channel = data.get("ch")
+            if text.startswith("/"):  # comandos valem em qualquer canal
+                self._chat(player, text)
+            elif channel == "org":
                 self.orgs.chat(player, text)
-            elif text and data.get("ch") == "party":
+            elif channel == "party":
                 self.parties.chat(player, text)
-            elif text:
+            elif channel == "local":
+                self.social.say(player, text)
+            elif channel == "emote":
+                self.social.emote(player, text)
+            elif channel == "pm":
+                self.social.whisper(player, data.get("to"), text)
+            else:
                 self._chat(player, text)
         elif kind == "duel":
             self.duels.handle_op(player, data)
@@ -484,6 +495,8 @@ class World:
             self.parties.handle_op(player, data)
         elif kind == "bug":
             self.bugs.report(player, data)
+        elif kind == "social":
+            self.social.handle_op(player, data)
 
     def _chat_allowed(self, p: Player) -> bool:
         """No máximo C.CHAT_BURST mensagens de chat a cada C.CHAT_WINDOW segundos."""
@@ -549,12 +562,32 @@ class World:
                     self._private(player, "Use: /grupo Nome (ou clique no jogador)")
             elif command == "/g":
                 self.parties.chat(player, text[len(command):])
+            elif command == "/me":
+                self.social.emote(player, text[len(command):])
+            elif command == "/l":
+                self.social.say(player, text[len(command):])
+            elif command == "/p":
+                if args:
+                    self.social.whisper(player, args[0], text.split(None, 2)[2] if len(args) > 1 else "")
+                else:
+                    self._private(player, "Use: /p Nome mensagem (ou clique no jogador)")
+            elif command == "/r":
+                self.social.reply(player, text[len(command):])
+            elif command == "/ignorar":
+                if args:
+                    self.social.ignore(player, args[0])
+                else:
+                    self._private(player, "Use: /ignorar Nome (ou clique no jogador)")
+            elif command == "/designorar":
+                self.social.unignore(player, args[0] if args else "")
             else:
-                self._private(player, f"Comando desconhecido: {command}. Disponíveis: /who, /duelo Nome, "
+                self._private(player, f"Comando desconhecido: {command}. Disponíveis: /who, /me, /l, /p Nome, /r, "
+                                      "/ignorar Nome, /designorar Nome, /duelo Nome, "
                                       "/aceitar, /recusar, /render, /grupo Nome, /g, /org, /entrar, /sair, /o, /assumir, "
                                       "/disputar, /promover, /rebaixar, /expulsar")
             return
-        self._outbox.append((None, {"t": "chat", "from": player.name, "text": text}))
+        # canal Geral: todos os online, menos quem ignora quem falou
+        self.social.deliver(player, self.players.values(), {"t": "chat", "from": player.name, "text": text})
 
     # ================================================================ tick
 
@@ -612,6 +645,9 @@ class World:
             changed, party = self.parties.snapshot_for(player)
             if changed:  # o grupo só vai quando muda (null = saiu ou acabou)
                 you["party"] = party
+            changed, ignored = self.social.snapshot_for(player)
+            if changed:  # lista de ignorados também
+                you["ign"] = ignored
             you["staff"] = player.staff_role.id if player.staff_role else None
             if player.inventory.dirty:  # inventário só vai quando muda
                 you["inv"] = player.inventory.client_info()

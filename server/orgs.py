@@ -275,12 +275,9 @@ class OrgSystem:
         if not text:
             return
         org = self.content.orgs[m.org]
-        for other in self.world.players.values():
-            om = self.of(other)
-            if om and om.org == m.org:
-                self.world._outbox.append(
-                    (other.id, {"t": "chat", "from": p.name, "text": text, "ch": org.name, "color": org.color})
-                )
+        members = [o for o in self.world.players.values() if (om := self.of(o)) and om.org == m.org]
+        self.world.social.deliver(p, members, {"t": "chat", "from": p.name, "text": text, "ch": org.name,
+                                               "color": org.color})
 
     def claim(self, p: Player, rank_id: str) -> None:
         w = self.world
