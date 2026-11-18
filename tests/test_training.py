@@ -372,7 +372,7 @@ class TrainerContentTests(unittest.TestCase):
         npcs = NPCS_YAML.replace("trainer: treino", "trainer: sumiu")
         self.assert_error("treinador 'sumiu'", npcs=npcs)
         npcs = NPCS_YAML.replace("trainer: treino", "trainer: treino\n          goto: inicio")
-        self.assert_error("só um de goto, shop, trainer, craft ou bank", npcs=npcs)
+        self.assert_error("só um de goto, shop, trainer, craft, bank, repair ou travel", npcs=npcs)
 
     def test_skill_and_class_validation(self):
         self.assert_error("raça 'anao'", extra={"skills.yaml": "x:\n  name: X\n  type: self\n  cooldown: 1\n"

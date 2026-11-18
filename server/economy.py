@@ -6,9 +6,11 @@ NPC ("venda"). Inimigos não deixam moedas, e missões, regras e eventos não d�
 ("equipe"; também fica no registro da equipe).
 
 Moedas SAEM do mundo (somem) quando alguém compra de uma loja ("loja"), paga uma receita
-de oficina ("oficina"), aprende uma skill num treinador ("treinador") ou perde moedas por
-uma regra ("regra", ex.: morrer). Trocas entre jogadores e o banco só MUDAM moedas de
-lugar ("troca", "banco"): não criam nem destroem.
+de oficina ("oficina"), aprende uma skill num treinador ("treinador"), conserta equipamento
+("conserto"), viaja ("viagem"), amplia a bolsa ou o banco ("espaço"), paga a taxa de uma
+troca ou de um depósito no banco ("taxa") ou perde moedas por uma regra ("regra", ex.:
+morrer). Trocas entre jogadores e o banco só MUDAM moedas de lugar ("troca", "banco"):
+não criam nem destroem (a taxa, sim, destrói).
 
 Cada movimento é somado por dia, categoria e detalhe (o item vendido, a loja, a oficina...)
 e vai para o banco de dados no salvamento automático (a cada 60 s) e ao desligar o servidor.
@@ -26,11 +28,13 @@ if TYPE_CHECKING:
     from .world import World
 
 SOURCES = ("venda", "equipe")  # criam moedas
-SINKS = ("loja", "oficina", "treinador", "regra")  # destroem moedas
+SINKS = ("loja", "oficina", "treinador", "conserto", "viagem", "espaço", "taxa", "regra")  # destroem moedas
 MOVES = ("troca", "banco")  # só mudam de lugar
 LABELS = {
     "venda": "Vendas para lojas", "equipe": "Dadas pela equipe",
-    "loja": "Compras em lojas", "oficina": "Preço de receitas", "treinador": "Treinadores", "regra": "Perdas por regras",
+    "loja": "Compras em lojas", "oficina": "Preço de receitas", "treinador": "Treinadores",
+    "conserto": "Consertos", "viagem": "Viagens", "espaço": "Mais espaço (bolsa e banco)",
+    "taxa": "Taxas (troca e banco)", "regra": "Perdas por regras",
     "troca": "Trocas entre jogadores", "banco": "Banco (guardar e sacar)",
 }
 GROWTH_ALERT = 0.25  # avisa se as moedas em circulação cresceram mais que isto no período
@@ -93,7 +97,7 @@ def economy_report(db: Database, content: Content, days: int, now: float,
         entry[1] += count
 
     def detail_label(kind: str, detail: str) -> str:
-        if kind in ("venda", "loja"):
+        if kind in ("venda", "loja", "conserto"):
             return getattr(content.items.get(detail), "name", detail)
         if kind == "oficina":
             return getattr(content.crafting.get(detail), "name", detail)
@@ -161,7 +165,7 @@ def report_lines(rep: dict[str, Any]) -> list[str]:
     lines.append("")
     for k in rep["kinds"]:
         sign = {"in": "+", "out": "-", "moved": "="}[k["side"]]
-        lines.append(f"  {sign} {k['label']:<26} {k['amount']}")
+        lines.append(f"  {sign} {k['label']:<28} {k['amount']}")
     if rep["top_sold"]:
         lines += ["", "Itens que mais trouxeram moedas (vendas):"]
         lines += [f"  {r['what']:<24} {r['amount']:>7} moedas em {r['count']} venda(s)" for r in rep["top_sold"]]

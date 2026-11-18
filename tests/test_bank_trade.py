@@ -93,11 +93,12 @@ class BankTests(BankBase):
     def test_gold(self):
         self.p.inventory.add_gold(100)
         self.open_bank()
-        self.npc_op(op="deposit_gold", amount=500)  # mais do que tem: guarda tudo
-        self.assertEqual((self.p.inventory.gold, self.p.bank.gold), (0, 100))
-        self.npc_op(op="withdraw_gold", amount=30)
-        self.assertEqual((self.p.inventory.gold, self.p.bank.gold), (30, 70))
-        self.p.inventory.add_gold(-30)
+        msgs = self.npc_op(op="deposit_gold", amount=500)  # mais do que tem: guarda tudo, menos a taxa (2%)
+        self.assertEqual((self.p.inventory.gold, self.p.bank.gold), (0, 98))
+        self.assertIn("Você guardou 98 moedas (taxa do banco: 2).", self.texts(msgs))
+        self.npc_op(op="withdraw_gold", amount=28)  # sacar é de graça
+        self.assertEqual((self.p.inventory.gold, self.p.bank.gold), (28, 70))
+        self.p.inventory.add_gold(-28)
         self.assertIn("Você não tem moedas na bolsa.", self.texts(self.npc_op(op="deposit_gold", amount=1)))
         for bad in (0, -5, True, "10"):
             self.npc_op(op="withdraw_gold", amount=bad)
@@ -145,7 +146,7 @@ class BankTests(BankBase):
         self.assertIsNone(self.world.create_character(account_id, "Segundo", "humano"))
         other, err = self.world.enter(account_id, "Segundo")
         self.assertIsNone(err, err)
-        self.assertEqual((other.bank.count("presa_de_devorador"), other.bank.gold), (4, 50))
+        self.assertEqual((other.bank.count("presa_de_devorador"), other.bank.gold), (4, 49))  # 50 menos a taxa
 
     def test_bank_survives_restart(self):
         self.p.inventory.add(self.items["pocao_energia"], 3)
@@ -214,17 +215,18 @@ class TradeFlowTests(TradeBase):
         self.op(self.a, op="gold", amount=25)
         self.op(self.b, op="set", item="espada_curta", qty=1)
         self.assertEqual(self.info(self.b)["theirs"], {"items": {"pocao_vida": 4}, "gold": 25})
+        self.assertEqual(self.info(self.b)["fee"], C.TRADE_GOLD_FEE)
         self.world.drain_outbox()
         self.confirm_both()
         self.assertEqual((self.a.inventory.count("pocao_vida"), self.a.inventory.gold), (2, 15))
         self.assertEqual(self.a.inventory.count("espada_curta"), 1)
-        self.assertEqual((self.b.inventory.count("pocao_vida"), self.b.inventory.gold), (4, 25))
+        self.assertEqual((self.b.inventory.count("pocao_vida"), self.b.inventory.gold), (4, 24))  # taxa de 5%: 1
         self.assertEqual(self.b.inventory.count("espada_curta"), 0)
         self.assertNotIn(self.a.id, self.world.trades.trades)
         self.assertTrue(any(t.startswith("Troca feita com Beto. Você deu: 4× Poção") for t in self.texts(self.a)))
         # salvo na hora, os dois juntos, e registrado
         saved_b = self.db.load_character("Beto").data["inventory"]
-        self.assertEqual(saved_b["gold"], 25)
+        self.assertEqual(saved_b["gold"], 24)
         at, a, b, a_gave, b_gave = self.db.recent_trades(1)[0]
         self.assertEqual((a, b, a_gave, b_gave), ("Ana", "Beto", {"items": {"pocao_vida": 4}, "gold": 25},
                                                   {"items": {"espada_curta": 1}, "gold": 0}))

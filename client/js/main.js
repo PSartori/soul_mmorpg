@@ -17,6 +17,7 @@ import { BugWindow } from "./bugs.js";
 import { LOCAL_COLOR, PM_COLOR, ProfileWindow, bubbleTtl, roleplayMenuItems } from "./roleplay.js";
 import { Minimap } from "./minimap.js";
 import { BankWindow } from "./bank.js";
+import { RepairWindow, TravelWindow } from "./services.js";
 import { TradeInvitePanel, TradeWindow, tradeMenuItems } from "./trade.js";
 import { EventPanel } from "./events.js";
 
@@ -184,6 +185,16 @@ function handleMessage(msg) {
       closeCornerWindows();
       bankWindow.show(msg);
       break;
+    case "repair":
+      hideNpcWindows();
+      closeCornerWindows();
+      repairWindow.show(msg);
+      break;
+    case "travel":
+      hideNpcWindows();
+      closeCornerWindows();
+      travelWindow.show(msg);
+      break;
     case "npc_close":
       hideNpcWindows();
       break;
@@ -346,6 +357,8 @@ function applySnapshot(msg) {
   trainerWindow.refresh();
   craftWindow.refresh();
   bankWindow.refresh();
+  repairWindow.refresh();
+  travelWindow.refresh();
   if ("trade" in msg.you) tradeWindow.update(msg.you.trade);  // só vem quando muda (null = acabou)
   else tradeWindow.refresh();
   tradeInvitePanel.update(msg.you.tinv);
@@ -797,13 +810,21 @@ const bankWindow = new BankWindow({
   send: (msg) => conn?.send(msg),
   heading: npcHeading,
 });
+const serviceOptions = {
+  getDefs: () => state.defs,
+  getGold: () => inventoryUI.inv?.gold ?? 0,
+  send: (msg) => conn?.send(msg),
+  heading: npcHeading,
+};
+const repairWindow = new RepairWindow(serviceOptions);
+const travelWindow = new TravelWindow(serviceOptions);
 const tradeWindow = new TradeWindow({
   getDefs: () => state.defs,
   getInventory: () => inventoryUI.inv,
   send: (msg) => conn?.send(msg),
 });
-// Janelas abertas por NPCs: conversa, loja, treinador, oficina e banco (uma de cada vez)
-const npcWindows = () => [dialogBox, shopWindow, trainerWindow, craftWindow, bankWindow];
+// Janelas abertas por NPCs: conversa, loja, treinador, oficina, banco, conserto e viagem (uma de cada vez)
+const npcWindows = () => [dialogBox, shopWindow, trainerWindow, craftWindow, bankWindow, repairWindow, travelWindow];
 function hideNpcWindows() {
   for (const win of npcWindows()) win.hide();
 }
@@ -848,7 +869,7 @@ function openInCorner(win, force) {
   win.toggle(force);
   if (!win.isOpen) return;
   for (const other of cornerWindows()) if (other !== win) other.toggle(false);
-  if (shopWindow.isOpen || trainerWindow.isOpen || craftWindow.isOpen || bankWindow.isOpen) closeNpc();
+  if (npcWindows().some((w) => w !== dialogBox && w.isOpen)) closeNpc();
 }
 const toggleOrg = () => openInCorner(orgWindow);
 const toggleInventory = () => openInCorner(inventoryUI);

@@ -2,8 +2,10 @@
 // O banco é da conta: todos os personagens dela veem as mesmas coisas guardadas.
 //   {t: "npc", op: "deposit" | "withdraw", slot, qty}   move itens (o que couber)
 //   {t: "npc", op: "deposit_gold" | "withdraw_gold", amount}
-//   servidor -> {t: "bank", npc, name, title, color, size, slots: [[id, qty] | null], gold}
-import { RARITY_COLORS, describe } from "./inventory.js";
+//   {t: "npc", op: "expand", what: "bag" | "bank"}   compra mais espaços (paga com a bolsa)
+//   servidor -> {t: "bank", npc, name, title, color, size, slots: [[id, qty, estado%?] | null], gold,
+//                fee (taxa ao guardar moedas), upgrades: {bag|bank: {size, price (null = no máximo), add}}}
+import { RARITY_COLORS, describe, markCondition } from "./inventory.js";
 
 const el = (tag, className, text) => {
   const node = document.createElement(tag);
@@ -78,8 +80,36 @@ export class BankWindow {
       el("h4", "bank-label", "Sua bolsa"),
       this.grid(inv?.slots ?? [], defs, "deposit"),
       el("p", "hint", "Clique: move a pilha inteira · Shift + clique: só 1. Equipados ficam com você."),
+      this.upgradesBox(msg, inv),
       this.info,
     );
+  }
+
+  // Comprar mais espaços na bolsa e no baú
+  upgradesBox(msg, inv) {
+    const box = el("section", "shop-box bank-upgrades");
+    box.append(el("h4", "", "Mais espaço"));
+    const gold = inv?.gold ?? 0;
+    for (const [what, label] of [["bag", "Bolsa"], ["bank", "Baú (para a conta toda)"]]) {
+      const up = msg.upgrades?.[what];
+      if (!up) continue;
+      const row = el("div", "shop-row");
+      row.append(el("span", "item", `${label}: ${up.size} espaços`));
+      if (up.price === null) {
+        row.append(el("span", "hint", "no máximo"));
+      } else {
+        const buy = button(`+${up.add} · ${up.price}`, () => {
+          if (window.confirm(`Comprar mais ${up.add} espaços (${label.toLowerCase()}) por ${up.price} moedas?`)) {
+            this.send({ t: "npc", op: "expand", what });
+          }
+        }, "small");
+        if (gold < up.price) buy.classList.add("poor");
+        row.append(buy);
+      }
+      box.append(row);
+    }
+    box.append(el("p", "hint", "Cada ampliação custa mais que a anterior. Paga com as moedas da bolsa."));
+    return box;
   }
 
   goldBox(msg, inv) {
@@ -99,7 +129,9 @@ export class BankWindow {
       if (value > 0) this.send({ t: "npc", op, amount: value });
     };
     const text = el("div", "bank-gold-text");
-    text.append(el("span", "", `Guardado: ${msg.gold} moedas`), el("span", "hint", `Na bolsa: ${inv?.gold ?? 0}`));
+    const fee = msg.fee ? ` · guardar custa ${Math.round(msg.fee * 100)}%` : "";
+    text.append(el("span", "", `Guardado: ${msg.gold} moedas`),
+      el("span", "hint", `Na bolsa: ${inv?.gold ?? 0}${fee}`));
     box.append(text, amount,
       button("Guardar", () => move("deposit_gold", inv?.gold ?? 0), "small"),
       button("Sacar", () => move("withdraw_gold", msg.gold), "small"));
@@ -111,15 +143,16 @@ export class BankWindow {
     const grid = el("div", "bank-grid");
     slots.forEach((entry, slot) => {
       const node = el("div", "islot");
-      const [itemId, qty] = entry ?? [null, 0];
+      const [itemId, qty, cond] = entry ?? [null, 0];
       const def = itemId ? defs.items[itemId] : null;
       if (def) {
         node.classList.add("filled");
         node.style.setProperty("--rarity", RARITY_COLORS[def.rarity] ?? RARITY_COLORS.common);
         node.append(el("span", "", def.name));
         if (qty > 1) node.append(el("span", "qty", String(qty)));
+        markCondition(node, cond);
         node.title = op === "deposit" ? "Guardar no banco" : "Pegar do banco";
-        node.addEventListener("mouseenter", () => this.showInfo(def, defs));
+        node.addEventListener("mouseenter", () => this.showInfo(def, defs, cond));
         node.addEventListener("click", (ev) => this.send({ t: "npc", op, slot, qty: ev.shiftKey ? 1 : qty }));
       }
       grid.append(node);
@@ -127,9 +160,10 @@ export class BankWindow {
     return grid;
   }
 
-  showInfo(def, defs) {
+  showInfo(def, defs, cond) {
     this.info.replaceChildren();
     this.info.style.setProperty("--rarity", RARITY_COLORS[def.rarity] ?? RARITY_COLORS.common);
-    this.info.append(el("div", "name", def.name), ...describe(def, defs).map(([cls, text]) => el("div", cls, text)));
+    this.info.append(el("div", "name", def.name),
+      ...describe(def, defs, cond).map(([cls, text]) => el("div", cls, text)));
   }
 }

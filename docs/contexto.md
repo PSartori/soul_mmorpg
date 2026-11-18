@@ -38,7 +38,7 @@ Desperto, Espectral, Vigília, Coro Sombrio, Espectro, Devorador...) são
 - **Conteúdo é dado, não código.** Skills, efeitos, itens, inimigos, raças, classes,
   regras, organizações, papéis da equipe, NPCs, lojas, treinadores, oficinas, missões e mapas ficam em `data/`, validados ao
   carregar (um erro de digitação aponta arquivo, item e campo).
-- **Cada etapa termina testada**: testes automáticos (hoje 534) e verificação no
+- **Cada etapa termina testada**: testes automáticos (hoje 558) e verificação no
   navegador, e só então commit.
 
 ---
@@ -92,7 +92,8 @@ Desperto, Espectral, Vigília, Coro Sombrio, Espectro, Devorador...) são
 | `ddaba3b` | Minimapa | Mapa inteiro no canto (tecla N: pequeno, grande, escondido), com você, grupo, jogadores, NPCs e marcas de missão, inimigos por perto, portais e PvP |
 | `bd6b0f6` | Troca e banco | Troca entre jogadores (pedido pelo menu, os dois aceitam, salva na hora e fica registrada) e banco da conta no banqueiro e nos acampamentos |
 | `026ff9a` | Eventos em ondas | Invasões em `data/events.yaml`: ondas que marcham até um ponto, tempo, recompensa para quem lutou, começo pela equipe ou agenda, evento `event_end` nas regras |
-| — | Economia | Moedas só entram vendendo itens para NPCs (sem moedas de inimigos, missões, regras ou eventos); registro de entradas e saídas, relatório na administração e em `./admin.sh economia`, moedas por inimigo no balanceamento |
+| `8b42d26` | Economia | Moedas só entram vendendo itens para NPCs (sem moedas de inimigos, missões, regras ou eventos); registro de entradas e saídas, relatório na administração e em `./admin.sh economia`, moedas por inimigo no balanceamento |
+| — | Formas de gastar moedas | Desgaste e conserto do equipamento, viagem rápida entre NPCs, mais espaço na bolsa e no banco, taxas na troca e no banco, save v8 |
 
 ### Sistemas prontos
 
@@ -145,6 +146,11 @@ Desperto, Espectral, Vigília, Coro Sombrio, Espectro, Devorador...) são
   (administração, seção Economia, e `./admin.sh economia`) mostra quantas moedas existem, o que entrou e saiu,
   os itens que mais trouxeram moedas, quem tem mais e alertas de inflação. O relatório de balanceamento mostra
   quanto cada inimigo rende vendendo o saque.
+- **Formas de gastar moedas**: o equipamento se desgasta (arma ao acertar, armadura e acessório ao apanhar, 10%
+  ao morrer) e, quebrado, não dá bônus até um ferreiro consertar (Otto, Lia, Dorian; até 25% do valor). Viagem
+  rápida com Tomé, Bruno, Lia e Dorian para mapas já visitados (5 + 15 por mapa). Mais espaço na bolsa (até 40)
+  e no baú (até 80) comprado no banco, cada vez mais caro. Taxa de 5% nas moedas de uma troca e de 2% ao guardar
+  moedas no banco. Mapas visitados vão no save (v8).
 - **Eventos em ondas (invasões)**: definidos em `data/events.yaml`. Os inimigos de cada onda aparecem
   numa área e marcham até um ponto (ex.: a porta da cidade), atacando quem encontram; a próxima onda vem
   8 s depois de a anterior cair. Vencer todas dentro do tempo dá recompensas (ações das regras) a quem

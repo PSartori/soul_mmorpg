@@ -25,8 +25,12 @@
 #                                      | trainer: abre o treinador (data/trainers.yaml)
 #                                      | craft: abre a oficina (data/crafting.yaml)
 #                                      | bank: true  abre o banco da conta (guardar itens e moedas;
-#                                        o mesmo banco em qualquer NPC e para todos os personagens da conta)
-#                 (sem goto, shop, trainer, craft nem bank, a conversa termina depois das ações)
+#                                        o mesmo banco em qualquer NPC e para todos os personagens da conta;
+#                                        também vende espaços extras na bolsa e no banco)
+#                                      | repair: true  conserta o equipamento desgastado (cobra moedas)
+#                                      | travel: true  viagem rápida até outro NPC com travel, em mapas que o
+#                                        jogador já visitou (cobra moedas; este NPC também é um destino)
+#                 (sem goto, shop, trainer, craft, bank, repair nem travel, a conversa termina depois das ações)
 #       Nó sem opções mostra só um botão para encerrar.
 #
 # Para algo acontecer uma vez só, use uma marca: if { not_flags: [x] } + do [ set_flag: x ].
@@ -66,6 +70,8 @@ ferreiro:
           shop: armeiro
         - text: Pode forjar algo para mim?
           craft: forja
+        - text: Pode consertar meu equipamento?
+          repair: true
         - text: Agora não.
 
 ancia:
@@ -108,6 +114,8 @@ cacador:
       options:
         - text: Vamos negociar.
           shop: posto_de_caca
+        - text: Conhece algum atalho?
+          travel: true
         - text: Até mais.
 
 exploradora:
@@ -122,6 +130,10 @@ exploradora:
           shop: acampamento
         - text: Quero mexer no meu baú do banco.
           bank: true
+        - text: Dá um jeito no meu equipamento?
+          repair: true
+        - text: Preciso voltar rápido.
+          travel: true
         - text: O que guarda as ruínas?
           goto: guardiao
         - text: Até mais.
@@ -143,6 +155,10 @@ vigia:
           shop: acampamento
         - text: Quero mexer no meu baú do banco.
           bank: true
+        - text: Dá um jeito no meu equipamento?
+          repair: true
+        - text: Preciso voltar rápido.
+          travel: true
         - text: O que é aquele altar?
           craft: altar_do_vazio
         - text: Até mais.
@@ -153,7 +169,7 @@ banqueiro:
   color: "#b8a26a"
   dialogue:
     inicio:
-      text: "O que você deixar comigo fica guardado para todos os personagens da sua conta. E os acampamentos levam e trazem os baús."
+      text: "O que você deixar comigo fica guardado para todos os personagens da sua conta. E os acampamentos levam e trazem os baús. Se faltar espaço, eu arranjo mais... por um preço."
       options:
         - text: Quero abrir meu baú.
           bank: true
@@ -162,6 +178,25 @@ banqueiro:
         - text: Até mais.
     seguro:
       text: "Mais seguro que a sua bolsa. Ninguém tira nada daqui além de você."
+      options:
+        - text: Entendi.
+          goto: inicio
+
+guia:
+  name: Tomé
+  title: Guia de caravanas
+  color: "#8ab0a0"
+  dialogue:
+    inicio:
+      text: "Conheço cada trilha daqui até a Fenda. Se você já esteve lá, eu levo de volta num instante. De graça, não."
+      options:
+        - text: Quero viajar.
+          travel: true
+        - text: Como funciona?
+          goto: explica
+        - text: Até mais.
+    explica:
+      text: "Só levo para onde você já foi com as próprias pernas. Quanto mais longe, mais caro. E ninguém viaja no meio de uma briga."
       options:
         - text: Entendi.
           goto: inicio

@@ -277,7 +277,7 @@ class CraftingContentTests(unittest.TestCase):
 
     def test_npc_station_reference(self):
         self.assert_error("oficina 'sumiu'", npcs=NPCS_YAML.replace("craft: oficina", "craft: sumiu"))
-        self.assert_error("só um de goto, shop, trainer, craft ou bank",
+        self.assert_error("só um de goto, shop, trainer, craft, bank, repair ou travel",
                           npcs=NPCS_YAML.replace("craft: oficina", "craft: oficina\n          shop: mercearia"))
 
     def test_craft_event_conditions(self):

@@ -280,7 +280,8 @@ Combinado em 17/11/2026. A ordem pode mudar conforme as decisões em aberto.
 - Hierarquia sem abuso: limite de recusas, cargo vago por inatividade, torneios.
 - Fama e ranking (abates, mortes, chefes).
 - ~~Troca entre jogadores e banco~~ (feito).
-- ~~Controle da economia: moedas em circulação~~ (feito: registro, relatório e alertas). Falta: mais escoamentos.
+- ~~Controle da economia: moedas em circulação~~ (feito: registro, relatório e alertas).
+- ~~Mais formas de gastar moedas~~ (feito: desgaste e conserto, viagem rápida, mais espaço, taxas).
 
 **Em paralelo:** visão 3D (protótipo feito: mundo 3D com personagens 2D, tecla V; falta
 decidir se fica e o formato da arte), arte e som (sprites, animações, aparência do personagem), desempenho

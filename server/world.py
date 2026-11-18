@@ -37,6 +37,8 @@ from .social import SocialSystem
 from .trade import TradeSystem
 from .events import EventSystem
 from .economy import Economy
+from .travel import TravelSystem
+from .upkeep import Upkeep
 from .entities import (
     DIRECTIONS, MOVE_KEYS, ActiveEffect, Enemy, Entity, GroundItem, MoveKeys, Player, Projectile,
 )
@@ -131,6 +133,8 @@ class World:
         self.trades = TradeSystem(self)  # troca entre jogadores
         self.events = EventSystem(self)  # eventos em ondas (data/events.yaml)
         self.economy = Economy(self)  # de onde as moedas entram e para onde vão
+        self.upkeep = Upkeep(self)  # desgaste e conserto, ampliações e taxas
+        self.travel = TravelSystem(self)  # viagem rápida entre NPCs
 
         self._spawn_enemies()
         self.npcs.spawn()
@@ -218,9 +222,10 @@ class World:
         self._outbox.append((None, {"t": "content", **content.client_payload()}))
         for p in list(self.players.values()):
             p.staff_role = content.roles.get(p.staff_role.id) if p.staff_role else None
-            p.inventory = Inventory.from_dict(p.inventory.to_dict(), content.items)
+            p.inventory = Inventory.from_dict(p.inventory.to_dict(), content.items, max_size=C.BAG_MAX_SIZE)
             if p.bank is not None:
-                p.bank = Inventory.from_dict(p.bank.to_dict(), content.items, size=C.BANK_SIZE)
+                p.bank = Inventory.from_dict(p.bank.to_dict(), content.items, size=C.BANK_SIZE,
+                                             max_size=C.BANK_MAX_SIZE)
             old_class = p.class_id
             self._set_class(p, self._resolve_class({"race": p.race_id, "class": p.class_id}))
             if p.class_id != old_class:
@@ -370,7 +375,8 @@ class World:
         player.account_id = account_id
         player.ip = ip
         # antes do load: a vida máxima depende da raça e do equipamento
-        player.inventory = Inventory.from_dict(data.get("inventory") or {}, self.content.items)
+        player.inventory = Inventory.from_dict(data.get("inventory") or {}, self.content.items,
+                                               max_size=C.BAG_MAX_SIZE)
         self.training.load(player, data.get("skills"))  # conferidas com a classe logo abaixo
         self._set_class(player, self._resolve_class(data))
         player.load_dict(data)
@@ -386,7 +392,9 @@ class World:
         if tilemap.box_blocked(player.x, player.y, player.half, _player_blocks):
             player.x, player.y = tilemap.spawn
 
-        player.bank = Inventory.from_dict(self.db.load_bank(account_id), self.content.items, size=C.BANK_SIZE)
+        player.bank = Inventory.from_dict(self.db.load_bank(account_id), self.content.items, size=C.BANK_SIZE,
+                                          max_size=C.BANK_MAX_SIZE)
+        player.maps_seen.add(player.map_id)  # destinos da viagem rápida
         self.admin.load_player(player)
         self.quests.normalize(player)
         self.players[player.id] = player
@@ -418,8 +426,8 @@ class World:
         self.training.on_class_change(p)
         for slot, item in list(p.inventory.equipment.items()):
             if not self._can_equip(p, item):  # a raça/classe nova não pode usar: volta para a bolsa
-                del p.inventory.equipment[slot]
-                self._give_item(p, item, 1)
+                _, wear = p.inventory.unequip(slot)  # type: ignore[misc]
+                self._give_item(p, item, 1, wear)
                 self._private(p, f"{item.name} não serve para {p.race_def.name}/{cls.name} e foi desequipado.")
         p.inventory.dirty = True
         self.orgs.on_race_change(p)
@@ -815,6 +823,7 @@ class World:
         if p.move_queue:  # comandos de antes da viagem não valem no lugar novo
             p.ack = p.move_queue[-1][0]
             p.move_queue.clear()
+        p.maps_seen.add(map_id)  # destino da viagem rápida
         tilemap = self._map(p)
         self._outbox.append((p.id, {"t": "map", "map": self._map_payload(tilemap), "x": x, "y": y}))
         if changed:
@@ -1147,6 +1156,7 @@ class World:
         target.hp -= amount
         if duel_defeat:
             target.hp = max(1.0, target.hp)
+        self.upkeep.on_hit(target, source, skill, effect_id)  # desgaste do equipamento
         self._fx_at(target, {"k": "dmg", "id": target.id, "x": round(target.x), "y": round(target.y), "v": amount})
         if isinstance(target, Player):
             self.training.mark_combat(target)
@@ -1177,6 +1187,7 @@ class World:
 
         if isinstance(target, Player):
             target.dead_timer = C.RESPAWN_SECONDS
+            self.upkeep.on_death(target)  # o equipamento se desgasta
             if killer is None:
                 self._system(f"{target.name} foi derrotado.")
             else:
@@ -1281,10 +1292,10 @@ class World:
             item = inv.equipment.get(slot)  # type: ignore[arg-type]
             if item is None:
                 return
-            if inv.add(item, 1):
+            if inv.add(item, 1, inv.equip_wear.get(slot, 0)):  # type: ignore[arg-type]
                 self._private(p, "Inventário cheio.")
                 return
-            del inv.equipment[slot]  # type: ignore[arg-type]
+            inv.unequip(slot)  # type: ignore[arg-type]
             self._clamp_resources(p)
             return
         stack = inv.slots[slot] if 0 <= slot < inv.size else None  # type: ignore[operator]
@@ -1297,7 +1308,8 @@ class World:
                 x, y = p.x + fdx * C.DROP_DISTANCE, p.y + fdy * C.DROP_DISTANCE
                 if self._map(p).box_blocked(x, y, 4, _player_blocks):
                     x, y = p.x, p.y
-                drop = self._drop(taken.item, taken.qty, p.map_id, x, y, owner=None, scatter=False)
+                drop = self._drop(taken.item, taken.qty, p.map_id, x, y, owner=None, scatter=False,
+                                  wear=taken.wear)
                 drop.ignore_id, drop.ignore_until = p.id, self.time + C.DROP_PICKUP_DELAY
         elif stack.item.type == "consumable":
             self._use_consumable(p, slot, stack.item)  # type: ignore[arg-type]
@@ -1338,12 +1350,12 @@ class World:
             self._private(p, f"{item.name} é só para: {who}.")
             return
         inv = p.inventory
-        inv.take(slot, 1)
-        previous = inv.equipment.get(item.slot)  # type: ignore[arg-type]
-        inv.equipment[item.slot] = item  # type: ignore[index]
+        taken = inv.take(slot, 1)
+        assert taken is not None
+        previous = inv.unequip(item.slot)  # type: ignore[arg-type]
+        inv.equip(item.slot, item, taken.wear)  # type: ignore[arg-type]
         if previous:
-            inv.add(previous, 1)  # sempre cabe: o espaço do item novo acabou de vagar
-        inv.dirty = True
+            inv.add(previous[0], 1, previous[1])  # sempre cabe: o espaço do item novo acabou de vagar
         self._clamp_resources(p)
 
     @staticmethod
@@ -1351,15 +1363,15 @@ class World:
         p.hp = min(p.hp, p.max_hp)
         p.energy = min(p.energy, p.max_energy)
 
-    def _give_item(self, p: Player, item: ItemDef, qty: int) -> None:
+    def _give_item(self, p: Player, item: ItemDef, qty: int, wear: int = 0) -> None:
         """Põe no inventário; o que não couber cai no chão aos pés dele (só ele pega)."""
-        leftover = p.inventory.add(item, qty)
+        leftover = p.inventory.add(item, qty, wear)
         if leftover:
-            self._drop(item, leftover, p.map_id, p.x, p.y, owner=p.id, scatter=False)
+            self._drop(item, leftover, p.map_id, p.x, p.y, owner=p.id, scatter=False, wear=wear)
             self._private(p, "Inventário cheio: o que não coube ficou no chão.")
 
     def _drop(self, item: ItemDef, qty: int, map_id: str, x: float, y: float, owner: int | None,
-              scatter: bool = True) -> GroundItem:
+              scatter: bool = True, wear: int = 0) -> GroundItem:
         if scatter:
             angle = self.rng.uniform(0, 2 * math.pi)
             dist = self.rng.uniform(0, C.LOOT_SCATTER)
@@ -1369,7 +1381,7 @@ class World:
         drop = GroundItem(
             id=self._new_id(), item=item, qty=qty, x=x, y=y, owner_id=owner,
             owner_until=self.time + C.LOOT_OWNER_SECONDS, expires_at=self.time + C.LOOT_EXPIRE_SECONDS,
-            map_id=map_id,
+            map_id=map_id, wear=wear,
         )
         self.drops[drop.id] = drop
         return drop
@@ -1397,7 +1409,7 @@ class World:
                 continue  # ainda é de quem matou (ou do grupo dele)
             if drop.ignore_id == p.id and self.time < drop.ignore_until:
                 continue  # acabou de largar
-            taken = drop.qty - p.inventory.add(drop.item, drop.qty)
+            taken = drop.qty - p.inventory.add(drop.item, drop.qty, drop.wear)
             label = f"+{taken} {drop.item.name}"
             if taken == 0:
                 continue  # inventário cheio

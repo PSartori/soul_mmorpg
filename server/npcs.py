@@ -15,12 +15,18 @@ NPC fica vem do mapa. Fluxo, tudo por botões no cliente ({"t": "npc", "op": ...
   craft {i, times}      cria `times` vezes a receita i da oficina aberta (server/crafting.py)
   deposit {slot, qty}   guarda no banco aberto um item da bolsa (o que couber)
   withdraw {slot, qty}  tira do banco aberto para a bolsa (o que couber)
-  deposit_gold {amount} / withdraw_gold {amount}   guarda ou saca moedas
+  deposit_gold {amount} / withdraw_gold {amount}   guarda ou saca moedas (guardar paga taxa)
+  expand {what}         com o banco aberto: compra mais espaços na bolsa ("bag") ou no banco ("bank")
+  repair {where, slot}  conserta um item ("eq" + slot do corpo, ou "bag" + espaço da bolsa)
+  repair_all            conserta tudo o que está desgastado
+  travel {to}           viaja até outro NPC de viagem (id da entidade)
   close                 encerra
 
 O servidor responde com "dialog" (fala + opções visíveis), "shop" (o que a loja
 vende e quanto paga), "trainer" (o que ensina e o que falta para aprender), "craft"
-(receitas da oficina), "bank" (o que está guardado) ou "npc_close".
+(receitas da oficina), "bank" (o que está guardado e as ampliações), "repair" (o que
+está desgastado e o preço), "travel" (destinos e preços) ou "npc_close".
+Desgaste, conserto e ampliações: server/upkeep.py. Viagem: server/travel.py.
 
 O banco é da conta: todos os personagens dela veem as mesmas coisas guardadas. Cada
 depósito ou saque salva o personagem e o banco juntos, na hora. A conversa também fecha se o jogador se
@@ -35,6 +41,7 @@ from typing import TYPE_CHECKING
 from . import config as C
 from .entities import Npc
 from .rules import rule_matches
+from .upkeep import fee, worn_value
 
 if TYPE_CHECKING:
     from .content import CraftStation, DialogNode, NpcDef, ShopDef, TrainerDef
@@ -51,6 +58,7 @@ class Conversation:
     trainer: str | None = None  # treinador aberto
     station: str | None = None  # oficina aberta
     bank: bool = False  # banco aberto
+    service: str | None = None  # "repair" ou "travel" aberto
 
 
 def _qty(value: object) -> int | None:
@@ -120,6 +128,14 @@ class NpcSystem:
             self.bank_move(p, op, data.get("slot"), _qty(data.get("qty", 1)))
         elif op in ("deposit_gold", "withdraw_gold"):
             self.bank_gold(p, op, data.get("amount"))
+        elif op == "expand":
+            self.expand(p, data.get("what"))
+        elif op == "repair":
+            self.repair(p, data.get("where"), data.get("slot"), all_items=False)
+        elif op == "repair_all":
+            self.repair(p, None, None, all_items=True)
+        elif op == "travel":
+            self.travel(p, data.get("to"))
 
     def talk(self, p: Player, entity_id: object) -> None:
         npc = self.entities.get(entity_id) if isinstance(entity_id, int) and not isinstance(entity_id, bool) else None
@@ -163,6 +179,10 @@ class NpcSystem:
             self._open_station(p, npc, self.world.content.crafting[option.craft])
         elif option.bank:
             self._open_bank(p, npc)
+        elif option.repair:
+            self._open_repair(p, npc)
+        elif option.travel:
+            self._open_travel(p, npc)
         elif option.goto:
             talk.node = option.goto
             self._send_node(p, npc, option.goto)
@@ -201,7 +221,7 @@ class NpcSystem:
         stack = inv.slots[slot] if 0 <= slot < inv.size else None
         if stack is None:
             return
-        price = shop.buy_price(stack.item)
+        price = worn_value(shop.buy_price(stack.item), stack.item, stack.wear)  # desgastado vale menos
         if price <= 0:
             self.world._private(p, f"{npc.name} não compra {stack.item.name}.")
             return
@@ -254,7 +274,7 @@ class NpcSystem:
             return
         moved = source.take(slot, min(qty, room))
         assert moved is not None
-        dest.add(moved.item, moved.qty)
+        dest.add(moved.item, moved.qty, moved.wear)
         self._bank_changed(p, npc)
 
     def bank_gold(self, p: Player, op: str, amount: object) -> None:
@@ -268,10 +288,54 @@ class NpcSystem:
             self.world._private(p, "Você não tem moedas na bolsa." if op == "deposit_gold"
                                 else "Não há moedas guardadas no banco.")
             return
+        cut = fee(amount, C.BANK_DEPOSIT_FEE) if op == "deposit_gold" else 0  # guardar paga taxa
         source.add_gold(-amount)
-        dest.add_gold(amount)
-        self.world.economy.record("banco", "guardar" if op == "deposit_gold" else "sacar", amount)
+        dest.add_gold(amount - cut)
+        self.world.economy.record("banco", "guardar" if op == "deposit_gold" else "sacar", amount - cut)
+        if cut:
+            self.world.economy.record("taxa", "banco", cut)  # moedas saem do jogo
+            self.world._private(p, f"Você guardou {amount - cut} moedas (taxa do banco: {cut}).")
         self._bank_changed(p, npc)
+
+    def expand(self, p: Player, what: object) -> None:
+        npc = self._bank_open(p)
+        if npc is not None and self.world.upkeep.expand(p, what):
+            self._open_bank(p, npc)
+
+    # ------------------------------------------------------------ conserto e viagem
+
+    def repair(self, p: Player, where: object, slot: object, all_items: bool) -> None:
+        talk, npc = self._current(p)
+        if talk is None or talk.service != "repair":
+            return
+        upkeep = self.world.upkeep
+        done = upkeep.repair_all(p) if all_items else upkeep.repair(p, where, slot)
+        if done:
+            self._coins_fx(p, "conserto")
+        self._open_repair(p, npc)
+
+    def travel(self, p: Player, dest: object) -> None:
+        talk, npc = self._current(p)
+        if talk is None or talk.service != "travel":
+            return
+        if self.world.travel.go(p, npc, dest):
+            self._close(p.id)
+
+    def _open_repair(self, p: Player, npc: Npc) -> None:
+        talk = self.talks[p.id]
+        talk.node, talk.shop, talk.trainer, talk.station, talk.bank = None, None, None, None, False
+        talk.service = "repair"
+        self.world._outbox.append((p.id, {
+            "t": "repair", **self._header(npc), "items": self.world.upkeep.repair_list(p),
+        }))
+
+    def _open_travel(self, p: Player, npc: Npc) -> None:
+        talk = self.talks[p.id]
+        talk.node, talk.shop, talk.trainer, talk.station, talk.bank = None, None, None, None, False
+        talk.service = "travel"
+        self.world._outbox.append((p.id, {
+            "t": "travel", **self._header(npc), "stops": self.world.travel.payload(p, npc),
+        }))
 
     def _bank_changed(self, p: Player, npc: Npc) -> None:
         self.world._save(p)  # personagem e banco juntos, na hora (nunca duplica nem perde)
@@ -280,6 +344,7 @@ class NpcSystem:
     def _open_bank(self, p: Player, npc: Npc) -> None:
         talk = self.talks[p.id]
         talk.node, talk.shop, talk.trainer, talk.station, talk.bank = None, None, None, None, True
+        talk.service = None
         bank = p.bank
         if bank is None:  # não deveria acontecer: todo personagem no mundo tem conta
             self._close(p.id)
@@ -287,6 +352,8 @@ class NpcSystem:
         self.world._outbox.append((p.id, {
             "t": "bank", **self._header(npc), "size": bank.size,
             "slots": bank.client_info()["slots"], "gold": bank.gold,
+            "fee": C.BANK_DEPOSIT_FEE,  # taxa ao guardar moedas
+            "upgrades": self.world.upkeep.upgrades_info(p),  # próxima ampliação da bolsa e do banco
         }))
 
     # ------------------------------------------------------------ auxiliares
@@ -323,7 +390,7 @@ class NpcSystem:
 
     def _back_to_start(self, p: Player, npc: Npc, talk: Conversation) -> None:
         talk.node, talk.offer, talk.shop, talk.trainer, talk.station = npc.defn.start, None, None, None, None
-        talk.bank = False
+        talk.bank, talk.service = False, None
         self._send_node(p, npc, npc.defn.start)
 
     def _send_node(self, p: Player, npc: Npc, node_id: str) -> None:
@@ -353,6 +420,7 @@ class NpcSystem:
     def _open_shop(self, p: Player, npc: Npc, shop: ShopDef) -> None:
         talk = self.talks[p.id]
         talk.node, talk.shop, talk.trainer, talk.station, talk.bank = None, shop.id, None, None, False
+        talk.service = None
         items = self.world.content.items
         self.world._outbox.append((p.id, {
             "t": "shop", **self._header(npc), "shop": shop.name,
@@ -364,6 +432,7 @@ class NpcSystem:
     def _open_trainer(self, p: Player, npc: Npc, trainer: TrainerDef) -> None:
         talk = self.talks[p.id]
         talk.node, talk.shop, talk.trainer, talk.station, talk.bank = None, None, trainer.id, None, False
+        talk.service = None
         self.world._outbox.append((p.id, {
             "t": "trainer", **self._header(npc), "trainer": trainer.name,
             # cada skill: preço, se já sabe e o que falta (textos prontos para mostrar)
@@ -373,6 +442,7 @@ class NpcSystem:
     def _open_station(self, p: Player, npc: Npc, station: CraftStation) -> None:
         talk = self.talks[p.id]
         talk.node, talk.shop, talk.trainer, talk.station, talk.bank = None, None, None, station.id, False
+        talk.service = None
         self.world._outbox.append((p.id, {
             "t": "craft", **self._header(npc), "station": station.name,
             "recipes": self.world.crafting.payload(p, station),

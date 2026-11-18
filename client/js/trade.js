@@ -7,7 +7,7 @@
 //   {t: "trade", op: "cancel"}
 // O estado chega no snapshot: you.trade = {with, mine, theirs, v, ok_me, ok_them} (null = acabou)
 // e you.tinv = {from, left} (pedido esperando resposta).
-import { RARITY_COLORS, describe } from "./inventory.js";
+import { RARITY_COLORS, describe, markCondition } from "./inventory.js";
 
 const el = (tag, className, text) => {
   const node = document.createElement(tag);
@@ -133,10 +133,18 @@ export class TradeWindow {
     return box;
   }
 
-  itemName(def, qty) {
-    const name = el("span", "item", qty > 1 ? `${def.name} ×${qty}` : def.name);
+  // cond: estado (%) de cada unidade desgastada que vai na troca
+  itemName(def, qty, cond) {
+    const worn = (cond ?? []).filter((c) => c < 100).map((c) => (c === 0 ? "quebrado" : `${c}%`));
+    const text = (qty > 1 ? `${def.name} ×${qty}` : def.name) + (worn.length ? ` (${worn.join(", ")})` : "");
+    const name = el("span", "item", text);
     name.style.color = RARITY_COLORS[def.rarity] ?? RARITY_COLORS.common;
     return name;
+  }
+
+  // Quanto chega depois da taxa
+  received(data, gold) {
+    return gold - Math.floor(gold * (data.fee ?? 0));
   }
 
   mySide(data, defs, inv) {
@@ -148,7 +156,7 @@ export class TradeWindow {
       if (!def) continue;
       const row = el("div", "shop-row");
       row.addEventListener("mouseenter", () => this.showInfo(def, defs));
-      row.append(this.itemName(def, 1));
+      row.append(this.itemName(def, 1, data.mine.cond?.[itemId]));
       const have = countIn(inv, itemId);
       if (have > 1) {
         const input = numberInput(qty, have, `Quantidade de ${def.name}`);
@@ -169,6 +177,9 @@ export class TradeWindow {
     });
     goldRow.append(el("span", "item gold", "Moedas"), gold, el("span", "hint", `de ${inv?.gold ?? 0}`));
     box.append(goldRow);
+    if (data.mine.gold && data.fee) {
+      box.append(el("p", "hint", `${data.with} recebe ${this.received(data, data.mine.gold)} (taxa de ${Math.round(data.fee * 100)}%)`));
+    }
     return box;
   }
 
@@ -181,10 +192,15 @@ export class TradeWindow {
       if (!def) continue;
       const row = el("div", "shop-row");
       row.addEventListener("mouseenter", () => this.showInfo(def, defs));
-      row.append(this.itemName(def, qty));
+      row.append(this.itemName(def, qty, data.theirs.cond?.[itemId]));
       box.append(row);
     }
-    if (data.theirs.gold) box.append(el("div", "shop-row trade-gold", `${data.theirs.gold} moedas`));
+    if (data.theirs.gold) {
+      box.append(el("div", "shop-row trade-gold", `${data.theirs.gold} moedas`));
+      if (data.fee) {
+        box.append(el("p", "hint", `Você recebe ${this.received(data, data.theirs.gold)} (taxa de ${Math.round(data.fee * 100)}%)`));
+      }
+    }
     return box;
   }
 
@@ -202,6 +218,7 @@ export class TradeWindow {
         node.style.setProperty("--rarity", RARITY_COLORS[def.rarity] ?? RARITY_COLORS.common);
         node.append(el("span", "", def.name));
         if (entry[1] > 1) node.append(el("span", "qty", String(entry[1])));
+        markCondition(node, entry[2]);
         node.title = itemId in offered ? "Já está na troca" : "Oferecer na troca (tudo o que você tem)";
         node.addEventListener("mouseenter", () => this.showInfo(def, defs));
         node.addEventListener("click", () => {

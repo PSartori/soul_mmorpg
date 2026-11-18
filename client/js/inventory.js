@@ -24,8 +24,15 @@ function signed(n) {
   return n > 0 ? `+${n}` : `${n}`;
 }
 
-// Linhas de descrição de um item (bônus, uso, restrições...)
-export function describe(def, defs) {
+// Estado de um equipamento desgastado (100 = novo, 0 = quebrado), num espaço: marca no canto
+export function markCondition(node, cond) {
+  if (cond === undefined || cond >= 100) return;
+  node.classList.add(cond === 0 ? "broken" : "worn");
+  node.append(el("span", "cond", cond === 0 ? "quebrado" : `${cond}%`));
+}
+
+// Linhas de descrição de um item (bônus, uso, restrições...). cond: estado (%) deste exemplar
+export function describe(def, defs, cond) {
   const lines = [];
   const kind = [RARITY_NAMES[def.rarity], TYPE_NAMES[def.type], SLOT_NAMES[def.slot]].filter(Boolean).join(" · ");
   lines.push(["meta", kind]);
@@ -42,6 +49,12 @@ export function describe(def, defs) {
     ...(def.classes ?? []).map((c) => defs.classes[c]?.name ?? c),
   ];
   if (only.length) lines.push(["meta", `Só para: ${only.join(", ")}`]);
+  if (def.dur) {
+    const state = cond ?? 100;
+    lines.push([state === 0 ? "bad" : "meta", state === 0
+      ? "Quebrado: não dá bônus. Conserte com um ferreiro."
+      : `Durabilidade: ${state}%${state < 100 ? " (conserte com um ferreiro)" : ""}`]);
+  }
   if (def.value) lines.push(["meta", `Valor: ${def.value} moedas`]);
   return lines;
 }
@@ -70,7 +83,8 @@ export class InventoryUI {
     if (this.isOpen) this.render();
   }
 
-  // inv: { slots: [[id, qty] | null], equipment: {slot: id}, gold }; cooldowns: { itemId: s }
+  // inv: { size, slots: [[id, qty, estado%?] | null], equipment: {slot: id}, cond: {slot: %}, gold }
+  // cooldowns: { itemId: s }
   update(inv, cooldowns) {
     if (inv) this.inv = inv;
     this.cooling = new Set(Object.keys(cooldowns ?? {}));
@@ -88,7 +102,7 @@ export class InventoryUI {
     this.equipment.replaceChildren(
       ...Object.keys(SLOT_NAMES).map((slot) => {
         const itemId = this.inv.equipment[slot];
-        const node = this.slotNode(itemId, 1, defs, SLOT_NAMES[slot]);
+        const node = this.slotNode(itemId, 1, defs, SLOT_NAMES[slot], this.inv.cond?.[slot]);
         node.classList.add("equip");
         if (itemId) node.addEventListener("click", () => this.send({ t: "item", op: "unequip", slot }));
         return node;
@@ -97,8 +111,8 @@ export class InventoryUI {
 
     this.grid.replaceChildren(
       ...this.inv.slots.map((entry, index) => {
-        const [itemId, qty] = entry ?? [null, 0];
-        const node = this.slotNode(itemId, qty, defs);
+        const [itemId, qty, cond] = entry ?? [null, 0];
+        const node = this.slotNode(itemId, qty, defs, undefined, cond);
         if (itemId) {
           node.addEventListener("click", (ev) => {
             this.send({ t: "item", op: ev.shiftKey ? "drop" : "use", slot: index });
@@ -109,7 +123,7 @@ export class InventoryUI {
     );
   }
 
-  slotNode(itemId, qty, defs, label) {
+  slotNode(itemId, qty, defs, label, cond) {
     const node = el("div", "islot");
     if (label) node.append(el("span", "label", label));
     const def = itemId ? defs.items[itemId] : null;
@@ -119,14 +133,15 @@ export class InventoryUI {
     node.style.setProperty("--rarity", RARITY_COLORS[def.rarity] ?? RARITY_COLORS.common);
     node.append(el("span", "", def.name));
     if (qty > 1) node.append(el("span", "qty", String(qty)));
-    node.addEventListener("mouseenter", () => this.showInfo(def, defs));
+    markCondition(node, cond);
+    node.addEventListener("mouseenter", () => this.showInfo(def, defs, cond));
     return node;
   }
 
-  showInfo(def, defs) {
+  showInfo(def, defs, cond) {
     this.info.replaceChildren();
     const name = el("div", "name", def.name);
     this.info.style.setProperty("--rarity", RARITY_COLORS[def.rarity] ?? RARITY_COLORS.common);
-    this.info.append(name, ...describe(def, defs).map(([cls, text]) => el("div", cls, text)));
+    this.info.append(name, ...describe(def, defs, cond).map(([cls, text]) => el("div", cls, text)));
   }
 }

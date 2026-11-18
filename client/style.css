@@ -443,7 +443,7 @@ button:hover { background: #3a6c9c; }
   box-shadow: 0 6px 24px rgba(0, 0, 0, .55);
 }
 #dialog[hidden] { display: none; }
-#dialog header, #shop header { display: flex; align-items: flex-start; gap: 8px; }
+#dialog header, #shop header, #repair header, #travel header { display: flex; align-items: flex-start; gap: 8px; }
 #dialog header .npc-name { flex: 1; }
 .npc-name { font-size: 14px; }
 .npc-title { color: var(--muted); font-size: 12px; }
@@ -457,9 +457,11 @@ button:hover { background: #3a6c9c; }
   border-color: #4a4232;
 }
 #dialog .options button:hover { background: #3a3220; border-color: #8a7440; }
-#dialog button.close, #shop button.close { padding: 2px 8px; background: var(--panel-2); border-color: #353946; }
+#dialog button.close, #shop button.close, #repair button.close, #travel button.close {
+  padding: 2px 8px; background: var(--panel-2); border-color: #353946;
+}
 
-#shop, #bank {
+#shop, #bank, #repair, #travel {
   position: absolute;
   top: 12px;
   right: 12px;
@@ -474,7 +476,7 @@ button:hover { background: #3a6c9c; }
   box-shadow: 0 6px 24px rgba(0, 0, 0, .5);
   font-size: 13px;
 }
-#shop[hidden], #bank[hidden] { display: none; }
+#shop[hidden], #bank[hidden], #repair[hidden], #travel[hidden] { display: none; }
 #shop header { margin-bottom: 8px; }
 #shop .shop-title { flex: 1; min-width: 0; }
 #shop h3 { margin: 0; font-size: 15px; color: #ffe9b0; }
@@ -1025,3 +1027,21 @@ button.link {
 .eco-list li.in { color: #7bd65a; }
 .eco-list li.out { color: #ff9a9a; }
 .eco-list li.moved { color: var(--muted); }
+
+/* ---------------------------------------------------------------- desgaste, conserto e viagem */
+.islot .cond { position: absolute; left: 3px; bottom: 1px; font-size: 9px; font-weight: 700; color: #e8c060; }
+.islot.broken { border-style: dashed; }
+.islot.broken .cond { color: #ff7a6a; }
+.shop-info .bad, .shop-row .price.bad { color: #ff7a6a; }
+#repair header, #travel header { margin-bottom: 8px; }
+#repair .shop-title, #travel .shop-title { flex: 1; min-width: 0; }
+#repair h3, #travel h3 { margin: 0; font-size: 15px; color: #ffe9b0; }
+#repair .npc-name, #travel .npc-name { font-size: 12px; }
+#repair .shop-gold, #travel .shop-gold { color: var(--r-gold); font-weight: 600; white-space: nowrap; }
+#repair .hint, #travel .hint { margin: 4px 0; font-size: 11px; color: var(--muted); }
+#repair .shop-row .hint, #travel .shop-row .hint { margin: 0; white-space: nowrap; }
+.shop-row.locked .item { color: var(--muted); }
+.service-footer { display: flex; justify-content: flex-end; margin-bottom: 6px; }
+.service-footer button.small, .bank-upgrades button.small { padding: 2px 8px; font-size: 11px; white-space: nowrap; }
+.bank-upgrades { margin-top: 8px; }
+.bank-upgrades .shop-row .hint { margin: 0; }

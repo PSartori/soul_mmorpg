@@ -14,6 +14,9 @@
 #   modifiers  multiplicadores, como nos efeitos: speed, damage, damage_taken, energy_regen
 #   races      só essas raças podem equipar (vazio = qualquer)
 #   classes    só essas classes podem equipar (vazio = qualquer)
+#   durability quanto aguenta antes de quebrar (padrão 250). A arma se desgasta a cada golpe
+#              que acerta; armadura e acessório, a cada golpe recebido; morrer tira 10%.
+#              Quebrado não dá bônus até ser consertado (NPC com repair: true).
 #
 # Consumível (type: consumable):
 #   use        { heal: N, energy: N, effects: [ { id: efeito, duration: s } ] }
@@ -167,6 +170,7 @@ anel_do_guardiao:
   description: Arrancado do Guardião das Ruínas.
   type: equipment
   slot: accessory
+  durability: 400  # épico: aguenta mais
   rarity: epic
   value: 800
   bonus: { max_energy: 40 }
@@ -177,6 +181,7 @@ manto_do_vazio:
   description: Parece absorver a luz e os golpes.
   type: equipment
   slot: armor
+  durability: 400  # épico: aguenta mais
   rarity: epic
   value: 1200
   bonus: { max_hp: 250 }
@@ -187,6 +192,7 @@ presa_ancia:
   description: Do Devorador Ancião. Ainda está com fome.
   type: equipment
   slot: weapon
+  durability: 400  # épico: aguenta mais
   rarity: epic
   value: 1500
   modifiers: { damage: 1.3 }

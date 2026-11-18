@@ -10,7 +10,9 @@ Fluxo, tudo por botões ({"t": "trade", "op": ...}); /troca Nome é atalho:
   cancel            desiste
 
 Qualquer mudança numa das ofertas desfaz o aceite dos dois e muda a versão: ninguém
-troca algo diferente do que viu na tela. Quando os dois aceitam, o servidor confere
+troca algo diferente do que viu na tela. Moedas pagam taxa (C.TRADE_GOLD_FEE): quem
+recebe ganha um pouco menos do que foi oferecido. Equipamento vai com o desgaste que
+tem (os mais desgastados primeiro, e a tela mostra o estado de cada um). Quando os dois aceitam, o servidor confere
 tudo de novo (itens, moedas e espaço na bolsa de cada um), faz a troca de uma vez e
 salva os dois personagens e o registro da troca juntos, na hora.
 
@@ -27,6 +29,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from . import config as C
+from .upkeep import fee
 
 if TYPE_CHECKING:
     from .entities import Player
@@ -225,33 +228,35 @@ class TradeSystem:
                 return
         # faz tudo em cópias; só troca de verdade se couber tudo nas duas bolsas
         new_a, new_b = a.inventory.clone(), b.inventory.clone()
-        for inv, offer in ((new_a, offer_a), (new_b, offer_b)):
-            for item_id, qty in offer.items.items():
-                inv.remove_item(item_id, qty)
+        given = {}  # quem dá -> o que saiu da bolsa (com o desgaste de cada item)
+        for inv, offer, owner in ((new_a, offer_a, a), (new_b, offer_b, b)):
+            given[owner.id] = [stack for item_id, qty in offer.items.items() for stack in inv.take_item(item_id, qty)]
             inv.add_gold(-offer.gold)
-        items = w.content.items
-        for inv, offer, owner in ((new_a, offer_b, a), (new_b, offer_a, b)):
-            for item_id, qty in offer.items.items():
-                if inv.add(items[item_id], qty) > 0:
+        for inv, offer, giver, owner in ((new_a, offer_b, b, a), (new_b, offer_a, a, b)):
+            for stack in given[giver.id]:
+                if inv.add(stack.item, stack.qty, stack.wear) > 0:
                     self._changed(trade)
                     self._tell(trade, f"Não cabe tudo na bolsa de {owner.name}. Abram espaço e aceitem de novo.")
                     return
-            inv.add_gold(offer.gold)
+            inv.add_gold(offer.gold - fee(offer.gold, C.TRADE_GOLD_FEE))  # quem recebe paga a taxa
         a.inventory, b.inventory = new_a, new_b
         new_a.dirty = new_b.dirty = True
-        w.economy.record("troca", "", offer_a.gold + offer_b.gold)  # só mudam de mão
+        fees = fee(offer_a.gold, C.TRADE_GOLD_FEE) + fee(offer_b.gold, C.TRADE_GOLD_FEE)
+        w.economy.record("troca", "", offer_a.gold + offer_b.gold - fees)  # só mudam de mão
+        w.economy.record("taxa", "troca", fees)  # a taxa sai do jogo
         self._end(trade)
         w.save_players([a, b], trade=(a.name, b.name, offer_a.to_dict(), offer_b.to_dict()))
         log.info("troca: %s deu %s; %s deu %s", a.name, offer_a.to_dict(), b.name, offer_b.to_dict())
         for me, other, gave, got in ((a, b, offer_a, offer_b), (b, a, offer_b, offer_a)):
             w._private(me, f"Troca feita com {other.name}. Você deu: {self._summary(gave)}. "
-                           f"Recebeu: {self._summary(got)}.")
+                           f"Recebeu: {self._summary(got, received=True)}.")
 
-    def _summary(self, offer: Offer) -> str:
+    def _summary(self, offer: Offer, received: bool = False) -> str:
         items = self.world.content.items
         parts = [f"{qty}× {items[i].name}" if qty > 1 else items[i].name for i, qty in offer.items.items()]
         if offer.gold:
-            parts.append(f"{offer.gold} moedas")
+            cut = fee(offer.gold, C.TRADE_GOLD_FEE) if received else 0
+            parts.append(f"{offer.gold - cut} moedas" + (f" (taxa de {cut})" if cut else ""))
         return ", ".join(parts) or "nada"
 
     def _tell(self, trade: Trade, text: str) -> None:
@@ -340,12 +345,24 @@ class TradeSystem:
         other = self.world.players.get(other_id)
         return {
             "with": other.name if other else "",
-            "mine": trade.offers[p.id].to_dict(),
-            "theirs": trade.offers[other_id].to_dict(),
+            "mine": self._offer_info(p, trade.offers[p.id]),
+            "theirs": self._offer_info(other, trade.offers[other_id]),
+            "fee": C.TRADE_GOLD_FEE,  # taxa sobre as moedas: quem recebe ganha menos
             "v": trade.version,
             "ok_me": p.id in trade.accepted,
             "ok_them": other_id in trade.accepted,
         }
+
+    @staticmethod
+    def _offer_info(p: Player | None, offer: Offer) -> dict:
+        """A oferta para a tela, com o estado (%) dos equipamentos desgastados que vão."""
+        info = offer.to_dict()
+        if p is not None:
+            cond = {item_id: c for item_id, qty in offer.items.items()
+                    if min(c := p.inventory.wear_of(item_id, qty), default=100) < 100}
+            if cond:
+                info["cond"] = cond
+        return info
 
     def snapshot_for(self, p: Player) -> tuple[bool, dict | None]:
         """(mudou, dados). A troca só vai ao cliente quando muda (None = acabou)."""

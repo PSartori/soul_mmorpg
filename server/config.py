@@ -112,6 +112,26 @@ TRADE_RANGE = 4 * TILE_SIZE  # distância para propor ou aceitar uma troca
 TRADE_LEAVE_RANGE = 10 * TILE_SIZE  # afastou-se mais que isso: a troca é cancelada
 TRADE_INVITE_SECONDS = 30.0  # o pedido de troca expira
 TRADE_MAX_ITEMS = 8  # itens diferentes que cada um pode oferecer numa troca
+TRADE_GOLD_FEE = 0.05  # taxa sobre as moedas de uma troca: quem recebe ganha 5% a menos (arredonda para baixo)
+BANK_DEPOSIT_FEE = 0.02  # taxa ao guardar moedas no banco (sacar é de graça; arredonda para baixo)
+
+# --- Formas de gastar moedas (server/upkeep.py, server/travel.py) ------------
+# Ampliar a bolsa e o banco (na janela do banco): cada compra dá mais espaços e custa mais que a anterior
+BAG_UPGRADE_SLOTS = 5  # espaços a mais na bolsa por compra
+BAG_UPGRADE_PRICES = (150, 400, 1000, 2500)  # preço de cada compra, em ordem (20 -> 40 espaços)
+BANK_UPGRADE_SLOTS = 10  # espaços a mais no banco por compra
+BANK_UPGRADE_PRICES = (300, 800, 2000, 5000)  # (40 -> 80 espaços)
+BAG_MAX_SIZE = INVENTORY_SIZE + BAG_UPGRADE_SLOTS * len(BAG_UPGRADE_PRICES)
+BANK_MAX_SIZE = BANK_SIZE + BANK_UPGRADE_SLOTS * len(BANK_UPGRADE_PRICES)
+# Desgaste do equipamento: quebrado (durabilidade 0) não dá bônus até ser consertado num NPC
+ITEM_DURABILITY = 250  # durabilidade padrão do equipamento (items.yaml pode mudar com "durability")
+WEAR_PER_HIT = 1  # a arma perde isto a cada golpe que acerta; armadura e acessório, a cada golpe recebido
+DEATH_WEAR = 0.10  # morrer tira esta fração da durabilidade de tudo o que está equipado
+WEAR_WARN = 0.20  # avisa quando um item equipado chega a esta fração da durabilidade
+REPAIR_RATE = 0.25  # consertar um item do zero custa esta fração do valor dele (proporcional ao desgaste)
+# Viagem rápida: NPCs com "travel: true" levam a outros NPCs de viagem em mapas que o jogador já visitou
+TRAVEL_BASE_PRICE = 5  # preço mínimo de uma viagem
+TRAVEL_PRICE_PER_MAP = 15  # mais isto por mapa de distância (contando os portais pelo caminho)
 
 # --- Eventos em ondas (server/events.py, data/events.yaml) --------------------
 EVENT_WAVE_PAUSE = 8.0  # segundos entre uma onda derrotada e a próxima

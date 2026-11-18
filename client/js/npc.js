@@ -162,11 +162,13 @@ export class ShopWindow {
     const rows = [];
     (inv?.slots ?? []).forEach((entry, slot) => {
       if (!entry) return;
-      const [id, qty] = entry;
-      const price = msg.buys[id];
+      const [id, qty, cond] = entry;
       const def = defs.items[id];
-      if (!price || !def) return;
+      // desgastado vale menos (o servidor faz a mesma conta)
+      const price = cond === undefined ? msg.buys[id] : Math.max(1, Math.floor((msg.buys[id] * cond) / 100));
+      if (!msg.buys[id] || !def) return;
       const row = this.itemRow(def, defs, qty);
+      if (cond !== undefined) row.querySelector(".item").textContent += cond === 0 ? " (quebrado)" : ` (${cond}%)`;
       row.append(el("span", "price", `${price} cada`));
       row.append(button("Vender 1", () => this.send({ t: "npc", op: "sell", slot, qty: 1 }), "small"));
       if (qty > 1) {

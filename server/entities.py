@@ -125,6 +125,7 @@ class Player(Entity):
     profile: str = ""  # descrição do personagem (perfil), escrita pelo jogador
     ignored: list[str] = field(default_factory=list)  # personagens que ele ignora (nomes)
     social_sent: str = ""  # última lista de ignorados enviada ao cliente (só manda quando muda)
+    maps_seen: set[str] = field(default_factory=set)  # mapas já visitados (destinos da viagem rápida)
     last_pm: str | None = None  # com quem trocou a última mensagem privada (/r responde)
     bank: Inventory | None = None  # banco da conta (carregado ao entrar; salvo junto com o personagem)
     trade_sent: str = ""  # último estado da troca enviado ao cliente (só manda quando muda)
@@ -157,14 +158,14 @@ class Player(Entity):
     def _bonus(self, key: str) -> float:
         """Bônus somado da raça e dos equipamentos."""
         total = self.race_def.bonus.get(key, 0.0) if self.race_def else 0.0
-        for item in self.inventory.equipment.values():
+        for item in self.inventory.working_equipment():  # quebrado não dá bônus
             total += item.bonus.get(key, 0.0)
         return total
 
     def modifier(self, name: str) -> float:
         """Multiplicador dos efeitos ativos e dos equipamentos."""
         result = super().modifier(name)
-        for item in self.inventory.equipment.values():
+        for item in self.inventory.working_equipment():
             result *= item.modifiers.get(name, 1.0)
         return result
 
@@ -220,6 +221,7 @@ class Player(Entity):
                        "done": {qid: {"n": d[0], "at": d[1]} for qid, d in self.quests_done.items()}},
             "inventory": self.inventory.to_dict(),
             "social": {"profile": self.profile, "ignore": list(self.ignored)},
+            "travel": {"seen": sorted(self.maps_seen)},
             "map": self.map_id,
             "x": self.x,
             "y": self.y,
@@ -256,6 +258,9 @@ class Player(Entity):
             self.profile = social["profile"][: C.PROFILE_MAX_LEN]
         if isinstance(social.get("ignore"), list):
             self.ignored = [n for n in social["ignore"] if isinstance(n, str)][: C.IGNORE_MAX]
+        travel = data.get("travel") if isinstance(data.get("travel"), dict) else {}
+        if isinstance(travel.get("seen"), list):
+            self.maps_seen = {m for m in travel["seen"] if isinstance(m, str)}
         for key in ("x", "y", "hp", "energy", "fatigue"):
             value = data.get(key)
             if isinstance(value, (int, float)):
@@ -389,7 +394,7 @@ class Projectile:
 
 @dataclass(eq=False)
 class GroundItem:
-    """Item (ou moedas, se item for None) caído no chão."""
+    """Item caído no chão."""
 
     id: int
     item: ItemDef  # moedas não caem no chão: só itens
@@ -403,6 +408,7 @@ class GroundItem:
     ignore_until: float = 0.0
     map_id: str = ""
     party_id: int | None = None  # saque do grupo: qualquer membro pega durante a exclusividade
+    wear: int = 0  # desgaste do equipamento largado (vai junto com ele)
 
     def snapshot(self) -> dict:
         return {"id": self.id, "i": self.item.id, "q": self.qty,

@@ -140,8 +140,25 @@ Moedas só entram no jogo vendendo itens para lojas de NPC. Cada movimento é an
 (`server/economy.py`, tabela `economy`, gravada no salvamento automático):
 
 - **entram**: vendas para lojas (por item) e moedas dadas pela equipe;
-- **saem**: compras em lojas (por item), preço de receitas (por oficina), treinadores e perdas por regras;
+- **saem**: compras em lojas (por item), preço de receitas (por oficina), treinadores, consertos (por item),
+  viagens (por destino), mais espaço (bolsa/banco), taxas (troca/banco) e perdas por regras;
 - **só mudam de lugar**: trocas entre jogadores e banco (guardar/sacar).
+
+**Formas de gastar** (`server/upkeep.py`, `server/travel.py`; números em `config.py`):
+
+- **Desgaste e conserto**: equipamento tem durabilidade (padrão 250, `durability` em items.yaml). A arma perde 1
+  a cada golpe que acerta; armadura e acessório, a cada golpe recebido (dano de efeito contínuo não desgasta).
+  Morrer tira 10% de tudo o que está equipado. Quebrado (0%) continua equipado mas **não dá bônus**. O jogador
+  é avisado ao chegar a 20% e quando quebra. Conserta-se num NPC com `repair: true` (Otto, Lia, Dorian): do zero
+  até novo custa 25% do valor do item (`REPAIR_RATE`), proporcional ao desgaste. O desgaste vai junto com o item
+  (bolsa, banco, chão, troca) e itens desgastados valem menos na loja. O estado aparece em % no canto do item.
+- **Mais espaço**: na janela do banco, compra +5 espaços na bolsa (150, 400, 1000, 2500 moedas: de 20 até 40) e
+  +10 no baú da conta (300, 800, 2000, 5000: de 40 até 80).
+- **Taxas**: 5% das moedas de uma troca (quem recebe ganha menos; `TRADE_GOLD_FEE`) e 2% ao guardar moedas no
+  banco (`BANK_DEPOSIT_FEE`; sacar é de graça). Arredondam para baixo.
+- **Viagem rápida**: NPCs com `travel: true` (Tomé nos Campos de Início, Bruno, Lia, Dorian) levam até os outros,
+  nos mapas que o jogador já visitou a pé (save v8). Preço: 5 + 15 por mapa de distância pelos portais. Não dá em
+  combate nem em duelo; chega ao lado do NPC de destino.
 
 O relatório mostra quantas moedas existem (bolsas e bancos, com os valores atuais de quem está online), quanto
 entrou e saiu por dia, por tipo, os itens que mais trouxeram moedas, onde mais se gastou, quem tem mais moedas e
@@ -273,7 +290,9 @@ server/              Python (aiohttp)
   rules.py           vocabulário das regras (eventos, campos, ações) e comparação
   duels.py           desafios e duelos
   pathfinding.py     caminho dos inimigos: A* na grade de tiles e teste de linha livre
-  npcs.py            NPCs: conversa (nós de diálogo), lojas (compra e venda) e banco (guardar e sacar)
+  npcs.py            NPCs: conversa (nós de diálogo), lojas (compra e venda), banco, conserto e viagem
+  upkeep.py          formas de gastar: desgaste e conserto do equipamento, ampliação da bolsa/banco, taxas
+  travel.py          viagem rápida entre NPCs de viagem (destinos visitados, preço pela distância)
   trade.py           troca entre jogadores: pedido, ofertas, aceite dos dois e troca de uma vez
   economy.py         economia: anota de onde as moedas entram e para onde vão; relatório (moedas existentes)
   quests.py          missões: progresso, entrega, recompensas e marcadores ! / ?
@@ -306,7 +325,8 @@ client/              JavaScript puro, sem build
   js/admin.js        janela de administração
   js/social.js       menu do jogador, aviso de desafio e janela da organização
   js/npc.js          conversa com NPCs e janela da loja
-  js/bank.js         janela do banco (baú da conta, bolsa e moedas)
+  js/bank.js         janela do banco (baú da conta, bolsa, moedas e mais espaço)
+  js/services.js     janelas de conserto e de viagem rápida
   js/trade.js        aviso de pedido de troca e janela da troca
   js/quests.js       diário de missões, acompanhamento no painel e oferta na conversa
   js/skills.js       janela de skills (K), arrastar para a barra e janela do treinador
@@ -373,7 +393,8 @@ Servidor → cliente: `welcome {id, map, skills, effects, enemies, stat_labels, 
 `map {map, x, y}` (atravessou um portal; o mapa traz `npcs: [{id, t, x, y}]` para o minimapa), `org_data` (janela da organização),
 `profile {name, race, cls, lv, o, st, text, me, ignored, can_clear}` (perfil), `admin_economy` (relatório de economia), `dialog {npc, name, title, text, options}` / `shop {npc, shop, sells, buys}` /
 `trainer {npc, trainer, teaches: [{id, price, known, missing}]}` /
-`craft {npc, station, recipes: [{i, make, qty, needs, price, missing}]}` / `bank {npc, size, slots, gold}` / `npc_close` (NPCs), `announce {text, by}`, `kick {text}` (antes de
+`craft {npc, station, recipes: [{i, make, qty, needs, price, missing}]}` / `bank {npc, size, slots, gold, fee, upgrades}` /
+`repair {npc, items: [{where, slot, id, cond, price}]}` / `travel {npc, stops: [{id, npc, map, price, known}]}` / `npc_close` (NPCs), `announce {text, by}`, `kick {text}` (antes de
 desconectar), `admin_data`/`admin_result` (equipe), `error {msg}`, `snap {ents, projs, drops, fx, you}`
 (20×/s, só o que está perto; `you.skills` é a barra, com null nos espaços vazios; `you.inv`, `you.q` —
 diário e marcadores das missões —, `you.known` — skills conhecidas, com `ok` se a raça/classe atual
@@ -420,13 +441,14 @@ muda), `chat {from, text, ch?, id?, to?}` (`ch`: nada = Geral, `local`/`emote` c
   fim, os efeitos dos dois são limpos e o evento `duel_end` das regras dispara.
 - **Moedas**: **só entram no jogo quando alguém vende um item para uma loja de NPC.** Inimigos não deixam moedas,
   e missões, regras e eventos não dão moedas (dão itens, que podem ser vendidos). Entre jogadores, as moedas
-  circulam pela troca. Saem do jogo em compras nas lojas, receitas de oficina, treinadores e perdas por regras.
+  circulam pela troca. Saem do jogo em compras nas lojas, receitas de oficina, treinadores, consertos, viagens,
+  mais espaço, taxas e perdas por regras.
   O validador recusa `gold` em inimigos e a ação `give_gold`. Veja **Economia** acima.
 - **Saque**: inimigos deixam itens no chão conforme a tabela deles. Quem
   matou tem 15 s de exclusividade; depois qualquer um pega (passando por cima), e
   tudo some em 60 s. Item largado cai à frente e quem largou só pega de volta
   depois de 3 s.
-- **Itens**: 20 espaços que empilham; 3 de equipamento (arma, armadura, acessório)
+- **Itens**: 20 espaços que empilham (até 40 comprando mais no banco); 3 de equipamento (arma, armadura, acessório)
   que somam bônus e multiplicadores. Se a raça/classe mudar e o item não servir
   mais, ele volta para a bolsa. Consumíveis têm recarga e não são gastos à toa
   (poção de vida com a vida cheia).
@@ -500,13 +522,14 @@ muda), `chat {from, text, ch?, id?, to?}` (`ch`: nada = Geral, `local`/`emote` c
   invasores aparecem com ⚔ no nome e em laranja no minimapa; o painel no lado mostra onda, inimigos, tempo e
   a sua participação para todos os jogadores ("Vá até ... para ajudar").
 - **Banco** (opção `bank: true` num NPC): um por **conta**, dividido pelos personagens dela (`BANK_SIZE` = 40
-  espaços, mais moedas). Abre no banqueiro Matias (Campos de Início) e nos NPCs dos acampamentos (Lia nas Ruínas,
+  espaços, até 80 comprando mais; mais moedas, com 2% de taxa ao guardar). Abre no banqueiro Matias (Campos de Início) e nos NPCs dos acampamentos (Lia nas Ruínas,
   Dorian na Fenda): é o mesmo baú em qualquer um. Clique move a pilha inteira, Shift + clique só 1; move o que
   couber. Itens equipados ficam com o personagem. Cada depósito ou saque salva o personagem e o banco juntos
   (uma transação), na hora: se o servidor cair, o item não fica nos dois lugares nem some.
 - **Troca entre jogadores** (`server/trade.py`): "Propor troca" no menu do jogador ou `/troca Nome`, a até 4
   tiles (`TRADE_RANGE`); o outro responde no aviso (expira em 30 s). Cada um põe itens da bolsa (até 8
-  diferentes, `TRADE_MAX_ITEMS`) e moedas. Os dois aceitam; **qualquer mudança desfaz os dois aceites** e o
+  diferentes, `TRADE_MAX_ITEMS`) e moedas (quem recebe paga 5% de taxa; equipamento vai com o desgaste, os mais
+  gastos primeiro, e a tela mostra o estado). Os dois aceitam; **qualquer mudança desfaz os dois aceites** e o
   aceite vale só para a versão que o jogador viu. Na hora de trocar, o servidor confere de novo (ainda tem os
   itens? cabe tudo nas duas bolsas?) e faz tudo de uma vez ou nada. Os dois personagens e o registro da troca
   (tabela `trades`, `./admin.sh trocas`) são salvos juntos, na hora. Se alguém usar, largar ou vender algo da

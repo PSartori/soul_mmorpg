@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-SAVE_VERSION = 7
+SAVE_VERSION = 8
 
 
 class SaveVersionError(ValueError):
@@ -78,6 +78,16 @@ def _v6_to_v7(data: dict) -> dict:
     return data
 
 
+def _v7_to_v8(data: dict) -> dict:
+    """v8: mapas já visitados (viagem rápida), começando vazio; o servidor marca o mapa atual.
+
+    O inventário ganhou "size" (ampliações) e o desgaste do equipamento, ambos opcionais:
+    sem eles, tamanho padrão e itens novos.
+    """
+    data.setdefault("travel", {"seen": []})
+    return data
+
+
 MIGRATIONS: dict[int, Callable[[dict], dict]] = {
     1: _v1_to_v2,
     2: _v2_to_v3,
@@ -85,6 +95,7 @@ MIGRATIONS: dict[int, Callable[[dict], dict]] = {
     4: _v4_to_v5,
     5: _v5_to_v6,
     6: _v6_to_v7,
+    7: _v7_to_v8,
 }
 
 

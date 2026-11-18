@@ -173,6 +173,7 @@ class ItemDef:
     modifiers: dict[str, float] = field(default_factory=dict)  # multiplicadores, como nos efeitos
     races: tuple[str, ...] = ()  # vazio = qualquer raça
     classes: tuple[str, ...] = ()  # vazio = qualquer classe
+    durability: int = 0  # equipamento se desgasta até 0 (quebrado); 0 aqui = não se desgasta
     # consumível
     heal: float = 0.0
     energy: float = 0.0
@@ -185,7 +186,7 @@ class ItemDef:
             "stack": self.stack, "value": self.value, "slot": self.slot, "bonus": self.bonus,
             "mods": self.modifiers, "races": list(self.races), "classes": list(self.classes),
             "heal": self.heal, "energy": self.energy, "effects": [a.effect for a in self.effects],
-            "cd": self.cooldown,
+            "cd": self.cooldown, "dur": self.durability,
         }
 
 
@@ -335,6 +336,8 @@ class DialogOption:
     trainer: str | None = None  # abre este treinador (data/trainers.yaml)
     craft: str | None = None  # abre esta oficina (data/crafting.yaml)
     bank: bool = False  # abre o banco da conta (guardar itens e moedas)
+    repair: bool = False  # abre o conserto de equipamento
+    travel: bool = False  # abre a viagem rápida (este NPC também é um destino)
 
 
 @dataclass(frozen=True)
@@ -1039,7 +1042,8 @@ def _parse_item(iid: str, raw: Any) -> ItemDef:
                 raise ContentError(f"{mods_f.where}: modificador desconhecido '{key}' (válidos: {', '.join(MODIFIERS)})")
             modifiers[key] = mods_f.num(key)
         extra = {"slot": slot, "bonus": bonus, "modifiers": modifiers,
-                 "races": tuple(f.str_list("races")), "classes": tuple(f.str_list("classes"))}
+                 "races": tuple(f.str_list("races")), "classes": tuple(f.str_list("classes")),
+                 "durability": f.int("durability", C.ITEM_DURABILITY, minimum=1)}
         stack = 1  # equipamento não empilha
     else:
         if itype == "consumable":
@@ -1570,14 +1574,14 @@ def _parse_npc(nid: str, raw: Any, refs: _RuleRefs) -> NpcDef:
             o = _Fields(f"{n.where}.options[{i}]", opt_raw)
             conditions = _dialog_conditions(o, refs, "nas condições de diálogo")
             goto, shop, trainer, craft = (o.text(k, None) for k in ("goto", "shop", "trainer", "craft"))
-            bank = o.flag("bank", False)
-            if sum(x is not None for x in (goto, shop, trainer, craft)) + bank > 1:
-                raise ContentError(f"{o.where}: use só um de goto, shop, trainer, craft ou bank")
+            bank, repair, travel = (o.flag(k, False) for k in ("bank", "repair", "travel"))
+            if sum(x is not None for x in (goto, shop, trainer, craft)) + bank + repair + travel > 1:
+                raise ContentError(f"{o.where}: use só um de goto, shop, trainer, craft, bank, repair ou travel")
             options.append(DialogOption(
                 text=o.text("text"),
                 rule=Rule(id=f"{nid}.{node_id}[{i}]", when="talk", conditions=conditions,
                           actions=_parse_actions(o, "talk", refs)),
-                goto=goto, shop=shop, trainer=trainer, craft=craft, bank=bank,
+                goto=goto, shop=shop, trainer=trainer, craft=craft, bank=bank, repair=repair, travel=travel,
             ))
             o.done()
         nodes[node_id] = DialogNode(id=node_id, text=n.text("text"), options=tuple(options))
