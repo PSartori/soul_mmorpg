@@ -35,6 +35,7 @@ from .parties import PartySystem
 from .bugs import BugReports
 from .social import SocialSystem
 from .trade import TradeSystem
+from .events import EventSystem
 from .entities import (
     DIRECTIONS, MOVE_KEYS, ActiveEffect, Enemy, Entity, GroundItem, MoveKeys, Player, Projectile,
 )
@@ -127,6 +128,7 @@ class World:
         self.bugs = BugReports(self)  # relatos de bug dos jogadores
         self.social = SocialSystem(self)  # roleplay: fala local, ações, privado, ignorar e perfil
         self.trades = TradeSystem(self)  # troca entre jogadores
+        self.events = EventSystem(self)  # eventos em ondas (data/events.yaml)
 
         self._spawn_enemies()
         self.npcs.spawn()
@@ -198,6 +200,7 @@ class World:
         self.orgs.content = content
         self.admin.roles = content.roles
         self._spawn_enemies()
+        self.events.reset()  # os invasores sumiram junto com os outros inimigos
         self.npcs.spawn()  # encerra as conversas abertas (as falas podem ter mudado)
         self.projectiles.clear()
         for drop in list(self.drops.values()):
@@ -634,6 +637,7 @@ class World:
         self.duels.update()
         self.parties.update()
         self.trades.update()
+        self.events.update()
         self.npcs.update()
         self.quests.update()
         for enemy in list(self.enemies.values()):
@@ -680,6 +684,9 @@ class World:
             you["invite"] = self.duels.invite_for(player)  # desafio esperando resposta
             you["pinv"] = self.parties.invite_for(player)  # convite de grupo esperando resposta
             you["tinv"] = self.trades.invite_for(player)  # pedido de troca esperando resposta
+            changed, events = self.events.snapshot_for(player)
+            if changed:  # eventos em ondas em andamento (lista vazia = nenhum)
+                you["ev"] = events
             changed, trade = self.trades.snapshot_for(player)
             if changed:  # a troca só vai quando muda (null = acabou)
                 you["trade"] = trade
@@ -1146,6 +1153,8 @@ class World:
             self._train(target, "vitality", lost * C.VITALITY_XP_PER_DAMAGE)
         elif isinstance(target, Enemy) and isinstance(source, Player):
             target.target_id = source.id
+            if target.event_id:  # invasor: conta como participação no evento
+                self.events.on_damage(source, target, lost)
         if duel_defeat:
             self.duels.finish(self.duels.duel_of(target), loser=target, reason="defeat")  # type: ignore[arg-type]
         elif target.hp <= 0:
@@ -1185,7 +1194,8 @@ class World:
                 "duel": was_dueling,  # estava num duelo (que a morte encerrou)
             })
         elif isinstance(target, Enemy):
-            target.dead_timer = C.SUMMON_CORPSE_SECONDS if target.summoner_id else target.defn.respawn
+            target.dead_timer = (C.SUMMON_CORPSE_SECONDS if target.summoner_id or target.event_id
+                                 else target.defn.respawn)
             self._spawn_loot(target, killer)
             # Bônus de abate vai para o atributo principal (o primeiro de "train") da skill usada
             reward = target.defn.kill_xp * (C.ELITE_REWARD if target.elite else 1.0)
@@ -1430,7 +1440,7 @@ class World:
         if not e.alive:
             e.dead_timer -= dt
             if e.dead_timer <= 0:
-                if e.summoner_id is not None:  # invocado: não renasce
+                if e.summoner_id is not None or e.event_id is not None:  # invocado ou invasor: não renasce
                     self.enemies.pop(e.id, None)
                     return
                 e.x, e.y = e.home_x, e.home_y
@@ -1569,7 +1579,8 @@ class World:
                 return False
             return p.alive and p.map_id == e.map_id and not self._map(p).is_safe(p.x, p.y)
 
-        if math.hypot(e.x - e.home_x, e.y - e.home_y) > e.defn.leash:
+        # invasores de eventos não desistem por distância: a "casa" deles é para onde marcham
+        if e.event_id is None and math.hypot(e.x - e.home_x, e.y - e.home_y) > e.defn.leash:
             if e.defn.boss and (e.phase or e.hp < e.max_hp):
                 self._reset_enemy(e)  # chefe desistiu: volta inteiro, sem invocados, para a primeira fase
                 self._near_boss(e, f"{e.name} recua e se recompõe.")
@@ -1579,7 +1590,7 @@ class World:
         if valid(current):
             return current
         e.target_id = None
-        best, best_dist = None, e.defn.aggro_radius
+        best, best_dist = None, e.defn.aggro_radius * (C.EVENT_AGGRO_MULT if e.event_id else 1.0)
         for p in self.players.values():
             if valid(p):
                 d = math.hypot(p.x - e.x, p.y - e.y)

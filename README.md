@@ -74,7 +74,8 @@ jogadores online (com a conta de cada um, para quem pode banir) e, para o escolh
 expulsar, silenciar, banir (com tempo, motivo e **alcance**: só o personagem, a conta
 toda ou a conta e o IP), ir até/trazer, dar item ou moedas, trocar o papel e gerar uma
 **senha temporária** para a conta (permissão `account`, para quem esqueceu a senha);
-mais anúncio para todos, lista de banidos (personagens, contas e IPs, com desbanir), os
+mais anúncio para todos, **eventos em ondas** (iniciar e encerrar; permissão `events`), lista de banidos
+(personagens, contas e IPs, com desbanir), os
 **relatos de bug** abertos (quem, onde, quando, o texto e dados do navegador, com "Ir até o
 local" e "Resolvido") e o registro de tudo que a equipe fez. Quem tem a permissão `log`
 recebe um aviso no chat a cada relato novo.
@@ -193,6 +194,7 @@ Cada arquivo tem no topo a explicação de todos os campos.
 | `data/races.yaml` | raças: se aparecem na criação, classe inicial, bônus de vida/energia/velocidade |
 | `data/classes.yaml` | classes: raça, skills iniciais (`start_skills`), multiplicador de treino por atributo |
 | `data/rules.yaml` | regras "quando X, se Y, faça Z": morte, abates, subida de nível (veja abaixo) |
+| `data/events.yaml` | eventos em ondas (invasões): mapa, área de nascimento, ponto de marcha, ondas, tempo, recompensas, agenda |
 | `data/player.yaml` | raça padrão para personagens antigos |
 | `data/maps/<mapa>.txt` | terreno de cada mapa em texto (legenda no topo de `inicio.txt`); todo `.txt` da pasta vira um mapa |
 | `data/maps/<mapa>.yaml` | nome do mapa, zonas (padrão e áreas PvE/PvP), portais para outros mapas e onde ficam os NPCs |
@@ -214,8 +216,9 @@ humano_vira_espectral:
 - **Eventos:** `death` (com quem matou, raça/classe dele, skill, efeito, efeitos
   ativos, zona), `kill`, `level_up`, `duel_end` (vitória/derrota/empate e motivo),
   `rank_change` (entrou, saiu, promovido, rebaixado, expulso, assumiu, ganhou ou
-  perdeu numa disputa), `quest_complete` e `craft` (criou um item numa oficina: `item` e
-  `station`). Todo evento também tem `org` e `rank` de quem disparou.
+  perdeu numa disputa), `quest_complete`, `craft` (criou um item numa oficina: `item` e
+  `station`) e `event_end` (um evento em ondas terminou: `event`, `result` win/lose e `damage`; dispara para
+  quem participou). Todo evento também tem `org` e `rank` de quem disparou.
 - **Ações:** mensagens, perder/ganhar XP, trocar raça ou classe, marcas de
   progressão (`set_flag`), aplicar efeitos, dar itens, dar/tirar moedas, começar
   missão e ensinar uma skill (`learn_skill`).
@@ -255,6 +258,7 @@ server/              Python (aiohttp)
   parties.py         grupos: convites, liderança, chat e quem divide abates, missões e moedas
   accounts.py        contas: entrar/criar, personagens da conta, troca de senha, travas e limites
   bugs.py            relatos de bug: guarda texto, personagem, mapa, posição, zona, hora e dados do navegador
+  events.py          eventos em ondas: ondas, marcha, participação, vitória/derrota, recompensas e agenda
   social.py          roleplay: fala local e ações (com balão), mensagem privada, ignorar e perfil
   requirements.py    requisitos de treinadores e receitas (atributos, skills, condições) em texto
   inventory.py       inventário: espaços que empilham, equipamento e moedas
@@ -286,6 +290,7 @@ client/              JavaScript puro, sem build
   js/party.js        painel do grupo, aviso de convite e opções de grupo no menu do jogador
   js/account.js      telas de conta e de personagens, janela Conta (trocar senha, trocar de personagem)
   js/bugs.js         janela de relatar bug (e os últimos erros de JavaScript da página, que vão junto)
+  js/events.js       painel dos eventos em ondas (onda, inimigos, tempo, sua participação)
   js/roleplay.js     balões de fala, janela de perfil (P) e opções de roleplay no menu do jogador
   js/minimap.js      minimapa (N): terreno, portais, PvP, NPCs com marcas de missão, jogadores, grupo e inimigos
   js/input.js        teclado
@@ -337,7 +342,7 @@ Cliente → servidor (no jogo): `move {seq, up, down, left, right}`,
 `trade {op: invite|accept|decline|set|gold|confirm|cancel, target|item|qty|amount|v}`, `quest {op: abandon, id}`,
 `skills {op: bar, slot, id}` (id null = esvazia), `party {op: invite|accept|decline|leave|kick|lead, target}`,
 `chat {text, ch: party}`, `bug {text, client: {view, agent, screen, errors}}`, `chat {text, ch: local|emote|org|party}`,
-`chat {text, ch: pm, to}`, `social {op: profile|set_profile|ignore|unignore, name|text}`, `admin {op, ...}` (equipe), `item {op: use|drop, slot: n}`, `item {op: unequip, slot: weapon|armor|accessory}`,
+`chat {text, ch: pm, to}`, `social {op: profile|set_profile|ignore|unignore, name|text}`, `admin {op, ...}` (equipe; eventos: `event_start`/`event_stop {id}`), `item {op: use|drop, slot: n}`, `item {op: unequip, slot: weapon|armor|accessory}`,
 `meditate`, `rest`, `chat {text}`.
 
 Servidor → cliente: `welcome {id, map, skills, effects, enemies, stat_labels, ...}`,
@@ -350,7 +355,8 @@ desconectar), `admin_data`/`admin_result` (equipe), `error {msg}`, `snap {ents, 
 diário e marcadores das missões —, `you.known` — skills conhecidas, com `ok` se a raça/classe atual
 pode usar — e `you.party` — membros do grupo com vida, nível e mapa; null = sem grupo — só vêm quando
 mudam; `you.pinv` é o convite de grupo esperando resposta; `you.tinv` é o pedido de troca esperando resposta;
-`you.trade` — `{with, mine, theirs, v, ok_me, ok_them}`, null = sem troca — só vem quando muda; `you.mates` — `[id, x, y]` dos membros do grupo no
+`you.trade` — `{with, mine, theirs, v, ok_me, ok_them}`, null = sem troca — só vem quando muda; `you.ev` —
+eventos em ondas em andamento `[{id, name, map, here, wave, waves, left, time, pause, dmg, min}]` — só quando muda; `you.mates` — `[id, x, y]` dos membros do grupo no
 mesmo mapa, mesmo longe, para o minimapa; `you.ign` — lista de ignorados — também só vem quando
 muda), `chat {from, text, ch?, id?, to?}` (`ch`: nada = Geral, `local`/`emote` com o `id` de quem falou para o balão,
 `pm` com `to` no eco para quem mandou, ou o nome do canal da organização/grupo), `sys {text}`.
@@ -456,6 +462,16 @@ muda), `chat {from, text, ch?, id?, to?}` (`ch`: nada = Geral, `local`/`emote` c
     perfil" (só de quem está online). Silenciado não muda o perfil; a equipe com `mute` pode apagar
     ("Apagar descrição" no perfil; fica no registro).
   - Comandos digitados começam com `/` em qualquer canal.
+- **Eventos em ondas** (`server/events.py`, `data/events.yaml`): os inimigos de cada onda nascem em tiles livres da
+  área `spawn` e marcham até `march` (a "casa" deles), atacando quem encontram; enxergam jogadores mais longe
+  (`EVENT_AGGRO_MULT`), não desistem por distância e não renascem. Quando todos de uma onda caem, a próxima vem
+  `EVENT_WAVE_PAUSE` (8 s) depois. Vencer a última dentro de `time` é vitória: cada participante online (dano aos
+  invasores ≥ `min_damage`) recebe `rewards`; acabar o tempo é derrota e os invasores somem. Nos dois casos o
+  evento `event_end` das regras dispara para os participantes. Começa pela equipe (janela de administração,
+  permissão `events`, fica no registro) ou sozinho a cada `every` minutos com `min_players` online; um evento por
+  mapa. A equipe pode encerrar (sem recompensa); recarregar o conteúdo encerra os que estão em andamento. Os
+  invasores aparecem com ⚔ no nome e em laranja no minimapa; o painel no lado mostra onda, inimigos, tempo e
+  a sua participação para todos os jogadores ("Vá até ... para ajudar").
 - **Banco** (opção `bank: true` num NPC): um por **conta**, dividido pelos personagens dela (`BANK_SIZE` = 40
   espaços, mais moedas). Abre no banqueiro Matias (Campos de Início) e nos NPCs dos acampamentos (Lia nas Ruínas,
   Dorian na Fenda): é o mesmo baú em qualquer um. Clique move a pilha inteira, Shift + clique só 1; move o que
@@ -542,6 +558,8 @@ barras de vida, marcas de missão e números são desenhados no canvas 2D por ci
 - Lojas com estoque infinito e preço fixo.
 - Banco sem abas nem ordenação, e sem expansão de espaços (fica em `BANK_SIZE`).
 - Troca sem mercado/leilão: só entre dois jogadores perto um do outro.
+- Eventos sem agenda por horário do dia (só "a cada N minutos") e sem objetivos além de derrotar as ondas
+  (ex.: proteger um NPC ou uma estrutura); a recompensa é igual para todos os participantes.
 - Missões não exigem grupo (o grupo só divide os abates); sem missões com tempo limite ou que falham.
 - Saque de itens do grupo é de quem pegar primeiro (sem rodízio nem sorteio).
 - Outros jogadores são desenhados com suavização simples, não interpolação com atraso fixo.

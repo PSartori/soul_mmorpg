@@ -74,6 +74,7 @@ export class AdminUI {
     const sections = [this.playersSection(defs), this.actionsSection(defs)];
     if (this.can("reload")) sections.push(this.reloadSection());
     if (this.can("announce")) sections.push(this.announceSection());
+    if (this.data.events) sections.push(this.eventsSection());
     if (this.data.bans) sections.push(this.bansSection());
     if (this.data.bugs) sections.push(this.bugsSection());
     if (this.data.log) sections.push(this.logSection());
@@ -208,6 +209,27 @@ export class AdminUI {
       this.op("reload");
     });
     box.append(b);
+    return box;
+  }
+
+  eventsSection() {
+    const box = el("section", "adm-box");
+    box.append(el("h4", "", "Eventos em ondas"));
+    if (!this.data.events.length) box.append(el("p", "hint", "Nenhum evento em data/events.yaml."));
+    for (const ev of this.data.events) {
+      const row = el("div", "adm-row adm-event");
+      const auto = ev.auto > 0 ? ` · sozinho a cada ${ev.auto} min` : "";
+      const info = el("span", "", `${ev.name} · ${ev.map} · ${ev.waves} ondas${auto}`);
+      if (ev.running) info.prepend(el("b", "adm-live", "AGORA "));
+      const b = el("button", ev.running ? "danger" : "", ev.running ? "Encerrar" : "Iniciar");
+      b.type = "button";
+      b.addEventListener("click", () => {
+        if (ev.running && !window.confirm(`Encerrar ${ev.name}? Ninguém ganha a recompensa.`)) return;
+        this.op(ev.running ? "event_stop" : "event_start", { id: ev.id });
+      });
+      row.append(info, b);
+      box.append(row);
+    }
     return box;
   }
 

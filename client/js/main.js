@@ -18,6 +18,7 @@ import { LOCAL_COLOR, PM_COLOR, ProfileWindow, bubbleTtl, roleplayMenuItems } fr
 import { Minimap } from "./minimap.js";
 import { BankWindow } from "./bank.js";
 import { TradeInvitePanel, TradeWindow, tradeMenuItems } from "./trade.js";
+import { EventPanel } from "./events.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -291,6 +292,7 @@ function leaveGame() {
   partyInvitePanel.update(null);
   tradeInvitePanel.update(null);
   tradeWindow.update(null);
+  eventPanel.update([]);
   partyPanel.update(null);
   state.partyIds = new Set();
   state.bubbles.clear();
@@ -344,6 +346,7 @@ function applySnapshot(msg) {
   if ("trade" in msg.you) tradeWindow.update(msg.you.trade);  // só vem quando muda (null = acabou)
   else tradeWindow.refresh();
   tradeInvitePanel.update(msg.you.tinv);
+  if (msg.you.ev) eventPanel.update(msg.you.ev);  // eventos em ondas: só vêm quando mudam
   skillsWindow.update(msg.you.known);
   if ("party" in msg.you) {  // só vem quando muda (null = sem grupo)
     partyPanel.update(msg.you.party);
@@ -875,6 +878,7 @@ $("org-open").addEventListener("click", (ev) => {
 const invitePanel = new InvitePanel({ root: $("invite"), send: (msg) => conn?.send(msg) });
 const partyInvitePanel = new PartyInvitePanel({ root: $("party-invite"), send: (msg) => conn?.send(msg) });
 const tradeInvitePanel = new TradeInvitePanel({ root: $("trade-invite"), send: (msg) => conn?.send(msg) });
+const eventPanel = new EventPanel({ root: $("event") });
 const partyPanel = new PartyPanel({
   root: $("party"),
   send: (msg) => conn?.send(msg),

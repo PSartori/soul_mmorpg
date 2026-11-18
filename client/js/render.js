@@ -381,7 +381,7 @@ export class Renderer {
     const role = e.st ? this.defs.roles?.[e.st] : null;
     const tag = role ? `[${role.tag}] ` : "";
     // inimigos: "★ Nome · Nv 20" (★ = elite), na cor da dificuldade para você
-    const label = e.k === "enemy" ? `${e.el ? "★ " : ""}${e.n}${e.lv ? ` · Nv ${e.lv}` : ""}` : e.n;
+    const label = e.k === "enemy" ? `${e.inv ? "⚔ " : ""}${e.el ? "★ " : ""}${e.n}${e.lv ? ` · Nv ${e.lv}` : ""}` : e.n;
     const left = x - ctx.measureText(tag + label).width / 2;
     ctx.textAlign = "left";
     ctx.fillStyle = "rgba(0,0,0,0.8)";

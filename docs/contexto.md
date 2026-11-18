@@ -38,7 +38,7 @@ Desperto, Espectral, Vigília, Coro Sombrio, Espectro, Devorador...) são
 - **Conteúdo é dado, não código.** Skills, efeitos, itens, inimigos, raças, classes,
   regras, organizações, papéis da equipe, NPCs, lojas, treinadores, oficinas, missões e mapas ficam em `data/`, validados ao
   carregar (um erro de digitação aponta arquivo, item e campo).
-- **Cada etapa termina testada**: testes automáticos (hoje 505) e verificação no
+- **Cada etapa termina testada**: testes automáticos (hoje 521) e verificação no
   navegador, e só então commit.
 
 ---
@@ -89,7 +89,8 @@ Desperto, Espectral, Vigília, Coro Sombrio, Espectro, Devorador...) são
 | `3fa50f1` | Relatar bug | Botão no painel; o relato vai com mapa, posição, hora e dados do navegador; equipe vê, vai até o local e resolve |
 | `e44704b` | Roleplay | Fala local em balão, ações (/me), mensagem privada, ignorar e perfil do personagem (janela P), save v7 |
 | `ddaba3b` | Minimapa | Mapa inteiro no canto (tecla N: pequeno, grande, escondido), com você, grupo, jogadores, NPCs e marcas de missão, inimigos por perto, portais e PvP |
-| — | Troca e banco | Troca entre jogadores (pedido pelo menu, os dois aceitam, salva na hora e fica registrada) e banco da conta no banqueiro e nos acampamentos |
+| `bd6b0f6` | Troca e banco | Troca entre jogadores (pedido pelo menu, os dois aceitam, salva na hora e fica registrada) e banco da conta no banqueiro e nos acampamentos |
+| — | Eventos em ondas | Invasões em `data/events.yaml`: ondas que marcham até um ponto, tempo, recompensa para quem lutou, começo pela equipe ou agenda, evento `event_end` nas regras |
 
 ### Sistemas prontos
 
@@ -137,6 +138,12 @@ Desperto, Espectral, Vigília, Coro Sombrio, Espectro, Devorador...) são
   perfil ou clicando num nome no chat; **ignorar** (sem mensagens de nenhum canal, desafios nem convites;
   a equipe não pode ser ignorada); **perfil** com descrição livre (janela P e "Ver perfil" no menu), que
   a equipe pode apagar. Ignorados e perfil vão no save (v7).
+- **Eventos em ondas (invasões)**: definidos em `data/events.yaml`. Os inimigos de cada onda aparecem
+  numa área e marcham até um ponto (ex.: a porta da cidade), atacando quem encontram; a próxima onda vem
+  8 s depois de a anterior cair. Vencer todas dentro do tempo dá recompensas (ações das regras) a quem
+  causou dano suficiente; acabar o tempo é derrota. Começa pela equipe (permissão `events`, na janela de
+  administração) ou sozinho a cada tantos minutos, com um mínimo de jogadores online. Painel no lado com
+  onda, inimigos restantes, tempo e a sua participação; invasores aparecem com ⚔ e em laranja no minimapa.
 - **Regras em YAML** (`data/rules.yaml`): "quando X, se Y, faça Z" para morte, abate,
   subida de nível, fim de duelo e mudança de cargo — penalidades, transformações,
   recompensas.
@@ -189,6 +196,8 @@ Desperto, Espectral, Vigília, Coro Sombrio, Espectro, Devorador...) são
   Vulto (20), Carniçal (25), Abissal (36), Arauto do Vazio (42), Colosso (47); chefes
   Guardião das Ruínas (30) e Devorador Ancião (50), com os invocados Estilhaço e Cria
   do vazio. **Itens**: 19, entre poções, materiais e equipamentos (até épicos).
+- **Evento de exemplo**: Invasão dos Campos (3 ondas de Espectros, Brutos e um Devorador marchando até a
+  porta leste da cidade; 40 moedas e 2 poções para quem lutar; sozinho a cada 90 min com 3 online).
 - **Regras de exemplo**: Humano morto por Espectro vira Espectral; Espectral morto
   por Desperto volta a Humano; perda de XP ao morrer em PvE/PvP; marca de agressor.
 

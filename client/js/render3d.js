@@ -733,7 +733,7 @@ export class Renderer3D {
     ctx.font = e.boss ? "bold 12px system-ui, sans-serif" : "11px system-ui, sans-serif";
     const role = e.st ? this.defs.roles?.[e.st] : null;
     const tag = role ? `[${role.tag}] ` : "";
-    const label = e.k === "enemy" ? `${e.el ? "★ " : ""}${e.n}${e.lv ? ` · Nv ${e.lv}` : ""}` : e.n;
+    const label = e.k === "enemy" ? `${e.inv ? "⚔ " : ""}${e.el ? "★ " : ""}${e.n}${e.lv ? ` · Nv ${e.lv}` : ""}` : e.n;
     const left = hx - ctx.measureText(tag + label).width / 2;
     ctx.textAlign = "left";
     ctx.fillStyle = "rgba(0,0,0,0.8)";

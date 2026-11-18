@@ -28,6 +28,9 @@ EVENT_FIELDS: dict[str, tuple[str, ...]] = {
     "quest_complete": ("race", "class", "quest"),
     # o personagem criou um item numa oficina (data/crafting.yaml); dispara uma vez por criação
     "craft": ("race", "class", "item", "station"),
+    # um evento em ondas (data/events.yaml) terminou; dispara para quem participou (causou dano)
+    #   result: win (venceram todas as ondas) | lose (acabou o tempo); damage: dano que o personagem causou
+    "event_end": ("race", "class", "event", "result", "damage"),
 }
 # Todo evento também recebe a organização e o cargo atuais de quem disparou
 EVENT_FIELDS = {

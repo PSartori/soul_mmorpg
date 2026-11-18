@@ -112,6 +112,8 @@ class AdminSystem:
             "bug_close": ("log", self._bug_close),
             "bug_goto": ("teleport", self._bug_goto),
             "clear_profile": ("mute", self._clear_profile),
+            "event_start": ("events", self._event_start),
+            "event_stop": ("events", self._event_stop),
         }
         if op not in ops:
             return
@@ -202,6 +204,8 @@ class AdminSystem:
             payload["bans"] = [{"name": n, "kind": kind, "what": label, "until": format_until(u), "reason": r, "by": b}
                                for kind, label in BAN_KINDS.items()
                                for n, u, r, b in self.db.list_active(kind, now)]
+        if role.can("events"):
+            payload["events"] = self.world.events.admin_info()
         if role.can("log"):
             payload["bugs"] = [
                 {"id": r["id"], "at": time.strftime("%d/%m %H:%M", time.localtime(r["at"])),
@@ -279,6 +283,20 @@ class AdminSystem:
             self.world._private(target, "Você pode falar de novo.")
         self._record(p, "tirou o silêncio de", name)
         self._reply(p, True, f"{name} pode falar de novo.")
+
+    def _event_start(self, p: Player, data: dict) -> None:
+        event_id = str(data.get("id", ""))
+        ok, text = self.world.events.start(event_id, by=p.name)
+        if ok:
+            self._record(p, "começou o evento", event_id)
+        self._reply(p, ok, text)
+
+    def _event_stop(self, p: Player, data: dict) -> None:
+        event_id = str(data.get("id", ""))
+        ok, text = self.world.events.stop(event_id)
+        if ok:
+            self._record(p, "encerrou o evento", event_id)
+        self._reply(p, ok, text)
 
     def _clear_profile(self, p: Player, data: dict) -> None:
         """Apaga a descrição do perfil de alguém (texto ofensivo, por exemplo)."""

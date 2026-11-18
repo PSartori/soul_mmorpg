@@ -128,6 +128,7 @@ class Player(Entity):
     last_pm: str | None = None  # com quem trocou a última mensagem privada (/r responde)
     bank: Inventory | None = None  # banco da conta (carregado ao entrar; salvo junto com o personagem)
     trade_sent: str = ""  # último estado da troca enviado ao cliente (só manda quando muda)
+    events_sent: str = ""  # últimos eventos em ondas enviados ao cliente (só manda quando muda)
     actions: list[tuple] = field(default_factory=list)  # ações pedidas, executadas no próximo tick
     # Movimento: o cliente manda um comando numerado por tick; o servidor executa um por tick
     # e devolve o número do último executado ("ack") para o cliente corrigir a previsão.
@@ -280,6 +281,7 @@ class Enemy(Entity):
     elite: bool = False  # sorteado a cada nascimento (defn.elite_chance)
     phase: int = 0  # chefes: quantas fases já começaram (0 = a inicial)
     summoner_id: int | None = None  # invocado por este chefe: não renasce, some depois de morto
+    event_id: str | None = None  # invasor de um evento em ondas: não renasce, não desiste por distância
     calm_timer: float = 0.0  # chefes: há quanto tempo está sem alvo
     target_id: int | None = None
     wander_dir: tuple[float, float] = (0.0, 0.0)
@@ -334,6 +336,8 @@ class Enemy(Entity):
         if self.defn.boss:
             snap["boss"] = 1
             snap["ph"] = self.phase
+        if self.event_id:
+            snap["inv"] = 1  # invasor de um evento (o cliente destaca)
         return snap
 
 

@@ -31,7 +31,8 @@ ITEM_TYPES = ("equipment", "consumable", "material")
 EQUIP_SLOTS = ("weapon", "armor", "accessory")
 RARITIES = ("common", "uncommon", "rare", "epic")
 PROMOTIONS = ("default", "appointment", "challenge")
-PERMISSIONS = ("kick", "mute", "ban", "announce", "teleport", "give", "set_role", "log", "reload", "account")
+PERMISSIONS = ("kick", "mute", "ban", "announce", "teleport", "give", "set_role", "log", "reload", "account",
+               "events")
 ID_RE = re.compile(r"[a-z0-9_]+")
 # Campos que as condições ("if") das opções de diálogo e das missões podem usar
 DIALOG_FIELDS = ("race", "class", "org", "rank", "gold", "total_level", "quest_done", "quest_active")
@@ -386,6 +387,35 @@ class QuestDef:
 
 
 @dataclass(frozen=True)
+class EventWave:
+    enemies: tuple[tuple[str, int], ...]  # (inimigo, quantos), na ordem do arquivo
+    text: str = ""  # aviso extra quando a onda chega (opcional)
+
+
+@dataclass(frozen=True)
+class EventDef:
+    """Evento em ondas (data/events.yaml): inimigos chegam em ondas num mapa; vencer dá recompensas."""
+
+    id: str
+    name: str
+    map: str
+    text: str  # anúncio quando começa
+    spawn: tuple[int, int, int, int]  # área (tiles) onde os inimigos aparecem
+    march: tuple[int, int] | None  # tile para onde eles marcham (None = ficam onde nasceram)
+    waves: tuple[EventWave, ...]
+    time: float  # segundos para vencer todas as ondas
+    rule: Rule  # recompensas (ações) para quem participou, se vencerem
+    win_text: str
+    lose_text: str
+    every: float  # minutos entre começos automáticos (0 = só a equipe começa)
+    min_players: int  # jogadores online para começar sozinho
+    min_damage: float  # dano mínimo para contar como participante
+
+    def client_info(self) -> dict:
+        return {"name": self.name, "map": self.map, "waves": len(self.waves)}
+
+
+@dataclass(frozen=True)
 class Content:
     effects: dict[str, EffectDef]
     skills: dict[str, SkillDef]
@@ -402,6 +432,7 @@ class Content:
     quests: dict[str, QuestDef] = field(default_factory=dict)
     trainers: dict[str, TrainerDef] = field(default_factory=dict)
     crafting: dict[str, CraftStation] = field(default_factory=dict)
+    events: dict[str, EventDef] = field(default_factory=dict)
 
     @property
     def enemy_by_mark(self) -> dict[str, EnemyDef]:
@@ -479,7 +510,25 @@ class Content:
         }
 
     def check_maps(self, maps: dict) -> None:
-        """Confere o que o conteúdo diz sobre mapas (objetivos reach) contra os mapas carregados."""
+        """Confere o que o conteúdo diz sobre mapas (objetivos reach, eventos) contra os mapas carregados."""
+        for ev in self.events.values():
+            where = f"events.yaml > {ev.id}"
+            tilemap = maps.get(ev.map)
+            if tilemap is None:
+                raise ContentError(f"{where}: mapa {ev.map!r} não existe (mapas: {', '.join(maps)})")
+            x0, y0, x1, y1 = ev.spawn
+            if not (0 <= x0 <= x1 < tilemap.width and 0 <= y0 <= y1 < tilemap.height):
+                raise ContentError(f"{where}: spawn {list(ev.spawn)} fora do mapa {ev.map} "
+                                   f"({tilemap.width}×{tilemap.height}) ou invertida")
+            if not any(_enemy_can_stand(tilemap.rows[y][x]) for y in range(y0, y1 + 1) for x in range(x0, x1 + 1)):
+                raise ContentError(f"{where}: a área spawn não tem nenhum tile livre (sem parede, água, árvore "
+                                   "ou zona segura)")
+            if ev.march:
+                mx, my = ev.march
+                if not (0 <= mx < tilemap.width and 0 <= my < tilemap.height) or \
+                        not _enemy_can_stand(tilemap.rows[my][mx]):
+                    raise ContentError(f"{where}: march {list(ev.march)} precisa ser um tile livre do mapa "
+                                       "(inimigos não entram em parede, água, árvore nem zona segura)")
         for q in self.quests.values():
             for i, obj in enumerate(q.objectives):
                 if obj.kind != "reach":
@@ -514,8 +563,9 @@ class Content:
         # Missões, NPCs e regras se referem umas às outras, então os ids das missões vêm antes.
         quests_raw = _load_yaml(data_dir / "quests.yaml", True)
         stations_raw = _load_yaml(data_dir / "crafting.yaml", True)
+        events_raw = _load_yaml(data_dir / "events.yaml", True)
         refs = _RuleRefs(effects=effects, skills=skills, enemies=enemies, races=races, classes=classes, items=items,
-                         orgs=orgs, quests=tuple(quests_raw), stations=tuple(stations_raw))
+                         orgs=orgs, quests=tuple(quests_raw), stations=tuple(stations_raw), events=tuple(events_raw))
         rules = tuple(_parse_rule(i, raw, refs) for i, raw in _load_yaml(data_dir / "rules.yaml").items())
         # lojas, NPCs e missões são opcionais (o arquivo pode não existir)
         shops = {i: _parse_shop(i, raw, items) for i, raw in _load_yaml(data_dir / "shops.yaml", True).items()}
@@ -523,10 +573,11 @@ class Content:
         crafting = {i: _parse_station(i, raw, refs) for i, raw in stations_raw.items()}
         npcs = {i: _parse_npc(i, raw, refs) for i, raw in _load_yaml(data_dir / "npcs.yaml", True).items()}
         quests = {i: _parse_quest(i, raw, refs) for i, raw in quests_raw.items()}
+        events = {i: _parse_event(i, raw, refs) for i, raw in events_raw.items()}
 
         content = cls(effects=effects, skills=skills, enemies=enemies, races=races, classes=classes,
                       rules=rules, default_race=default_race, items=items, orgs=orgs, roles=roles,
-                      shops=shops, npcs=npcs, quests=quests, trainers=trainers, crafting=crafting)
+                      shops=shops, npcs=npcs, quests=quests, trainers=trainers, crafting=crafting, events=events)
         content.check_references()
         return content
 
@@ -1066,6 +1117,7 @@ class _RuleRefs:
     orgs: dict[str, OrgDef] = field(default_factory=dict)
     quests: tuple[str, ...] = ()  # só os ids (missões e regras se referem umas às outras)
     stations: tuple[str, ...] = ()  # ids das oficinas (crafting.yaml): as regras vêm antes delas
+    events: tuple[str, ...] = ()  # ids dos eventos (events.yaml): as regras vêm antes deles
 
     def rank_ids(self) -> tuple[str, ...]:
         return tuple(dict.fromkeys(r.id for o in self.orgs.values() for r in o.ranks))
@@ -1083,6 +1135,7 @@ class _RuleRefs:
             "org": self.orgs, "rank": self.rank_ids(), "old_rank": self.rank_ids(), "cause": RANK_CAUSES,
             "quest": self.quests, "quest_done": self.quests, "quest_active": self.quests,
             "item": self.items, "station": self.stations,
+            "event": self.events, "damage": float,
         }
         value = table.get(field)
         return tuple(value) if isinstance(value, (dict, tuple)) else value
@@ -1254,8 +1307,82 @@ def parse_rules(raw: dict, content: Content) -> tuple[Rule, ...]:
     """Valida regras avulsas contra um conteúdo já carregado (usado nos testes)."""
     refs = _RuleRefs(effects=content.effects, skills=content.skills, enemies=content.enemies,
                      races=content.races, classes=content.classes, items=content.items, orgs=content.orgs,
-                     quests=tuple(content.quests))
+                     quests=tuple(content.quests), events=tuple(content.events))
     return tuple(_parse_rule(i, r, refs) for i, r in raw.items())
+
+
+def parse_events(raw: dict, content: Content) -> dict[str, EventDef]:
+    """Valida eventos avulsos contra um conteúdo já carregado (usado nos testes)."""
+    refs = _RuleRefs(effects=content.effects, skills=content.skills, enemies=content.enemies,
+                     races=content.races, classes=content.classes, items=content.items, orgs=content.orgs,
+                     quests=tuple(content.quests), events=tuple(raw))
+    return {i: _parse_event(i, r, refs) for i, r in raw.items()}
+
+
+def _enemy_can_stand(ch: str) -> bool:
+    """Inimigos andam aqui? (mesma regra de world._enemy_blocks: sem parede, água, árvore nem zona segura)"""
+    from .tilemap import SAFE, WALK_BLOCKERS
+    return ch not in WALK_BLOCKERS and ch != SAFE
+
+
+def _tile_area(f: _Fields, key: str) -> tuple[int, int, int, int]:
+    area = f._get(key, _REQUIRED)
+    if not (isinstance(area, list) and len(area) == 4 and all(isinstance(v, int) and not isinstance(v, bool)
+                                                              and v >= 0 for v in area)):
+        raise ContentError(f"{f.where}: '{key}' deve ser [x0, y0, x1, y1] em tiles")
+    return tuple(area)  # type: ignore[return-value]
+
+
+def _parse_event(eid: str, raw: Any, refs: _RuleRefs) -> EventDef:
+    if not ID_RE.fullmatch(eid):
+        raise ContentError(f"events.yaml: id de evento inválido {eid!r} (letras minúsculas, números e _)")
+    f = _Fields(f"events.yaml > {eid}", raw)
+    march_raw = f._get("march", None)
+    if march_raw is not None and not (isinstance(march_raw, list) and len(march_raw) == 2 and all(
+            isinstance(v, int) and not isinstance(v, bool) and v >= 0 for v in march_raw)):
+        raise ContentError(f"{f.where}: 'march' deve ser [x, y] em tiles")
+    waves = []
+    for i, wave_raw in enumerate(f.list("waves")):
+        where = f"{f.where}.waves[{i}]"
+        if not isinstance(wave_raw, dict) or not wave_raw:
+            raise ContentError(f"{where}: cada onda é um mapa {{inimigo: quantos}} (ex.: {{ espectro: 5 }})")
+        text = wave_raw.get("text", "")
+        if not isinstance(text, str):
+            raise ContentError(f"{where}: 'text' deve ser um texto")
+        enemies = []
+        for enemy_id, count in wave_raw.items():
+            if enemy_id == "text":
+                continue
+            if enemy_id not in refs.enemies:
+                raise ContentError(f"{where}: inimigo {enemy_id!r} não existe em enemies.yaml")
+            if isinstance(count, bool) or not isinstance(count, int) or not 1 <= count <= C.EVENT_MAX_PER_WAVE:
+                raise ContentError(f"{where}: quantidade de {enemy_id} deve ser de 1 a {C.EVENT_MAX_PER_WAVE}")
+            enemies.append((enemy_id, count))
+        if not enemies:
+            raise ContentError(f"{where}: a onda precisa de pelo menos um inimigo")
+        waves.append(EventWave(enemies=tuple(enemies), text=text))
+    if not waves:
+        raise ContentError(f"{f.where}: 'waves' precisa de pelo menos uma onda")
+    name = f.text("name")
+    event = EventDef(
+        id=eid,
+        name=name,
+        map=f.text("map"),
+        text=f.text("text", f"{name} começou!"),
+        spawn=_tile_area(f, "spawn"),
+        march=tuple(march_raw) if march_raw else None,  # type: ignore[arg-type]
+        waves=tuple(waves),
+        time=f.num("time", 600.0, minimum=10.0),
+        rule=Rule(id=f"evento:{eid}", when="event_end", conditions=(),
+                  actions=_parse_actions(f, "event_end", refs, key="rewards")),
+        win_text=f.text("win_text", f"{name}: vitória! Quem lutou recebe a recompensa."),
+        lose_text=f.text("lose_text", f"{name}: o tempo acabou e os invasores recuaram."),
+        every=f.num("every", 0.0),
+        min_players=f.int("min_players", 1, minimum=1),
+        min_damage=f.num("min_damage", 1.0),
+    )
+    f.done()
+    return event
 
 
 def _parse_org(oid: str, raw: Any) -> OrgDef:

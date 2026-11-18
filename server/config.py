@@ -112,6 +112,11 @@ TRADE_RANGE = 4 * TILE_SIZE  # distância para propor ou aceitar uma troca
 TRADE_LEAVE_RANGE = 10 * TILE_SIZE  # afastou-se mais que isso: a troca é cancelada
 TRADE_INVITE_SECONDS = 30.0  # o pedido de troca expira
 TRADE_MAX_ITEMS = 8  # itens diferentes que cada um pode oferecer numa troca
+
+# --- Eventos em ondas (server/events.py, data/events.yaml) --------------------
+EVENT_WAVE_PAUSE = 8.0  # segundos entre uma onda derrotada e a próxima
+EVENT_AGGRO_MULT = 2.0  # invasores enxergam jogadores mais longe que os inimigos comuns
+EVENT_MAX_PER_WAVE = 50  # máximo de inimigos de um tipo numa onda
 PARTY_SHARE_RANGE = 480.0  # membros a esta distância dividem abates, missões e moedas (15 tiles)
 PARTY_XP_SHARE = 0.5  # fração do bônus de abate que cada membro perto (e lutando) ganha
 PARTY_FRIENDLY_FIRE = False  # True: membros do mesmo grupo se ferem em áreas PvP

@@ -275,7 +275,7 @@ Combinado em 17/11/2026. A ordem pode mudar conforme as decisões em aberto.
 
 **Fase 4 — mundo vivo e social**
 - ~~Ferramentas de roleplay: fala local em balão, /me, mensagem privada, ignorar, perfil~~ (feito).
-- Invasões e eventos em ondas, iniciados pela equipe ou por agenda.
+- ~~Invasões e eventos em ondas, iniciados pela equipe ou por agenda~~ (feito).
 - Hierarquia sem abuso: limite de recusas, cargo vago por inatividade, torneios.
 - Fama e ranking (abates, mortes, chefes).
 - ~~Troca entre jogadores e banco~~ (feito).

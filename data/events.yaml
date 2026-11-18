@@ -1,0 +1,45 @@
+# Eventos em ondas (invasões). A equipe começa e encerra pela janela de administração
+# (permissão "events"); com "every", o evento também começa sozinho de tempos em tempos.
+#
+#   name        nome exibido (anúncios, painel do evento)
+#   map         mapa onde acontece (id = nome do arquivo em data/maps/)
+#   text        anúncio quando começa (opcional)
+#   spawn       área onde os inimigos aparecem, em tiles: [x0, y0, x1, y1] (cantos inclusive).
+#               Precisa ter tiles livres (sem parede, água, árvore nem zona segura).
+#   march       tile [x, y] para onde os inimigos marcham (opcional; ex.: a porta da cidade).
+#               No caminho atacam quem encontram; sem march, ficam perto de onde nasceram.
+#   waves       as ondas, em ordem. Cada onda é {inimigo: quantos} (ids de enemies.yaml)
+#               e pode ter "text" (aviso extra quando ela chega). A próxima onda vem
+#               alguns segundos depois de todos os inimigos da anterior caírem.
+#   time        segundos para vencer todas as ondas (padrão 600). Acabou o tempo: derrota,
+#               e os invasores somem.
+#   rewards     ações para cada participante quando vencem (as mesmas de rules.yaml:
+#               give_gold, give_item, gain_xp, message, set_flag...)
+#   min_damage  dano mínimo aos invasores para contar como participante (padrão 1)
+#   win_text / lose_text   anúncios do fim (opcionais)
+#   every       minutos entre começos automáticos (0 ou ausente = só a equipe começa)
+#   min_players jogadores online para o começo automático (padrão 1)
+#
+# Ao terminar, o evento "event_end" das regras (rules.yaml) dispara para cada participante,
+# com event, result (win/lose) e damage.
+# Nomes e números provisórios.
+
+invasao_campos:
+  name: Invasão dos Campos
+  map: inicio
+  text: "Espectros atravessam o rio e marcham sobre a cidade! Defendam os Campos de Início!"
+  spawn: [28, 10, 37, 15]
+  march: [13, 5]
+  time: 600
+  waves:
+    - { espectro: 5 }
+    - { espectro: 5, bruto: 2, text: "Brutos vêm junto." }
+    - { bruto: 3, devorador: 1, text: "Um Devorador lidera a última onda!" }
+  rewards:
+    - give_gold: 40
+    - give_item: { id: pocao_vida, qty: 2 }
+    - message: "Você ajudou a defender os Campos de Início. A cidade agradece, {name}."
+  win_text: "Os Campos de Início resistiram! Quem lutou recebe moedas e poções."
+  lose_text: "Os invasores se dispersaram antes de serem vencidos. Fiquem atentos."
+  every: 90
+  min_players: 3

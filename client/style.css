@@ -997,3 +997,16 @@ button.link {
 #trade-invite .text { margin: 0 0 8px; font-weight: 600; }
 #trade-invite .actions { display: flex; gap: 8px; justify-content: center; }
 #trade-invite button.accept { background: #2f5c7a; border-color: #3c7a9a; }
+
+/* ---------------------------------------------------------------- eventos em ondas */
+#side #event { padding: 8px 12px; font-size: 12px; border: 1px solid #b8742e; }
+#event[hidden] { display: none; }
+.event-card + .event-card { margin-top: 6px; padding-top: 6px; border-top: 1px solid #2c303b; }
+.event-head { display: flex; align-items: center; gap: 8px; color: #ffb36b; font-size: 13px; }
+.event-head b { flex: 1; }
+.event-time { font-variant-numeric: tabular-nums; color: #ffd9b0; font-weight: 700; }
+.event-line { margin-top: 2px; }
+.event-line.ok { color: #7bd65a; }
+.event-line.hint { color: var(--muted); }
+.adm-event span { flex: 1; min-width: 0; }
+.adm-live { color: #ff9a3c; }

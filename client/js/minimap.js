@@ -18,6 +18,7 @@ const COLORS = {
   player: "#8fb4ff",
   party: PARTY_NAME_COLOR,
   enemy: "#ff5a5a",
+  invader: "#ff9a3c", // inimigo de um evento (invasão)
   npc: "#ffd27a",
   portal: "#7fd8ff",
 };
@@ -195,7 +196,8 @@ export class Minimap {
     // inimigos que estão por perto (vêm no snapshot)
     for (const e of state.ents.values()) {
       if (e.k !== "enemy" || e.s === "dead") continue;
-      dot(e.rx, e.ry, (e.boss ? 4 : 2) * k, COLORS.enemy, e.el ? "#ffd84a" : "rgba(0,0,0,0.8)");
+      dot(e.rx, e.ry, (e.boss ? 4 : e.inv ? 2.5 : 2) * k, e.inv ? COLORS.invader : COLORS.enemy,
+        e.el ? "#ffd84a" : "rgba(0,0,0,0.8)");
     }
 
     // NPCs (todos os do mapa) e as marcas de missão

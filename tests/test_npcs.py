@@ -74,6 +74,7 @@ def make_content(npcs: str = NPCS_YAML, shops: str = SHOPS_YAML, quests: str = "
         (tmp / "shops.yaml").write_text(shops, encoding="utf-8")
         (tmp / "quests.yaml").write_text(quests, encoding="utf-8")  # as missões reais citam outros NPCs
         (tmp / "crafting.yaml").write_text("", encoding="utf-8")  # as receitas reais citam missões reais
+        (tmp / "events.yaml").write_text("", encoding="utf-8")  # os eventos reais citam mapas reais
         return dataclasses.replace(Content.load(tmp), rules=())
     finally:
         shutil.rmtree(tmp)

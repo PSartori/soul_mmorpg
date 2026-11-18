@@ -15,6 +15,7 @@
 #                  log       ver o registro de ações da equipe
 #                  reload    recarregar o conteúdo (YAML e mapas) com o jogo rodando
 #                  account   gerar uma senha temporária para a conta de alguém (quem esqueceu a senha)
+#                  events    começar e encerrar eventos em ondas (data/events.yaml)
 #
 # Quem tem papel aparece com a janela "Administração" no jogo.
 # Para dar o primeiro papel (o seu): ./admin.sh role SeuPersonagem admin
@@ -31,11 +32,11 @@ gm:
   tag: GM
   color: "#ffd65a"
   level: 2
-  permissions: [kick, mute, ban, announce, teleport, give, log]
+  permissions: [kick, mute, ban, announce, teleport, give, log, events]
 
 admin:
   name: Administrador
   tag: ADM
   color: "#ff7a7a"
   level: 3
-  permissions: [kick, mute, ban, announce, teleport, give, set_role, log, reload, account]
+  permissions: [kick, mute, ban, announce, teleport, give, set_role, log, reload, account, events]
