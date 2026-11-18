@@ -117,7 +117,7 @@ lutadores ficam parados, então alcance e esquiva não contam.
 | O | janela da organização: entrar, sair, cargos e ocupantes, assumir vaga, disputar, promover, rebaixar, expulsar |
 | Enter | chat; o seletor ao lado escolhe o canal (Geral ou Organização) |
 | **Clique num jogador** | menu: desafiar para duelo, disputar o cargo dele e, para líderes, promover, rebaixar e expulsar |
-| **Clique num NPC** | conversa; as respostas são botões, e alguns abrem a loja (comprar e vender) ou o treinador (aprender skills) |
+| **Clique num NPC** | conversa; as respostas são botões, e alguns abrem a loja (comprar e vender), o treinador (aprender skills) ou a oficina (criar itens) |
 | **Arrastar na barra** | arrastar uma skill para outro espaço troca as duas de lugar; clicar num espaço vazio abre as skills |
 
 Um desafio recebido aparece na tela com **Aceitar** e **Recusar**; durante o duelo o
@@ -141,6 +141,7 @@ Cada arquivo tem no topo a explicação de todos os campos.
 | `data/npcs.yaml` | NPCs: nome, título, cor e diálogo em nós (opções com condições, ações, `goto` e `shop`) |
 | `data/shops.yaml` | lojas: o que vendem (preço = `value` do item ou próprio) e o que compram (`buys`, `buy_rate`) |
 | `data/trainers.yaml` | treinadores: que skills ensinam, por quantas moedas e com que requisitos (atributos, outras skills, condições) |
+| `data/crafting.yaml` | oficinas: receitas (item criado, materiais, preço, requisitos, receitas secretas com `hidden`) |
 | `data/quests.yaml` | missões: quem oferece e a quem entregar, condições, objetivos (kill, collect, talk, reach, flag), recompensas, repetição |
 | `data/races.yaml` | raças: se aparecem na criação, classe inicial, bônus de vida/energia/velocidade |
 | `data/classes.yaml` | classes: raça, skills iniciais (`start_skills`), multiplicador de treino por atributo |
@@ -164,9 +165,10 @@ humano_vira_espectral:
 ```
 
 - **Eventos:** `death` (com quem matou, raça/classe dele, skill, efeito, efeitos
-  ativos, zona), `kill`, `level_up`, `duel_end` (vitória/derrota/empate e motivo)
-  e `rank_change` (entrou, saiu, promovido, rebaixado, expulso, assumiu, ganhou ou
-  perdeu numa disputa). Todo evento também tem `org` e `rank` de quem disparou.
+  ativos, zona), `kill`, `level_up`, `duel_end` (vitória/derrota/empate e motivo),
+  `rank_change` (entrou, saiu, promovido, rebaixado, expulso, assumiu, ganhou ou
+  perdeu numa disputa), `quest_complete` e `craft` (criou um item numa oficina: `item` e
+  `station`). Todo evento também tem `org` e `rank` de quem disparou.
 - **Ações:** mensagens, perder/ganhar XP, trocar raça ou classe, marcas de
   progressão (`set_flag`), aplicar efeitos, dar itens, dar/tirar moedas, começar
   missão e ensinar uma skill (`learn_skill`).
@@ -201,6 +203,8 @@ server/              Python (aiohttp)
   npcs.py            NPCs: conversa (nós de diálogo) e lojas (compra e venda)
   quests.py          missões: progresso, entrega, recompensas e marcadores ! / ?
   training.py        skills conhecidas, barra de atalhos (trava em combate) e treinadores
+  crafting.py        oficinas: receitas, criação de itens (tudo ou nada) e evento craft
+  requirements.py    requisitos de treinadores e receitas (atributos, skills, condições) em texto
   inventory.py       inventário: espaços que empilham, equipamento e moedas
   orgs.py            organizações, cargos e disputas (vínculos na tabela memberships)
   admin.py           equipe, sanções (ban/silêncio) e registro de ações
@@ -223,6 +227,7 @@ client/              JavaScript puro, sem build
   js/npc.js          conversa com NPCs e janela da loja
   js/quests.js       diário de missões, acompanhamento no painel e oferta na conversa
   js/skills.js       janela de skills (K), arrastar para a barra e janela do treinador
+  js/crafting.js     janela da oficina (receitas, materiais que tem, criar uma ou várias vezes)
   js/input.js        teclado
   js/net.js          WebSocket
 data/                conteúdo do jogo (veja acima)
@@ -263,14 +268,15 @@ HTTP: `GET /api/races` lista as raças da tela de criação.
 Cliente → servidor: `login {name, password, race}`, `move {seq, up, down, left, right}`,
 `skill {id, f}`, `duel {op: challenge|accept|decline|forfeit, target}`,
 `org {op: info|join|leave|claim|dispute|promote|demote|expel, ...}`,
-`npc {op: talk|choose|buy|sell|learn|close, id|i|item|slot|skill, qty}`, `quest {op: abandon, id}`,
+`npc {op: talk|choose|buy|sell|learn|craft|close, id|i|item|slot|skill, qty|times}`, `quest {op: abandon, id}`,
 `skills {op: bar, slot, id}` (id null = esvazia), `chat {text, ch}`, `admin {op, ...}` (equipe), `item {op: use|drop, slot: n}`, `item {op: unequip, slot: weapon|armor|accessory}`,
 `meditate`, `rest`, `chat {text}`.
 
 Servidor → cliente: `welcome {id, map, skills, effects, enemies, stat_labels, ...}`,
 `map {map, x, y}` (atravessou um portal), `org_data` (janela da organização),
 `dialog {npc, name, title, text, options}` / `shop {npc, shop, sells, buys}` /
-`trainer {npc, trainer, teaches: [{id, price, known, missing}]}` / `npc_close` (NPCs), `announce {text, by}`, `kick {text}` (antes de
+`trainer {npc, trainer, teaches: [{id, price, known, missing}]}` /
+`craft {npc, station, recipes: [{i, make, qty, needs, price, missing}]}` / `npc_close` (NPCs), `announce {text, by}`, `kick {text}` (antes de
 desconectar), `admin_data`/`admin_result` (equipe), `error {msg}`, `snap {ents, projs, drops, fx, you}`
 (20×/s, só o que está perto; `you.skills` é a barra, com null nos espaços vazios; `you.inv`, `you.q` —
 diário e marcadores das missões — e `you.known` — skills conhecidas, com `ok` se a raça/classe atual
@@ -342,6 +348,16 @@ pode usar — só vêm quando mudam), `chat {from, text}`, `sys {text}`.
   todas as skills dele, o preço e o que falta para cada uma (nível de atributo, outra skill,
   raça/classe, condições como nível total ou missão concluída). Aprender cobra as moedas e
   põe a skill no primeiro espaço vazio da barra.
+- **Criação de itens**: NPCs com a opção `craft: id` abrem uma oficina (`data/crafting.yaml`),
+  com receitas que gastam materiais (qualquer item) e moedas para criar um item. A janela
+  mostra o que você tem de cada material (ex.: "Couro grosso 9/4"), o preço e o que falta
+  (nível de atributo, skill, condições); dá para criar várias vezes de uma vez (até 99,
+  `CRAFT_MAX_TIMES`): ou cabe tudo e cria tudo, ou não cria nada. Os materiais saem antes de
+  conferir o espaço, então gastar uma pilha inteira libera lugar para o resultado. Receitas
+  `hidden` só aparecem quando as condições do `if` valem (receita secreta, liberada por
+  missão ou marca). Cada criação dispara o evento `craft` das regras. O servidor recusa
+  receitas que dão lucro sem fim (materiais todos à venda numa loja, resultado vendido de
+  volta por mais).
 - **Lojas**: estoque infinito; o jogador compra pelo `value` do item (ou pelo `price`
   da loja) e vende por uma fração dele (`buy_rate`, padrão 40%, no mínimo 1 moeda).
   Compra só sai se houver moedas e espaço para tudo. O servidor recusa conteúdo em

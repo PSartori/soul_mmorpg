@@ -26,6 +26,8 @@ EVENT_FIELDS: dict[str, tuple[str, ...]] = {
     "rank_change": ("race", "class", "org", "rank", "old_rank", "cause"),
     # o personagem concluiu uma missão (data/quests.yaml)
     "quest_complete": ("race", "class", "quest"),
+    # o personagem criou um item numa oficina (data/crafting.yaml); dispara uma vez por criação
+    "craft": ("race", "class", "item", "station"),
 }
 # Todo evento também recebe a organização e o cargo atuais de quem disparou
 EVENT_FIELDS = {

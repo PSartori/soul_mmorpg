@@ -1,6 +1,6 @@
 # Contexto geral do projeto
 
-Resumo de tudo o que foi conversado e construído até 17/11/2026 (atualizado com treinadores e skills aprendidas): de onde o projeto
+Resumo de tudo o que foi conversado e construído até 17/11/2026 (atualizado com a criação de itens): de onde o projeto
 veio, como trabalhamos, o que foi decidido, o que existe hoje e o que vem a seguir.
 Para detalhes técnicos, veja o `README.md`; para a visão do jogo e as decisões em
 aberto, o `docs/design.md`; para números de balanceamento, o `docs/balanceamento.md`.
@@ -36,9 +36,9 @@ Desperto, Espectral, Vigília, Coro Sombrio, Espectro, Devorador...) são
   comandos no chat; toda funcionalidade nova já nasce com menus, botões e janelas.
   Comandos podem existir só como atalho.
 - **Conteúdo é dado, não código.** Skills, efeitos, itens, inimigos, raças, classes,
-  regras, organizações, papéis da equipe, NPCs, lojas, treinadores, missões e mapas ficam em `data/`, validados ao
+  regras, organizações, papéis da equipe, NPCs, lojas, treinadores, oficinas, missões e mapas ficam em `data/`, validados ao
   carregar (um erro de digitação aponta arquivo, item e campo).
-- **Cada etapa termina testada**: testes automáticos (hoje 390) e verificação no
+- **Cada etapa termina testada**: testes automáticos (hoje 408) e verificação no
   navegador, e só então commit.
 
 ---
@@ -81,7 +81,8 @@ Desperto, Espectral, Vigília, Coro Sombrio, Espectro, Devorador...) são
 | `3e2b17f` | Colisão | Jogadores, inimigos e NPCs não se atravessam (servidor e previsão) |
 | `0ab69da` | Inimigos por nível | Nível, elites, chefes com fases, Ruínas e Fenda (níveis 15–50) |
 | `9518f90` | Caminho dos inimigos | A* na grade de tiles: contornam paredes, saem de salas, desistem sem rota |
-| — | Treinadores e skills | Skills conhecidas + barra escolhida (janela K, arrastar), treinadores com requisitos, save v6 |
+| `e6ea339` | Treinadores e skills | Skills conhecidas + barra escolhida (janela K, arrastar), treinadores com requisitos, save v6 |
+| — | Criação de itens | Oficinas nos NPCs, receitas com materiais, preço e requisitos, receitas secretas, evento `craft` |
 
 ### Sistemas prontos
 
@@ -100,6 +101,11 @@ Desperto, Espectral, Vigília, Coro Sombrio, Espectro, Devorador...) são
   bloqueadas depois de uma transformação, mas não se perdem. Treinadores (`data/trainers.yaml`)
   mostram cada skill com preço e o que falta (nível de atributo, outra skill, raça/classe,
   nível total, missão).
+- **Criação de itens**: oficinas abertas por NPCs (`data/crafting.yaml`) com receitas que
+  transformam materiais e moedas em itens, mostrando o que o jogador tem de cada material;
+  cria uma ou várias vezes (tudo ou nada); receitas secretas aparecem só com a condição
+  (ex.: depois de uma missão); evento `craft` nas regras; o validador recusa receitas que
+  dariam lucro sem fim com as lojas.
 - **Regras em YAML** (`data/rules.yaml`): "quando X, se Y, faça Z" para morte, abate,
   subida de nível, fim de duelo e mudança de cargo — penalidades, transformações,
   recompensas.
@@ -131,9 +137,14 @@ Desperto, Espectral, Vigília, Coro Sombrio, Espectro, Devorador...) são
 - **Raças**: Humano e Desperto (escolhíveis), Espectral (alcançada por regra).
 - **Classes**: Aprendiz, Iniciado, Assombração.
 - **Organizações**: Vigília (Humanos e Despertos) e Coro Sombrio (Espectrais).
-- **NPCs**: Hilda (mercadora), Otto (ferreiro), Vó Celeste (dá 3 poções uma vez) e Ivo
+- **NPCs**: Hilda (mercadora), Otto (ferreiro e forja), Vó Celeste (dá 3 poções uma vez e
+  faz poções) e Ivo
   (treinador: Onda de choque, Leque de energia, Foco) nos Campos de Início; Bruno (caçador,
-  paga melhor por materiais) e Eco (treinador dos Espectrais: Leque) no Bosque Sombrio.
+  paga melhor por materiais) e Eco (treinador dos Espectrais: Leque) no Bosque Sombrio;
+  Dorian (altar do vazio) na Fenda.
+- **Receitas**: Forja (Gibão de couro, Espada curta, Couraça de bruto e, secreta depois do
+  Guardião, Armadura de pedra), Ervas e infusões (poções e Tônico veloz) e Altar do vazio
+  (Manto do vazio).
 - **Skills iniciais**: Aprendiz (Golpe, Rajada, Passo veloz), Iniciado (Golpe, Rajada,
   Flecha gélida), Assombração (Golpe, Dardo venenoso, Passo veloz); o resto vem dos
   treinadores.
@@ -187,9 +198,10 @@ Do `docs/balanceamento.md` (lutas simuladas no próprio motor):
   conta/IP; recuperação de senha.
 - **Hospedagem na VPS**: HTTPS, reinício automático, backup fora da máquina.
 - **Proteções**: limite de mensagens por segundo, tentativas de senha.
-- Criação de itens e grupos (missões em grupo); lojas com estoque
+- Grupos (missões em grupo); lojas com estoque
   limitado ou preço variável; eventos iniciados pela equipe (ex.: invasões).
 - Skills que sobem de nível com o uso; mais skills e treinadores para os níveis altos.
+- Criação com tempo ou chance de falha, ofícios que sobem de nível, objetivo de missão "criar".
 - **Arte e som** (hoje tudo são formas geométricas); tutorial dos primeiros minutos.
 
 ---

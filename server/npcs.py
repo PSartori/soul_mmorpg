@@ -1,21 +1,23 @@
-"""NPCs: personagens do mundo que conversam, abrem lojas e ensinam skills.
+"""NPCs: personagens do mundo que conversam, abrem lojas, ensinam skills e criam itens.
 
-Conteúdo em data/npcs.yaml (falas e opções), data/shops.yaml (lojas) e
-data/trainers.yaml (treinadores); onde cada
+Conteúdo em data/npcs.yaml (falas e opções), data/shops.yaml (lojas),
+data/trainers.yaml (treinadores) e data/crafting.yaml (oficinas); onde cada
 NPC fica vem do mapa. Fluxo, tudo por botões no cliente ({"t": "npc", "op": ...}):
 
   talk {id}             começa a conversa com o NPC (precisa estar perto)
   choose {i}            escolhe a opção i do nó atual: roda as ações dela e vai
-                        para o próximo nó, abre a loja/treinador ou encerra. Opções de
+                        para o próximo nó, abre a loja/treinador/oficina ou encerra. Opções de
                         missão (server/quests.py) têm i em texto: "missao:id",
                         "aceitar:id", "entregar:id" e "voltar"
   buy {item, qty}       compra da loja aberta
   sell {slot, qty}      vende para a loja aberta um item da bolsa
   learn {skill}         aprende uma skill do treinador aberto (server/training.py)
+  craft {i, times}      cria `times` vezes a receita i da oficina aberta (server/crafting.py)
   close                 encerra
 
 O servidor responde com "dialog" (fala + opções visíveis), "shop" (o que a loja
-vende e quanto paga), "trainer" (o que ensina e o que falta para aprender) ou "npc_close". A conversa também fecha se o jogador se
+vende e quanto paga), "trainer" (o que ensina e o que falta para aprender), "craft"
+(receitas da oficina) ou "npc_close". A conversa também fecha se o jogador se
 afastar, morrer, mudar de mapa ou se o conteúdo for recarregado.
 """
 from __future__ import annotations
@@ -29,7 +31,7 @@ from .entities import Npc
 from .rules import rule_matches
 
 if TYPE_CHECKING:
-    from .content import DialogNode, NpcDef, ShopDef, TrainerDef
+    from .content import CraftStation, DialogNode, NpcDef, ShopDef, TrainerDef
     from .entities import Player
     from .world import World
 
@@ -41,6 +43,7 @@ class Conversation:
     shop: str | None = None  # loja aberta
     offer: str | None = None  # missão sendo oferecida (esperando Aceitar)
     trainer: str | None = None  # treinador aberto
+    station: str | None = None  # oficina aberta
 
 
 def _qty(value: object) -> int | None:
@@ -104,6 +107,8 @@ class NpcSystem:
             self.sell(p, data.get("slot"), _qty(data.get("qty", 1)))
         elif op == "learn":
             self.learn(p, data.get("skill"))
+        elif op == "craft":
+            self.craft(p, data.get("i"), data.get("times", 1))
 
     def talk(self, p: Player, entity_id: object) -> None:
         npc = self.entities.get(entity_id) if isinstance(entity_id, int) and not isinstance(entity_id, bool) else None
@@ -143,6 +148,8 @@ class NpcSystem:
             self._open_shop(p, npc, self.world.content.shops[option.shop])
         elif option.trainer:
             self._open_trainer(p, npc, self.world.content.trainers[option.trainer])
+        elif option.craft:
+            self._open_station(p, npc, self.world.content.crafting[option.craft])
         elif option.goto:
             talk.node = option.goto
             self._send_node(p, npc, option.goto)
@@ -201,6 +208,14 @@ class NpcSystem:
             self._coins_fx(p, f"-{entry.price} moedas")
         self._open_trainer(p, npc, trainer)  # reenvia: o que falta (e o que já sabe) mudou
 
+    def craft(self, p: Player, index: object, times: object) -> None:
+        talk, npc = self._current(p)
+        station = self.world.content.crafting.get(talk.station) if talk and talk.station else None
+        if station is None:
+            return
+        if self.world.crafting.craft(p, station, index, times) and p.id in self.talks:
+            self._open_station(p, npc, station)  # reenvia: requisitos e receitas escondidas podem ter mudado
+
     # ------------------------------------------------------------ auxiliares
 
     def _current(self, p: Player) -> tuple[Conversation | None, Npc | None]:
@@ -234,7 +249,7 @@ class NpcSystem:
                            [{"i": "voltar", "text": "Continuar"}])
 
     def _back_to_start(self, p: Player, npc: Npc, talk: Conversation) -> None:
-        talk.node, talk.offer, talk.shop, talk.trainer = npc.defn.start, None, None, None
+        talk.node, talk.offer, talk.shop, talk.trainer, talk.station = npc.defn.start, None, None, None, None
         self._send_node(p, npc, npc.defn.start)
 
     def _send_node(self, p: Player, npc: Npc, node_id: str) -> None:
@@ -263,7 +278,7 @@ class NpcSystem:
 
     def _open_shop(self, p: Player, npc: Npc, shop: ShopDef) -> None:
         talk = self.talks[p.id]
-        talk.node, talk.shop = None, shop.id
+        talk.node, talk.shop, talk.trainer, talk.station = None, shop.id, None, None
         items = self.world.content.items
         self.world._outbox.append((p.id, {
             "t": "shop", **self._header(npc), "shop": shop.name,
@@ -274,11 +289,19 @@ class NpcSystem:
 
     def _open_trainer(self, p: Player, npc: Npc, trainer: TrainerDef) -> None:
         talk = self.talks[p.id]
-        talk.node, talk.shop, talk.trainer = None, None, trainer.id
+        talk.node, talk.shop, talk.trainer, talk.station = None, None, trainer.id, None
         self.world._outbox.append((p.id, {
             "t": "trainer", **self._header(npc), "trainer": trainer.name,
             # cada skill: preço, se já sabe e o que falta (textos prontos para mostrar)
             "teaches": self.world.training.trainer_payload(p, trainer),
+        }))
+
+    def _open_station(self, p: Player, npc: Npc, station: CraftStation) -> None:
+        talk = self.talks[p.id]
+        talk.node, talk.shop, talk.trainer, talk.station = None, None, None, station.id
+        self.world._outbox.append((p.id, {
+            "t": "craft", **self._header(npc), "station": station.name,
+            "recipes": self.world.crafting.payload(p, station),
         }))
 
     @staticmethod

@@ -661,3 +661,44 @@ ul.objectives li.done { color: #7bd65a; list-style: none; margin-left: -14px; }
 .skill-row.known { opacity: .6; }
 .skill-row button.small { flex: none; padding: 2px 8px; font-size: 11px; white-space: nowrap; align-self: center; }
 .skill-row button.small:disabled { opacity: .45; cursor: not-allowed; }
+
+/* ---------------------------------------------------------------- oficina (criação de itens) */
+#craft {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 2;
+  width: min(400px, calc(100% - 24px));
+  max-height: calc(100% - 24px);
+  overflow-y: auto;
+  padding: 10px 12px;
+  background: rgba(22, 24, 30, .97);
+  border: 1px solid #6a8a4a;
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, .5);
+  font-size: 13px;
+}
+#craft[hidden] { display: none; }
+#craft header { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 8px; }
+#craft .shop-title { flex: 1; min-width: 0; }
+#craft h3 { margin: 0; font-size: 15px; color: #c8e89a; }
+#craft .npc-name { font-size: 12px; }
+#craft .shop-gold { color: var(--r-gold); font-weight: 600; white-space: nowrap; }
+#craft button.close { padding: 2px 8px; background: var(--panel-2); border-color: #353946; }
+#craft .hint { margin: 2px 0; font-size: 12px; color: var(--muted); }
+.craft-box { margin-bottom: 8px; padding: 4px 8px; background: var(--panel-2); border-radius: 6px; }
+.craft-row { padding: 6px 0; border-top: 1px solid #2c303b; }
+.craft-row:first-child { border-top: 0; }
+.craft-out { font-weight: 700; cursor: default; }
+.craft-row.unable .craft-out { opacity: .75; }
+ul.craft-needs { display: flex; flex-wrap: wrap; gap: 4px 10px; margin: 3px 0 0; padding: 0; list-style: none; font-size: 12px; }
+ul.craft-needs li { cursor: default; }
+ul.craft-needs li.ok { color: var(--text); }
+ul.craft-needs li.ok.gold { color: var(--r-gold); }
+ul.craft-needs li.short { color: var(--error); }
+.craft-row .why { font-size: 11px; color: #e8a86a; margin-top: 3px; }
+.craft-row ul.missing { margin: 1px 0 0; padding-left: 16px; font-size: 11px; color: #e8a86a; }
+.craft-actions { display: flex; align-items: center; gap: 6px; margin-top: 5px; }
+.craft-actions input { width: 52px; padding: 2px 4px; font-size: 12px; }
+.craft-actions button.small { padding: 2px 10px; font-size: 11px; white-space: nowrap; }
+.craft-actions button:disabled { opacity: .45; cursor: not-allowed; }

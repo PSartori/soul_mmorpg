@@ -308,12 +308,32 @@ class TrainerDef:
 
 
 @dataclass(frozen=True)
+class Recipe:
+    make: str  # item produzido
+    qty: int  # quantas unidades cada criação produz
+    needs: tuple[tuple[str, int], ...]  # (item, quantidade) consumidos
+    price: int  # moedas cobradas por criação
+    stats: dict[str, int]  # nível mínimo de atributos
+    skills: tuple[str, ...]  # skills que precisa conhecer
+    rule: Rule  # condições extras (as mesmas dos diálogos)
+    hidden: bool  # só aparece na lista quando as condições (if) valem
+
+
+@dataclass(frozen=True)
+class CraftStation:
+    id: str
+    name: str
+    recipes: tuple[Recipe, ...]
+
+
+@dataclass(frozen=True)
 class DialogOption:
     text: str
     rule: Rule  # condições (quando a opção aparece) e ações (o que acontece ao escolher)
-    goto: str | None = None  # nó seguinte; sem goto, shop nem trainer, a conversa termina
+    goto: str | None = None  # nó seguinte; sem goto, shop, trainer nem craft, a conversa termina
     shop: str | None = None  # abre esta loja
     trainer: str | None = None  # abre este treinador (data/trainers.yaml)
+    craft: str | None = None  # abre esta oficina (data/crafting.yaml)
 
 
 @dataclass(frozen=True)
@@ -380,6 +400,7 @@ class Content:
     npcs: dict[str, NpcDef] = field(default_factory=dict)
     quests: dict[str, QuestDef] = field(default_factory=dict)
     trainers: dict[str, TrainerDef] = field(default_factory=dict)
+    crafting: dict[str, CraftStation] = field(default_factory=dict)
 
     @property
     def enemy_by_mark(self) -> dict[str, EnemyDef]:
@@ -491,18 +512,20 @@ class Content:
         # Regras, missões e NPCs por último: condições e ações são conferidas contra todo o resto.
         # Missões, NPCs e regras se referem umas às outras, então os ids das missões vêm antes.
         quests_raw = _load_yaml(data_dir / "quests.yaml", True)
+        stations_raw = _load_yaml(data_dir / "crafting.yaml", True)
         refs = _RuleRefs(effects=effects, skills=skills, enemies=enemies, races=races, classes=classes, items=items,
-                         orgs=orgs, quests=tuple(quests_raw))
+                         orgs=orgs, quests=tuple(quests_raw), stations=tuple(stations_raw))
         rules = tuple(_parse_rule(i, raw, refs) for i, raw in _load_yaml(data_dir / "rules.yaml").items())
         # lojas, NPCs e missões são opcionais (o arquivo pode não existir)
         shops = {i: _parse_shop(i, raw, items) for i, raw in _load_yaml(data_dir / "shops.yaml", True).items()}
         trainers = {i: _parse_trainer(i, raw, refs) for i, raw in _load_yaml(data_dir / "trainers.yaml", True).items()}
+        crafting = {i: _parse_station(i, raw, refs) for i, raw in stations_raw.items()}
         npcs = {i: _parse_npc(i, raw, refs) for i, raw in _load_yaml(data_dir / "npcs.yaml", True).items()}
         quests = {i: _parse_quest(i, raw, refs) for i, raw in quests_raw.items()}
 
         content = cls(effects=effects, skills=skills, enemies=enemies, races=races, classes=classes,
                       rules=rules, default_race=default_race, items=items, orgs=orgs, roles=roles,
-                      shops=shops, npcs=npcs, quests=quests, trainers=trainers)
+                      shops=shops, npcs=npcs, quests=quests, trainers=trainers, crafting=crafting)
         content.check_references()
         return content
 
@@ -592,7 +615,11 @@ class Content:
                     if opt.trainer and opt.trainer not in self.trainers:
                         raise ContentError(f"npcs.yaml > {npc.id}.dialogue > {node.id}.options[{i}]: "
                                            f"treinador {opt.trainer!r} não existe em trainers.yaml")
+                    if opt.craft and opt.craft not in self.crafting:
+                        raise ContentError(f"npcs.yaml > {npc.id}.dialogue > {node.id}.options[{i}]: "
+                                           f"oficina {opt.craft!r} não existe em crafting.yaml")
         self._check_shop_prices()
+        self._check_recipe_prices()
         for q in self.quests.values():
             where = f"quests.yaml > {q.id}"
             for field_name in ("giver", "turn_in"):
@@ -618,6 +645,31 @@ class Content:
                     raise ContentError(
                         f"shops.yaml > {shop.id}: compra {item.id} por {paid}, mas {seller.id} vende por {cheapest} "
                         "(dá para comprar numa e vender na outra sem parar); baixe o buy_rate ou suba o preço"
+                    )
+
+
+    def _check_recipe_prices(self) -> None:
+        """Comprar os materiais numa loja, criar e vender o resultado não pode dar lucro.
+
+        Só confere receitas em que todos os materiais são vendidos por alguma loja (os que
+        só caem de inimigos custam tempo, não moedas).
+        """
+        def cheapest(item_id: str) -> int | None:
+            prices = [price for s in self.shops.values() if (price := s.sell_price(item_id))]
+            return min(prices) if prices else None
+
+        for station in self.crafting.values():
+            for i, r in enumerate(station.recipes):
+                costs = [cheapest(item_id) for item_id, _ in r.needs]
+                if any(c is None for c in costs):
+                    continue
+                cost = r.price + sum(c * qty for c, (_, qty) in zip(costs, r.needs))  # type: ignore[operator]
+                resale = max((s.buy_price(self.items[r.make]) for s in self.shops.values()), default=0) * r.qty
+                if resale > cost:
+                    raise ContentError(
+                        f"crafting.yaml > {station.id}.recipes[{i}]: os materiais custam {cost} moedas nas lojas "
+                        f"(com o preço da receita), mas {r.qty}× {r.make} vende por {resale} "
+                        "(dá para criar e vender sem parar); suba o price da receita ou mude os materiais"
                     )
 
 
@@ -1012,6 +1064,7 @@ class _RuleRefs:
     items: dict[str, ItemDef] = field(default_factory=dict)
     orgs: dict[str, OrgDef] = field(default_factory=dict)
     quests: tuple[str, ...] = ()  # só os ids (missões e regras se referem umas às outras)
+    stations: tuple[str, ...] = ()  # ids das oficinas (crafting.yaml): as regras vêm antes delas
 
     def rank_ids(self) -> tuple[str, ...]:
         return tuple(dict.fromkeys(r.id for o in self.orgs.values() for r in o.ranks))
@@ -1028,6 +1081,7 @@ class _RuleRefs:
             "duel": bool, "level": float, "gold": float, "total_level": float,
             "org": self.orgs, "rank": self.rank_ids(), "old_rank": self.rank_ids(), "cause": RANK_CAUSES,
             "quest": self.quests, "quest_done": self.quests, "quest_active": self.quests,
+            "item": self.items, "station": self.stations,
         }
         value = table.get(field)
         return tuple(value) if isinstance(value, (dict, tuple)) else value
@@ -1303,6 +1357,57 @@ def _parse_shop(sid: str, raw: Any, items: dict[str, ItemDef]) -> ShopDef:
     return shop
 
 
+def _requirements(e: _Fields, refs: _RuleRefs, rule_id: str, context: str
+                  ) -> tuple[dict[str, int], tuple[str, ...], Rule]:
+    """Lê stats, skills e if (requisitos de treinadores e receitas)."""
+    stats_f = e.sub("stats")
+    stats = {}
+    for stat in list(stats_f.raw):
+        if stat not in STAT_NAMES:
+            raise ContentError(f"{stats_f.where}: atributo {stat!r} inválido (válidos: {', '.join(STAT_NAMES)})")
+        stats[stat] = stats_f.int(stat, minimum=1)
+    stats_f.done()
+    needs = tuple(e.str_list("skills"))
+    for other in needs:
+        if other not in refs.skills:
+            raise ContentError(f"{e.where}.skills: skill {other!r} não existe em skills.yaml")
+    conditions = _dialog_conditions(e, refs, context)
+    return stats, needs, Rule(id=rule_id, when="requirement", conditions=conditions, actions=())
+
+
+def _parse_station(sid: str, raw: Any, refs: _RuleRefs) -> CraftStation:
+    f = _Fields(f"crafting.yaml > {sid}", raw)
+    recipes = []
+    for i, entry in enumerate(f.list("recipes")):
+        e = _Fields(f"{f.where}.recipes[{i}]", entry)
+        make = e.text("make")
+        if make not in refs.items:
+            raise ContentError(f"{e.where}: item {make!r} não existe em items.yaml")
+        needs_f = e.sub("needs")
+        needs = []
+        for item_id in list(needs_f.raw):
+            if item_id not in refs.items:
+                raise ContentError(f"{needs_f.where}: item {item_id!r} não existe em items.yaml")
+            if item_id == make:
+                raise ContentError(f"{needs_f.where}: a receita não pode gastar o próprio item que cria")
+            needs.append((item_id, needs_f.int(item_id, minimum=1)))
+        needs_f.done()
+        if not needs:
+            raise ContentError(f"{e.where}: 'needs' precisa de pelo menos um material (ex.: needs: {{ couro_grosso: 4 }})")
+        stats, skills, rule = _requirements(e, refs, f"{sid}[{i}]", "nos requisitos de receita")
+        hidden = e.flag("hidden", False)
+        if hidden and not rule.conditions:
+            raise ContentError(f"{e.where}: 'hidden' só faz sentido com condições em 'if' (é quando a receita aparece)")
+        recipes.append(Recipe(make=make, qty=e.int("qty", 1, minimum=1), needs=tuple(needs),
+                              price=e.int("price", 0), stats=stats, skills=skills, rule=rule, hidden=hidden))
+        e.done()
+    if not recipes:
+        raise ContentError(f"{f.where}: 'recipes' precisa de pelo menos uma receita")
+    station = CraftStation(id=sid, name=f.text("name"), recipes=tuple(recipes))
+    f.done()
+    return station
+
+
 def _parse_trainer(tid: str, raw: Any, refs: _RuleRefs) -> TrainerDef:
     f = _Fields(f"trainers.yaml > {tid}", raw)
     teaches: list[TrainerEntry] = []
@@ -1313,22 +1418,10 @@ def _parse_trainer(tid: str, raw: Any, refs: _RuleRefs) -> TrainerDef:
             raise ContentError(f"{e.where}: skill {skill_id!r} não existe em skills.yaml")
         if any(t.skill == skill_id for t in teaches):
             raise ContentError(f"{e.where}: {skill_id} aparece duas vezes na lista")
-        stats_f = e.sub("stats")
-        stats = {}
-        for stat in list(stats_f.raw):
-            if stat not in STAT_NAMES:
-                raise ContentError(f"{stats_f.where}: atributo {stat!r} inválido (válidos: {', '.join(STAT_NAMES)})")
-            stats[stat] = stats_f.int(stat, minimum=1)
-        stats_f.done()
-        needs = tuple(e.str_list("skills"))
-        for other in needs:
-            if other not in refs.skills:
-                raise ContentError(f"{e.where}.skills: skill {other!r} não existe em skills.yaml")
-            if other == skill_id:
-                raise ContentError(f"{e.where}.skills: a skill não pode ser requisito dela mesma")
-        conditions = _dialog_conditions(e, refs, "nos requisitos de treinador")
-        teaches.append(TrainerEntry(skill=skill_id, price=e.int("price", 0), stats=stats, skills=needs,
-                                    rule=Rule(id=f"{tid}.{skill_id}", when="train", conditions=conditions, actions=())))
+        stats, needs, rule = _requirements(e, refs, f"{tid}.{skill_id}", "nos requisitos de treinador")
+        if skill_id in needs:
+            raise ContentError(f"{e.where}.skills: a skill não pode ser requisito dela mesma")
+        teaches.append(TrainerEntry(skill=skill_id, price=e.int("price", 0), stats=stats, skills=needs, rule=rule))
         e.done()
     if not teaches:
         raise ContentError(f"{f.where}: 'teaches' precisa de pelo menos uma skill")
@@ -1351,14 +1444,14 @@ def _parse_npc(nid: str, raw: Any, refs: _RuleRefs) -> NpcDef:
         for i, opt_raw in enumerate(n.list("options")):
             o = _Fields(f"{n.where}.options[{i}]", opt_raw)
             conditions = _dialog_conditions(o, refs, "nas condições de diálogo")
-            goto, shop, trainer = o.text("goto", None), o.text("shop", None), o.text("trainer", None)
-            if sum(x is not None for x in (goto, shop, trainer)) > 1:
-                raise ContentError(f"{o.where}: use só um de goto, shop ou trainer")
+            goto, shop, trainer, craft = (o.text(k, None) for k in ("goto", "shop", "trainer", "craft"))
+            if sum(x is not None for x in (goto, shop, trainer, craft)) > 1:
+                raise ContentError(f"{o.where}: use só um de goto, shop, trainer ou craft")
             options.append(DialogOption(
                 text=o.text("text"),
                 rule=Rule(id=f"{nid}.{node_id}[{i}]", when="talk", conditions=conditions,
                           actions=_parse_actions(o, "talk", refs)),
-                goto=goto, shop=shop, trainer=trainer,
+                goto=goto, shop=shop, trainer=trainer, craft=craft,
             ))
             o.done()
         nodes[node_id] = DialogNode(id=node_id, text=n.text("text"), options=tuple(options))

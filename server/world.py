@@ -29,6 +29,7 @@ from .orgs import OrgSystem, total_level
 from .pathfinding import clear_line, find_path, free_spot, tile_of
 from .quests import QuestSystem
 from .training import TrainingSystem
+from .crafting import CraftingSystem
 from .entities import (
     DIRECTIONS, MOVE_KEYS, ActiveEffect, Enemy, Entity, GroundItem, MoveKeys, Player, Projectile,
 )
@@ -116,6 +117,7 @@ class World:
         self.npcs = NpcSystem(self)  # personagens do mundo: conversas e lojas
         self.quests = QuestSystem(self)  # missões (data/quests.yaml)
         self.training = TrainingSystem(self)  # skills aprendidas, barra e treinadores (data/trainers.yaml)
+        self.crafting = CraftingSystem(self)  # oficinas e receitas (data/crafting.yaml)
 
         self._spawn_enemies()
         self.npcs.spawn()

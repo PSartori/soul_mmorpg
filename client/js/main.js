@@ -10,6 +10,7 @@ import { AdminUI } from "./admin.js";
 import { DialogBox, ShopWindow, npcHeading } from "./npc.js";
 import { QuestLog } from "./quests.js";
 import { SkillsWindow, TrainerWindow, makeDraggable, makeDropTarget, skillMeta } from "./skills.js";
+import { CraftWindow } from "./crafting.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -88,26 +89,27 @@ function handleMessage(msg) {
       applyContent(msg);
       break;
     case "dialog":
-      shopWindow.hide();
-      trainerWindow.hide();
+      hideNpcWindows();
       dialogBox.show(msg);
       break;
     case "shop":
-      dialogBox.hide();
-      trainerWindow.hide();
-      closeCornerWindows(); // a loja ocupa o mesmo canto do inventário, organização, diário e skills
+      // loja, treinador e oficina ocupam o mesmo canto do inventário, organização, diário e skills
+      hideNpcWindows();
+      closeCornerWindows();
       shopWindow.show(msg);
       break;
     case "trainer":
-      dialogBox.hide();
-      shopWindow.hide();
+      hideNpcWindows();
       closeCornerWindows();
       trainerWindow.show(msg);
       break;
+    case "craft":
+      hideNpcWindows();
+      closeCornerWindows();
+      craftWindow.show(msg);
+      break;
     case "npc_close":
-      dialogBox.hide();
-      shopWindow.hide();
-      trainerWindow.hide();
+      hideNpcWindows();
       break;
     case "org_data":
       orgWindow.update(msg);
@@ -151,6 +153,7 @@ function applyContent(msg) {
   skillsWindow.lastKey = "";
   skillsWindow.update();
   if (trainerWindow.isOpen) trainerWindow.render();
+  if (craftWindow.isOpen) craftWindow.render();
   lastHotbarKey = "";
   lastStatsKey = "";
   inventoryUI.lastKey = "";
@@ -189,9 +192,7 @@ function handleClose() {
   clearInterval(tickTimer);
   adminUI.toggle(false);
   orgWindow.toggle(false);
-  dialogBox.hide();
-  shopWindow.hide();
-  trainerWindow.hide();
+  hideNpcWindows();
   skillsWindow.toggle(false);
   invitePanel.update(null);
   $("overlay").classList.remove("hidden");
@@ -228,6 +229,7 @@ function applySnapshot(msg) {
   inventoryUI.update(msg.you.inv, msg.you.icd);
   shopWindow.refresh();
   trainerWindow.refresh();
+  craftWindow.refresh();
   skillsWindow.update(msg.you.known);
   if (msg.you.q) {
     questLog.update(msg.you.q);
@@ -597,11 +599,20 @@ const skillsWindow = new SkillsWindow({
   getYou: () => state.you,
   send: (msg) => conn?.send(msg),
 });
+const craftWindow = new CraftWindow({
+  getDefs: () => state.defs,
+  getInventory: () => inventoryUI.inv,
+  send: (msg) => conn?.send(msg),
+  heading: npcHeading,
+});
+// Janelas abertas por NPCs: conversa, loja, treinador e oficina (uma de cada vez)
+const npcWindows = () => [dialogBox, shopWindow, trainerWindow, craftWindow];
+function hideNpcWindows() {
+  for (const win of npcWindows()) win.hide();
+}
 function closeNpc() {
-  if (dialogBox.isOpen || shopWindow.isOpen || trainerWindow.isOpen) conn?.send({ t: "npc", op: "close" });
-  dialogBox.hide();
-  shopWindow.hide();
-  trainerWindow.hide();
+  if (npcWindows().some((win) => win.isOpen)) conn?.send({ t: "npc", op: "close" });
+  hideNpcWindows();
 }
 // Tecla E: conversa com o NPC mais próximo, se houver um ao alcance
 function talkToNearest() {
@@ -634,7 +645,7 @@ function openInCorner(win, force) {
   win.toggle(force);
   if (!win.isOpen) return;
   for (const other of cornerWindows()) if (other !== win) other.toggle(false);
-  if (shopWindow.isOpen || trainerWindow.isOpen) closeNpc();
+  if (shopWindow.isOpen || trainerWindow.isOpen || craftWindow.isOpen) closeNpc();
 }
 const toggleOrg = () => openInCorner(orgWindow);
 const toggleInventory = () => openInCorner(inventoryUI);

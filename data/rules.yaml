@@ -33,6 +33,8 @@
 #             opponent_race, opponent_class
 #   quest_complete  o personagem concluiu uma missão (data/quests.yaml)
 #             race, class, quest (id da missão)
+#   craft     o personagem criou um item numa oficina (data/crafting.yaml); uma vez por criação
+#             race, class, item (id do item criado), station (id da oficina)
 #
 # ---------------------------------------------------------------- valores nas condições
 #   campo: valor           igual a

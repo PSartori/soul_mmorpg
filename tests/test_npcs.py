@@ -73,6 +73,7 @@ def make_content(npcs: str = NPCS_YAML, shops: str = SHOPS_YAML, quests: str = "
         (tmp / "npcs.yaml").write_text(npcs, encoding="utf-8")
         (tmp / "shops.yaml").write_text(shops, encoding="utf-8")
         (tmp / "quests.yaml").write_text(quests, encoding="utf-8")  # as missões reais citam outros NPCs
+        (tmp / "crafting.yaml").write_text("", encoding="utf-8")  # as receitas reais citam missões reais
         return dataclasses.replace(Content.load(tmp), rules=())
     finally:
         shutil.rmtree(tmp)
@@ -323,10 +324,11 @@ class NpcContentTests(unittest.TestCase):
         tmp = Path(tempfile.mkdtemp())
         try:
             for path in C.DATA_DIR.glob("*.yaml"):
-                if path.name not in ("npcs.yaml", "shops.yaml", "quests.yaml"):
+                if path.name not in ("npcs.yaml", "shops.yaml", "quests.yaml", "trainers.yaml", "crafting.yaml"):
                     shutil.copy(path, tmp / path.name)
             content = Content.load(tmp)
-            self.assertEqual((content.npcs, content.shops, content.quests), ({}, {}, {}))
+            self.assertEqual((content.npcs, content.shops, content.quests, content.trainers, content.crafting),
+                             ({}, {}, {}, {}, {}))
         finally:
             shutil.rmtree(tmp)
 
@@ -339,7 +341,7 @@ class NpcContentTests(unittest.TestCase):
 
     def test_goto_and_shop_together(self):
         self.assert_error(NPCS_YAML.replace("shop: loja", "shop: loja\n          goto: depois"), SHOPS_YAML,
-                          "só um de goto, shop ou trainer")
+                          "só um de goto, shop, trainer ou craft")
 
     def test_bad_condition_and_action(self):
         self.assert_error(NPCS_YAML.replace("race: desperto", "killer: enemy"), SHOPS_YAML,

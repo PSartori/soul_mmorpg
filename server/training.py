@@ -25,9 +25,7 @@ import json
 from typing import TYPE_CHECKING, Any
 
 from . import config as C
-from .orgs import total_level
-from .rules import Rule, rule_matches
-from .stats import STAT_LABELS
+from . import requirements
 
 if TYPE_CHECKING:
     from .content import SkillDef, TrainerDef, TrainerEntry
@@ -158,53 +156,11 @@ class TrainingSystem:
         """Requisitos que faltam para aprender (vazio = pode). O preço é conferido à parte."""
         skill = self.skills[entry.skill]
         content = self.world.content
-        missing = []
+        lines = []
         if not skill.usable_by(p.race_id, p.class_id):
-            if skill.classes:
-                missing.append("Só para: " + ", ".join(content.classes[c].name for c in skill.classes
-                                                       if c in content.classes))
-            else:
-                missing.append("Só para: " + ", ".join(content.races[r].name for r in skill.races
-                                                       if r in content.races))
-        for stat, level in entry.stats.items():
-            if p.stat_level(stat) < level:
-                missing.append(f"{STAT_LABELS[stat]} nível {level} (você: {p.stat_level(stat)})")
-        for sid in entry.skills:
-            if sid not in p.known:
-                missing.append(f"Conhecer {getattr(self.skills.get(sid), 'name', sid)}")
-        ctx = self.world._player_context(p)
-        for key, value in entry.rule.conditions:
-            single = Rule(id=entry.rule.id, when="train", conditions=((key, value),), actions=())
-            if not rule_matches(single, ctx, p.flags, self.world.rng):
-                missing.append(self._condition_label(p, key, value))
-        return missing
-
-    def _condition_label(self, p: Player, key: str, value: Any) -> str:
-        content = self.world.content
-        values = value if isinstance(value, list) else [value]
-
-        def names(table: dict) -> str:
-            return ", ".join(getattr(table.get(v), "name", str(v)) for v in values)
-
-        if key == "total_level" and isinstance(value, dict):
-            if "min" in value:
-                return f"Nível total {value['min']:g} (você: {total_level(p)})"
-            return f"Nível total até {value['max']:g}"
-        if key == "gold" and isinstance(value, dict):
-            return f"Ter {value.get('min', 0):g} moedas"
-        if key == "race":
-            return f"Raça: {names(content.races)}"
-        if key == "class":
-            return f"Classe: {names(content.classes)}"
-        if key == "org":
-            return f"Ser de: {names(content.orgs)}"
-        if key == "rank":
-            return f"Cargo: {', '.join(map(str, values))}"
-        if key == "quest_done":
-            return f"Concluir a missão {names(content.quests)}"
-        if key == "quest_active":
-            return f"Estar na missão {names(content.quests)}"
-        return "Um requisito especial"  # marcas (flags) não são mostradas ao jogador
+            table, ids = (content.classes, skill.classes) if skill.classes else (content.races, skill.races)
+            lines.append("Só para: " + ", ".join(table[i].name for i in ids if i in table))
+        return lines + requirements.missing(self.world, p, entry.stats, entry.skills, entry.rule)
 
     def trainer_payload(self, p: Player, trainer: TrainerDef) -> list[dict]:
         rows = []

@@ -72,6 +72,7 @@ def make_content(trainers: str = TRAINERS_YAML, npcs: str = NPCS_YAML, extra: di
         (tmp / "npcs.yaml").write_text(npcs, encoding="utf-8")
         (tmp / "trainers.yaml").write_text(trainers, encoding="utf-8")
         (tmp / "quests.yaml").write_text(QUESTS_YAML, encoding="utf-8")  # as missões reais citam outros NPCs
+        (tmp / "crafting.yaml").write_text("", encoding="utf-8")  # as receitas reais citam missões reais
         for name, text in (extra or {}).items():
             with open(tmp / name, "a", encoding="utf-8") as f:
                 f.write(text)
@@ -371,7 +372,7 @@ class TrainerContentTests(unittest.TestCase):
         npcs = NPCS_YAML.replace("trainer: treino", "trainer: sumiu")
         self.assert_error("treinador 'sumiu'", npcs=npcs)
         npcs = NPCS_YAML.replace("trainer: treino", "trainer: treino\n          goto: inicio")
-        self.assert_error("só um de goto, shop ou trainer", npcs=npcs)
+        self.assert_error("só um de goto, shop, trainer ou craft", npcs=npcs)
 
     def test_skill_and_class_validation(self):
         self.assert_error("raça 'anao'", extra={"skills.yaml": "x:\n  name: X\n  type: self\n  cooldown: 1\n"

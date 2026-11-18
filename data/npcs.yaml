@@ -1,4 +1,4 @@
-# Personagens do mundo (NPCs): conversam, abrem lojas, ensinam skills e podem dar coisas ou mudar o
+# Personagens do mundo (NPCs): conversam, abrem lojas, ensinam skills, criam itens e podem dar coisas ou mudar o
 # personagem, com as mesmas ações das regras (data/rules.yaml).
 #
 # Onde cada NPC fica é definido no mapa:
@@ -23,7 +23,8 @@
 #                 set_class, set_race...)
 #           goto: nó seguinte          | shop: abre a loja (data/shops.yaml)
 #                                      | trainer: abre o treinador (data/trainers.yaml)
-#                 (sem goto, shop nem trainer, a conversa termina depois das ações)
+#                                      | craft: abre a oficina (data/crafting.yaml)
+#                 (sem goto, shop, trainer nem craft, a conversa termina depois das ações)
 #       Nó sem opções mostra só um botão para encerrar.
 #
 # Para algo acontecer uma vez só, use uma marca: if { not_flags: [x] } + do [ set_flag: x ].
@@ -61,6 +62,8 @@ ferreiro:
       options:
         - text: Quero ver as armas e armaduras.
           shop: armeiro
+        - text: Pode forjar algo para mim?
+          craft: forja
         - text: Agora não.
 
 ancia:
@@ -76,6 +79,8 @@ ancia:
         - text: Pode me ajudar com alguma coisa?
           if: { not_flags: [presente_celeste] }
           goto: presente
+        - text: A senhora sabe fazer poções?
+          craft: ervas
         - text: Até logo, vó.
     conselho:
       text: "Medite quando estiver cansado de lutar e descanse quando estiver cansado de meditar. O resto vem com o tempo."
@@ -132,6 +137,8 @@ vigia:
       options:
         - text: Preciso de suprimentos.
           shop: acampamento
+        - text: O que é aquele altar?
+          craft: altar_do_vazio
         - text: Até mais.
 
 mestre:

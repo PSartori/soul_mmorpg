@@ -1,0 +1,77 @@
+# Oficinas: criação de itens. Um NPC abre a oficina por uma opção de diálogo
+# (craft: id), em data/npcs.yaml; a mesma oficina pode ser usada por vários NPCs.
+#
+#   name      nome exibido no topo da janela
+#   recipes   lista de receitas, cada uma com:
+#     make      item criado (de items.yaml)
+#     qty       quantas unidades cada criação dá (padrão 1)
+#     needs     materiais gastos em cada criação: { couro_grosso: 4, fragmento_espectral: 2 }
+#               (qualquer item serve como material, inclusive poções e equipamentos)
+#     price     moedas cobradas em cada criação (padrão 0)
+#     stats     nível mínimo de atributos: { strength: 8 }
+#     skills    skills que precisa conhecer: [onda]
+#     if        condições extras, as mesmas dos diálogos: race, class, org, rank,
+#               total_level, quest_done, quest_active, flags, not_flags
+#     hidden    true = a receita só aparece na lista quando as condições do "if" valem
+#               (receita secreta, liberada por missão ou marca). Sem hidden, a receita
+#               aparece sempre, com o que falta para criar.
+#
+# O jogador escolhe quantas vezes criar (até 99 de uma vez): gasta tudo junto, ou não
+# cria nada se faltar material, moeda ou espaço. Cada criação dispara o evento "craft"
+# das regras (data/rules.yaml), com o item criado e a oficina.
+#
+# Sem wipes, o servidor recusa receitas que dão lucro sem fim: se todos os materiais
+# são vendidos por alguma loja, comprá-los e criar não pode render mais do que o
+# resultado vale vendido de volta.
+# Nomes e números provisórios.
+
+# Otto, Campos de Início: equipamentos de couro e pedra
+forja:
+  name: Forja
+  recipes:
+    - make: gibao_de_couro
+      needs: { couro_grosso: 4 }
+      price: 5
+    - make: espada_curta
+      needs: { fragmento_espectral: 6, couro_grosso: 1 }
+      price: 5
+    - make: couraca_de_bruto
+      needs: { couro_grosso: 8, presa_de_devorador: 2 }
+      price: 25
+      stats: { strength: 8 }
+    # receita secreta: só aparece depois de derrotar o Guardião das Ruínas
+    - make: armadura_de_pedra
+      needs: { po_de_pedra: 10, couro_grosso: 4 }
+      price: 80
+      stats: { vitality: 15 }
+      if: { quest_done: o_guardiao }
+      hidden: true
+
+# Vó Celeste, Campos de Início: poções com o que sobra dos espectros
+ervas:
+  name: Ervas e infusões
+  recipes:
+    - make: pocao_vida
+      qty: 2
+      needs: { fragmento_espectral: 3 }
+      price: 2
+    - make: pocao_energia
+      qty: 2
+      needs: { fragmento_espectral: 3 }
+      price: 2
+    - make: tonico_veloz
+      needs: { presa_de_devorador: 1, fragmento_espectral: 2 }
+      price: 5
+    - make: pocao_vida_maior
+      needs: { pocao_vida: 3, po_de_pedra: 1 }
+      price: 10
+      stats: { spirit: 10 }
+
+# Dorian, Fenda do Vazio: o que se faz com a essência do vazio
+altar_do_vazio:
+  name: Altar do vazio
+  recipes:
+    - make: manto_do_vazio
+      needs: { essencia_do_vazio: 12, armadura_de_pedra: 1 }
+      price: 300
+      if: { total_level: 150 }
