@@ -138,4 +138,6 @@ MSG_BURST = 120.0  # rajada permitida acima disso
 MSG_FLOOD_KICK = 300  # mensagens descartadas por excesso antes de derrubar a conexão
 CHAT_BURST = 5  # mensagens de chat seguidas...
 CHAT_WINDOW = 6.0  # ...dentro desta janela (segundos); mais que isso espera
+BUG_REPORT_MAX_LEN = 1000  # caracteres de um relato de bug
+BUG_REPORT_COOLDOWN = 60.0  # segundos entre dois relatos do mesmo jogador
 TRUST_PROXY = os.environ.get("TRUST_PROXY") == "1"  # atrás do Caddy: o IP real vem em X-Forwarded-For

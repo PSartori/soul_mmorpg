@@ -10,6 +10,8 @@ Uso:
   ./admin.sh conta Nome             mostra a conta de um personagem e os personagens dela
   ./admin.sh senha Conta            gera uma senha temporária para a conta (quem esqueceu a senha)
   ./admin.sh log [N]                últimas N ações da equipe (padrão 20)
+  ./admin.sh bugs [--todos]         relatos de bug abertos (ou todos, inclusive os resolvidos)
+  ./admin.sh bug-resolvido N        marca o relato N como resolvido
 
 Serve para criar o primeiro administrador e para emergências (ex.: desbanir com o
 servidor fora do ar). Mudança de papel vale a partir do próximo login da pessoa.
@@ -46,6 +48,10 @@ def main(argv: list[str] | None = None, db_path: Path = C.DB_PATH) -> int:
     password.add_argument("account")
     log = sub.add_parser("log", help="últimas ações da equipe")
     log.add_argument("n", type=int, nargs="?", default=20)
+    bugs = sub.add_parser("bugs", help="relatos de bug")
+    bugs.add_argument("--todos", action="store_true", help="inclui os já resolvidos")
+    bug_close = sub.add_parser("bug-resolvido", help="marca um relato de bug como resolvido")
+    bug_close.add_argument("id", type=int)
     args = parser.parse_args(argv)
 
     db = Database(db_path)
@@ -114,6 +120,28 @@ def main(argv: list[str] | None = None, db_path: Path = C.DB_PATH) -> int:
         print(f"Senha temporária da conta {acc.name}: {new_password}")
         print("Passe só para a dona da conta; ela deve trocar a senha ao entrar (botão Conta). "
               "Se o servidor estiver rodando, já vale.")
+    elif args.cmd == "bugs":
+        reports = db.list_bug_reports(include_closed=args.todos, limit=200)
+        for r in reversed(reports):
+            stamp = time.strftime("%d/%m %H:%M", time.localtime(r["at"]))
+            status = "" if r["status"] == "open" else f" [resolvido por {r['closed_by']}]"
+            print(f"#{r['id']} {stamp} — {r['character']} (conta {r['account'] or '?'}) em {r['map']} "
+                  f"({r['x']:.0f}, {r['y']:.0f}) {r['zone']}{status}")
+            print(f"    {r['text']}")
+            client = r["client"]
+            if client:
+                extra = [client.get("view", ""), client.get("screen", ""), client.get("agent", "")]
+                print(f"    cliente: {' · '.join(e for e in extra if e)}")
+                for error in client.get("errors", []):
+                    print(f"    erro: {error}")
+        if not reports:
+            print("Nenhum relato" + ("." if args.todos else " aberto."))
+    elif args.cmd == "bug-resolvido":
+        if not db.close_bug_report(args.id, "terminal"):
+            print(f"O relato #{args.id} não existe ou já foi resolvido.", file=sys.stderr)
+            return 1
+        db.log_admin("terminal", "resolveu o relato de bug", f"#{args.id}")
+        print(f"Relato #{args.id} marcado como resolvido.")
     elif args.cmd == "log":
         for at, actor, action, target, details in db.recent_log(args.n):
             stamp = time.strftime("%d/%m %H:%M", time.localtime(at))

@@ -75,6 +75,7 @@ export class AdminUI {
     if (this.can("reload")) sections.push(this.reloadSection());
     if (this.can("announce")) sections.push(this.announceSection());
     if (this.data.bans) sections.push(this.bansSection());
+    if (this.data.bugs) sections.push(this.bugsSection());
     if (this.data.log) sections.push(this.logSection());
     this.body.replaceChildren(...sections);
   }
@@ -240,6 +241,38 @@ export class AdminUI {
       line.append(el("span", "label wide",
         `[${ban.what}] ${ban.name} — ${ban.until}, por ${ban.by}${ban.reason ? ` (${ban.reason})` : ""}`), b);
       box.append(line);
+    }
+    return box;
+  }
+
+  // Relatos de bug abertos: quem, onde, quando, o texto e dados do navegador
+  bugsSection() {
+    const box = el("section", "adm-box");
+    box.append(el("h4", "", `Relatos de bug abertos (${this.data.bugs.length})`));
+    if (!this.data.bugs.length) box.append(el("p", "hint", "Nenhum relato aberto."));
+    for (const bug of this.data.bugs) {
+      const item = el("div", "adm-bug");
+      item.append(el("div", "meta",
+        `#${bug.id} · ${bug.at} · ${bug.character}${bug.account ? ` (conta ${bug.account})` : ""} · ` +
+        `${bug.map} (${Math.round(bug.x)}, ${Math.round(bug.y)})${bug.zone ? ` · ${bug.zone}` : ""}`));
+      item.append(el("div", "text", bug.text));
+      const client = bug.client ?? {};
+      const details = [client.view ? `visão ${client.view}` : "", client.screen, client.agent].filter(Boolean);
+      if (details.length) item.append(el("div", "meta", details.join(" · ")));
+      for (const error of client.errors ?? []) item.append(el("div", "error", `erro: ${error}`));
+      const actions = el("div", "adm-row");
+      if (this.can("teleport")) {
+        const go = el("button", "", "Ir até o local");
+        go.type = "button";
+        go.addEventListener("click", () => this.op("bug_goto", { id: bug.id }));
+        actions.append(go);
+      }
+      const done = el("button", "", "Resolvido");
+      done.type = "button";
+      done.addEventListener("click", () => this.op("bug_close", { id: bug.id }));
+      actions.append(done);
+      item.append(actions);
+      box.append(item);
     }
     return box;
   }

@@ -90,6 +90,20 @@ class Database:
                 by        TEXT NOT NULL,
                 at        REAL NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS bug_reports (
+                id        INTEGER PRIMARY KEY AUTOINCREMENT,
+                at        REAL NOT NULL,
+                character TEXT NOT NULL,
+                account   TEXT NOT NULL DEFAULT '',
+                map       TEXT NOT NULL DEFAULT '',
+                x         REAL NOT NULL DEFAULT 0,
+                y         REAL NOT NULL DEFAULT 0,
+                zone      TEXT NOT NULL DEFAULT '',
+                text      TEXT NOT NULL,
+                client    TEXT NOT NULL DEFAULT '{}',  -- visão, navegador, erros recentes do cliente
+                status    TEXT NOT NULL DEFAULT 'open',  -- open | closed
+                closed_by TEXT NOT NULL DEFAULT ''
+            );
             CREATE TABLE IF NOT EXISTS admin_log (
                 id      INTEGER PRIMARY KEY AUTOINCREMENT,
                 at      REAL NOT NULL,
@@ -300,6 +314,42 @@ class Database:
         return self.conn.execute(
             "SELECT at, actor, action, target, details FROM admin_log ORDER BY id DESC LIMIT ?", (limit,)
         ).fetchall()
+
+    # ------------------------------------------------------------ relatos de bug
+
+    def add_bug_report(self, character: str, account: str, map_id: str, x: float, y: float, zone: str,
+                       text: str, client: dict) -> int:
+        cursor = self.conn.execute(
+            "INSERT INTO bug_reports (at, character, account, map, x, y, zone, text, client) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (time.time(), character, account, map_id, x, y, zone, text, json.dumps(client, ensure_ascii=False)),
+        )
+        self.conn.commit()
+        return cursor.lastrowid  # type: ignore[return-value]
+
+    def list_bug_reports(self, include_closed: bool = False, limit: int = 50) -> list[dict]:
+        """Os mais recentes primeiro."""
+        rows = self.conn.execute(
+            "SELECT id, at, character, account, map, x, y, zone, text, client, status, closed_by FROM bug_reports "
+            + ("" if include_closed else "WHERE status = 'open' ") + "ORDER BY id DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        keys = ("id", "at", "character", "account", "map", "x", "y", "zone", "text", "client", "status", "closed_by")
+        reports = [dict(zip(keys, row)) for row in rows]
+        for r in reports:
+            r["client"] = _json(r["client"])
+        return reports
+
+    def get_bug_report(self, report_id: int) -> dict | None:
+        row = self.conn.execute("SELECT map, x, y FROM bug_reports WHERE id = ?", (report_id,)).fetchone()
+        return {"map": row[0], "x": row[1], "y": row[2]} if row else None
+
+    def close_bug_report(self, report_id: int, by: str) -> bool:
+        cursor = self.conn.execute(
+            "UPDATE bug_reports SET status = 'closed', closed_by = ? WHERE id = ? AND status = 'open'", (by, report_id)
+        )
+        self.conn.commit()
+        return cursor.rowcount > 0
 
     def backup(self, dest_dir: str | Path, keep: int) -> Path:
         """Copia o banco (com o servidor rodando) e apaga as cópias mais antigas além de `keep`."""

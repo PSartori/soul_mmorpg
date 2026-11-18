@@ -109,6 +109,8 @@ class AdminSystem:
             "set_role": ("set_role", self._set_role),
             "reload": ("reload", self._reload),
             "reset_password": ("account", self._reset_password),
+            "bug_close": ("log", self._bug_close),
+            "bug_goto": ("teleport", self._bug_goto),
         }
         if op not in ops:
             return
@@ -200,9 +202,42 @@ class AdminSystem:
                                for kind, label in BAN_KINDS.items()
                                for n, u, r, b in self.db.list_active(kind, now)]
         if role.can("log"):
+            payload["bugs"] = [
+                {"id": r["id"], "at": time.strftime("%d/%m %H:%M", time.localtime(r["at"])),
+                 "character": r["character"], "account": r["account"], "map": self._map_title(r["map"]),
+                 "map_id": r["map"], "x": r["x"], "y": r["y"], "zone": r["zone"], "text": r["text"],
+                 "client": r["client"]}
+                for r in self.db.list_bug_reports(limit=30)
+            ]
             payload["log"] = [{"at": time.strftime("%d/%m %H:%M", time.localtime(at)), "actor": a, "action": act,
                                "target": t, "details": d} for at, a, act, t, d in self.db.recent_log(40)]
         self.world._outbox.append((p.id, payload))
+
+    def _map_title(self, map_id: str) -> str:
+        tilemap = self.world.maps.get(map_id)
+        return (tilemap.title or tilemap.name) if tilemap else map_id
+
+    def _bug_close(self, p: Player, data: dict) -> None:
+        report_id = data.get("id")
+        if isinstance(report_id, bool) or not isinstance(report_id, int):
+            raise ValueError("relato inválido")
+        if not self.db.close_bug_report(report_id, p.name):
+            self._reply(p, False, f"O relato #{report_id} não existe ou já foi resolvido.")
+            return
+        self._record(p, "resolveu o relato de bug", f"#{report_id}")
+        self._reply(p, True, f"Relato #{report_id} marcado como resolvido.")
+
+    def _bug_goto(self, p: Player, data: dict) -> None:
+        """Vai até onde o jogador estava quando relatou o bug."""
+        report_id = data.get("id")
+        if isinstance(report_id, bool) or not isinstance(report_id, int):
+            raise ValueError("relato inválido")
+        report = self.db.get_bug_report(report_id)
+        if report is None or report["map"] not in self.world.maps:
+            self._reply(p, False, "Esse lugar não existe mais.")
+            return
+        self.world.teleport(p, report["map"], float(report["x"]), float(report["y"]))
+        self._reply(p, True, f"Você foi até o local do relato #{report_id}.")
 
     def _kick(self, p: Player, data: dict) -> None:
         found = self._target(p, data, online=True)

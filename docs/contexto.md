@@ -1,6 +1,6 @@
 # Contexto geral do projeto
 
-Resumo de tudo o que foi conversado e construído até 18/11/2026 (atualizado com contas e proteções): de onde o projeto
+Resumo de tudo o que foi conversado e construído até 18/11/2026 (atualizado com o relato de bug): de onde o projeto
 veio, como trabalhamos, o que foi decidido, o que existe hoje e o que vem a seguir.
 Para detalhes técnicos, veja o `README.md`; para a visão do jogo e as decisões em
 aberto, o `docs/design.md`; para números de balanceamento, o `docs/balanceamento.md`.
@@ -38,7 +38,7 @@ Desperto, Espectral, Vigília, Coro Sombrio, Espectro, Devorador...) são
 - **Conteúdo é dado, não código.** Skills, efeitos, itens, inimigos, raças, classes,
   regras, organizações, papéis da equipe, NPCs, lojas, treinadores, oficinas, missões e mapas ficam em `data/`, validados ao
   carregar (um erro de digitação aponta arquivo, item e campo).
-- **Cada etapa termina testada**: testes automáticos (hoje 443) e verificação no
+- **Cada etapa termina testada**: testes automáticos (hoje 449) e verificação no
   navegador, e só então commit.
 
 ---
@@ -85,7 +85,8 @@ Desperto, Espectral, Vigília, Coro Sombrio, Espectro, Devorador...) são
 | `a757a70` | Criação de itens | Oficinas nos NPCs, receitas com materiais, preço e requisitos, receitas secretas, evento `craft` |
 | `671f705` | Visão 3D (protótipo) | Mundo 3D com personagens 2D virados para a câmera (three.js), zoom, giro de 90°, troca com o 2D (V) |
 | `526cfad` | Grupos | Convite pelo menu, painel com a vida dos membros, chat do grupo, abates/missões/moedas divididos, sem fogo amigo |
-| — | Contas e proteções | Conta com até 4 personagens, troca e senha temporária, bans por conta/IP, travas de senha, limites de mensagens e chat |
+| `9ba88c1` | Contas e proteções | Conta com até 4 personagens, troca e senha temporária, bans por conta/IP, travas de senha, limites de mensagens e chat |
+| — | Relatar bug | Botão no painel; o relato vai com mapa, posição, hora e dados do navegador; equipe vê, vai até o local e resolve |
 
 ### Sistemas prontos
 
@@ -117,6 +118,9 @@ Desperto, Espectral, Vigília, Coro Sombrio, Espectro, Devorador...) são
   senha no jogo e senha temporária pela equipe; bans por personagem, conta ou conta + IP;
   senha conferida fora do loop do jogo; travas de tentativas de senha, limite de contas por
   IP, de mensagens por conexão e de chat. Bancos antigos viram uma conta por personagem.
+- **Relatar bug**: botão no painel; o relato guarda personagem, conta, mapa, posição, zona,
+  hora, visão 2D/3D, navegador e os últimos erros de JavaScript. A equipe é avisada, vê a
+  lista na administração (ir até o local, resolvido) ou usa `./admin.sh bugs`.
 - **Regras em YAML** (`data/rules.yaml`): "quando X, se Y, faça Z" para morte, abate,
   subida de nível, fim de duelo e mudança de cargo — penalidades, transformações,
   recompensas.
@@ -247,7 +251,21 @@ Observações do ambiente:
 
 - O projeto fica numa pasta do Google Drive; o ambiente virtual do Python fica fora
   dela (`~/.venvs/rpg-online`) para não sincronizar milhares de arquivos.
-- O banco (`var/game.db`), os backups e a lista local de personagens de teste
-  (`var/contas-de-teste.txt`) ficam em `var/`, que **não** vai para o GitHub.
+- **O banco de dados fica só na máquina.** O banco (`var/game.db`, com contas,
+  personagens, equipe, bans e organizações), os backups e a lista local de contas de
+  teste (`var/contas-de-teste.txt`) ficam em `var/`, que **não** vai para o GitHub (está
+  no `.gitignore`). Ou seja: quem baixar o repositório do GitHub (outro computador, a
+  VPS) **não recebe banco nenhum** e precisa criar o seu.
+- **Como criar o banco local depois de baixar o repositório:** basta ligar o servidor
+  (`./run.sh`). Se `var/game.db` não existir, ele é criado vazio, com todas as tabelas.
+  Depois:
+  1. abra o jogo e crie uma conta e um personagem;
+  2. dê o papel de administrador ao seu personagem: `./admin.sh role SeuPersonagem admin`
+     (vale no próximo login);
+  3. as contas de teste e a lista `var/contas-de-teste.txt` desta máquina não existem lá:
+     crie as que precisar.
+- **Para levar os dados desta máquina para outra** (ex.: a VPS), copie o arquivo
+  `var/game.db` (ou um backup de `var/backups/`) com o servidor parado. Não há outro
+  jeito: o GitHub só tem o código e o conteúdo (`data/`).
 - Para testar multiplayer, abra duas abas do navegador e entre com personagens
   diferentes.

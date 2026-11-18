@@ -29,6 +29,12 @@ backups automáticos em `var/backups/` (um ao ligar o servidor e outro a cada 6 
 guarda os 28 mais recentes). Para restaurar, pare o servidor e copie um backup
 por cima de `var/game.db`.
 
+**O banco fica só na máquina:** a pasta `var/` não vai para o GitHub. Quem baixa o
+repositório começa sem banco: ao ligar o servidor (`./run.sh`), `var/game.db` é
+criado vazio. Crie uma conta e um personagem no jogo e torne-se administrador com
+`./admin.sh role SeuPersonagem admin`. Para levar os dados de uma máquina para outra
+(ex.: para a VPS), copie `var/game.db` (ou um backup) com o servidor parado.
+
 ## Editando conteúdo com o jogo rodando
 
 - **Botão "Recarregar conteúdo"** na janela de administração (permissão `reload`):
@@ -68,8 +74,10 @@ jogadores online (com a conta de cada um, para quem pode banir) e, para o escolh
 expulsar, silenciar, banir (com tempo, motivo e **alcance**: só o personagem, a conta
 toda ou a conta e o IP), ir até/trazer, dar item ou moedas, trocar o papel e gerar uma
 **senha temporária** para a conta (permissão `account`, para quem esqueceu a senha);
-mais anúncio para todos, lista de banidos (personagens, contas e IPs, com desbanir) e o
-registro de tudo que a equipe fez.
+mais anúncio para todos, lista de banidos (personagens, contas e IPs, com desbanir), os
+**relatos de bug** abertos (quem, onde, quando, o texto e dados do navegador, com "Ir até o
+local" e "Resolvido") e o registro de tudo que a equipe fez. Quem tem a permissão `log`
+recebe um aviso no chat a cada relato novo.
 Papéis e permissões ficam em `data/roles.yaml`; ninguém age sobre alguém da equipe
 de nível igual ou maior.
 
@@ -83,7 +91,8 @@ pelo terminal:
 Outros: `./admin.sh staff`, `./admin.sh bans`, `./admin.sh unban Nome` (personagem e conta
 com esse nome), `./admin.sh unban-ip IP`, `./admin.sh conta Personagem` (de que conta é e
 os outros personagens dela), `./admin.sh senha Conta` (senha temporária) e
-`./admin.sh log`. Papéis são por personagem; mudança de papel pelo terminal vale no
+`./admin.sh log`, `./admin.sh bugs` (relatos abertos; `--todos` inclui os resolvidos) e
+`./admin.sh bug-resolvido N`. Papéis são por personagem; mudança de papel pelo terminal vale no
 próximo login.
 
 ## Contas e proteções
@@ -104,6 +113,8 @@ próximo login.
 - **Chat**: até 5 mensagens a cada 6 s por jogador (`CHAT_BURST`, `CHAT_WINDOW`).
 - **Bans**: de personagem (ao entrar nele), de conta e de IP (ao entrar na conta ou criar uma).
 - **IP real atrás do Caddy**: com `TRUST_PROXY=1`, o IP vem do cabeçalho `X-Forwarded-For`.
+- **Relatos de bug**: até 1000 caracteres, um por minuto por jogador (`BUG_REPORT_*`); os
+  dados do navegador são cortados a tamanhos fixos.
 
 ## Balanceamento
 
@@ -145,6 +156,7 @@ lutadores ficam parados, então alcance e esquiva não contam.
 | V | troca entre a visão 2D e a 3D (protótipo; o jogo lembra a escolha) |
 | Q / Z | na visão 3D, gira a câmera 90° para um lado ou para o outro |
 | Rodinha do mouse | na visão 3D, aproxima ou afasta a câmera |
+| **Botão "Relatar bug"** | no painel: descreva o problema; mapa, posição, hora e dados do navegador vão junto |
 | **Clique num jogador** | menu: desafiar para duelo, convidar para o grupo (ou, se for do seu grupo e você liderar, passar a liderança e tirar), disputar o cargo dele e, para líderes, promover, rebaixar e expulsar |
 | **Clique num NPC** | conversa; as respostas são botões, e alguns abrem a loja (comprar e vender), o treinador (aprender skills) ou a oficina (criar itens) |
 | **Arrastar na barra** | arrastar uma skill para outro espaço troca as duas de lugar; clicar num espaço vazio abre as skills |
@@ -235,6 +247,7 @@ server/              Python (aiohttp)
   crafting.py        oficinas: receitas, criação de itens (tudo ou nada) e evento craft
   parties.py         grupos: convites, liderança, chat e quem divide abates, missões e moedas
   accounts.py        contas: entrar/criar, personagens da conta, troca de senha, travas e limites
+  bugs.py            relatos de bug: guarda texto, personagem, mapa, posição, zona, hora e dados do navegador
   requirements.py    requisitos de treinadores e receitas (atributos, skills, condições) em texto
   inventory.py       inventário: espaços que empilham, equipamento e moedas
   orgs.py            organizações, cargos e disputas (vínculos na tabela memberships)
@@ -262,6 +275,7 @@ client/              JavaScript puro, sem build
   js/crafting.js     janela da oficina (receitas, materiais que tem, criar uma ou várias vezes)
   js/party.js        painel do grupo, aviso de convite e opções de grupo no menu do jogador
   js/account.js      telas de conta e de personagens, janela Conta (trocar senha, trocar de personagem)
+  js/bugs.js         janela de relatar bug (e os últimos erros de JavaScript da página, que vão junto)
   js/input.js        teclado
   js/net.js          WebSocket
 data/                conteúdo do jogo (veja acima)
@@ -309,7 +323,7 @@ Cliente → servidor (no jogo): `move {seq, up, down, left, right}`,
 `org {op: info|join|leave|claim|dispute|promote|demote|expel, ...}`,
 `npc {op: talk|choose|buy|sell|learn|craft|close, id|i|item|slot|skill, qty|times}`, `quest {op: abandon, id}`,
 `skills {op: bar, slot, id}` (id null = esvazia), `party {op: invite|accept|decline|leave|kick|lead, target}`,
-`chat {text, ch: party}`, `chat {text, ch}`, `admin {op, ...}` (equipe), `item {op: use|drop, slot: n}`, `item {op: unequip, slot: weapon|armor|accessory}`,
+`chat {text, ch: party}`, `bug {text, client: {view, agent, screen, errors}}`, `chat {text, ch}`, `admin {op, ...}` (equipe), `item {op: use|drop, slot: n}`, `item {op: unequip, slot: weapon|armor|accessory}`,
 `meditate`, `rest`, `chat {text}`.
 
 Servidor → cliente: `welcome {id, map, skills, effects, enemies, stat_labels, ...}`,

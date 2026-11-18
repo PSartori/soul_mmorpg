@@ -13,6 +13,7 @@ import { SkillsWindow, TrainerWindow, makeDraggable, makeDropTarget, skillMeta }
 import { CraftWindow } from "./crafting.js";
 import { PartyInvitePanel, PartyPanel, partyMenuItems } from "./party.js";
 import { AccountScreens, AccountWindow } from "./account.js";
+import { BugWindow } from "./bugs.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -191,6 +192,9 @@ function handleMessage(msg) {
       break;
     case "account_result":
       accountWindow.result(msg.ok, msg.text);
+      break;
+    case "bug_result":
+      bugWindow.result(msg.ok, msg.text);
       break;
     case "snap":
       applySnapshot(msg);
@@ -622,6 +626,7 @@ function sendAccount(msg) {
 }
 const accountScreens = new AccountScreens({ send: sendAccount });
 const accountWindow = new AccountWindow({ send: (msg) => conn?.send(msg) });
+const bugWindow = new BugWindow({ send: (msg) => conn?.send(msg), getView: () => view });
 
 const chatInput = $("chat-input");
 chatInput.addEventListener("keydown", (ev) => {
@@ -699,7 +704,7 @@ $("inv-open").addEventListener("click", (ev) => {
 
 const orgWindow = new OrgWindow({ getDefs: () => state.defs, send: (msg) => conn?.send(msg) });
 // Inventário, organização, diário, skills, loja e treinador ocupam o mesmo canto: abrir um fecha os outros
-const cornerWindows = () => [inventoryUI, orgWindow, questLog, skillsWindow, accountWindow];
+const cornerWindows = () => [inventoryUI, orgWindow, questLog, skillsWindow, accountWindow, bugWindow];
 function closeCornerWindows() {
   for (const win of cornerWindows()) win.toggle(false);
 }
@@ -720,6 +725,10 @@ $("skills-open").addEventListener("click", (ev) => {
 $("account-open").addEventListener("click", (ev) => {
   openInCorner(accountWindow);
   ev.currentTarget.blur();
+});
+$("bug-open").addEventListener("click", (ev) => {
+  ev.currentTarget.blur();
+  openInCorner(bugWindow);
 });
 $("quests-open").addEventListener("click", (ev) => {
   toggleQuests();

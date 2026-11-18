@@ -32,6 +32,7 @@ from .quests import QuestSystem
 from .training import TrainingSystem
 from .crafting import CraftingSystem
 from .parties import PartySystem
+from .bugs import BugReports
 from .entities import (
     DIRECTIONS, MOVE_KEYS, ActiveEffect, Enemy, Entity, GroundItem, MoveKeys, Player, Projectile,
 )
@@ -121,6 +122,7 @@ class World:
         self.training = TrainingSystem(self)  # skills aprendidas, barra e treinadores (data/trainers.yaml)
         self.crafting = CraftingSystem(self)  # oficinas e receitas (data/crafting.yaml)
         self.parties = PartySystem(self)  # grupos de jogadores
+        self.bugs = BugReports(self)  # relatos de bug dos jogadores
 
         self._spawn_enemies()
         self.npcs.spawn()
@@ -480,6 +482,8 @@ class World:
             self.training.handle_op(player, data)
         elif kind == "party":
             self.parties.handle_op(player, data)
+        elif kind == "bug":
+            self.bugs.report(player, data)
 
     def _chat_allowed(self, p: Player) -> bool:
         """No máximo C.CHAT_BURST mensagens de chat a cada C.CHAT_WINDOW segundos."""

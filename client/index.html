@@ -55,6 +55,22 @@
           <h4>Personagem</h4>
           <button type="button" id="char-leave">Trocar de personagem</button>
         </section>
+        <section id="bug" hidden aria-label="Relatar bug">
+          <header>
+            <h3>Relatar bug</h3>
+            <button type="button" id="bug-close" aria-label="Fechar">✕</button>
+          </header>
+          <form id="bug-form">
+            <textarea id="bug-text" maxlength="1000" rows="6"
+              placeholder="O que aconteceu? O que você esperava que acontecesse? Dá para repetir?"></textarea>
+            <div class="bug-row">
+              <span id="bug-count" class="hint"></span>
+              <button type="submit">Enviar</button>
+            </div>
+            <p class="hint">Junto vão o mapa, a sua posição, a hora e dados do navegador, para a equipe achar o problema.</p>
+            <p id="bug-result"></p>
+          </form>
+        </section>
         <section id="quests" hidden aria-label="Diário de missões">
           <header>
             <h3>Missões</h3>
@@ -98,6 +114,7 @@
           <button type="button" id="skills-open">Skills (K)</button>
           <button type="button" id="view-toggle">Visão 3D (V)</button>
           <button type="button" id="account-open">Conta</button>
+          <button type="button" id="bug-open">Relatar bug</button>
           <button type="button" id="admin-open" hidden>Administração (G)</button>
         </div>
       </section>

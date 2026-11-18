@@ -265,7 +265,7 @@ Combinado em 17/11/2026. A ordem pode mudar conforme as decisões em aberto.
 - ~~Proteções: limite de mensagens, de tentativas de senha, hash de senha fora do loop~~ (feito).
 - Hospedagem na VPS: HTTPS (Caddy), reinício automático, backup fora da máquina, logs.
 - Tutorial dos primeiros minutos (pode ser uma sequência de missões).
-- Botão de relatar bug, com mapa, posição e hora.
+- ~~Botão de relatar bug, com mapa, posição e hora~~ (feito).
 
 **Fase 3 — identidade do jogo** (depende das decisões das seções 4, 5 e 11)
 - Liberações (estágios 1 e 2), provavelmente com uma provação feita como missão/chefe.
