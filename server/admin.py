@@ -6,17 +6,22 @@ hierarquia (ninguém age sobre alguém da equipe com nível igual ou maior) e fi
 registrada na tabela admin_log.
 
 Bans e silêncios ficam no banco (tabela sanctions): valem depois de sair e
-voltar, e expiram sozinhos. Papéis ficam na tabela staff; o primeiro papel se dá
-pelo terminal (./admin.sh role Nome admin).
+voltar, e expiram sozinhos. Um ban pode ser do personagem (kind "ban"), da conta
+inteira ("account_ban", todos os personagens dela) ou da conta e do IP ("ip_ban":
+ninguém entra nem cria conta daquele endereço). Papéis ficam na tabela staff; o
+primeiro papel se dá pelo terminal (./admin.sh role Nome admin).
 """
 from __future__ import annotations
 
 import logging
+import os
+import secrets
 import time
 from typing import TYPE_CHECKING, Any
 
 from . import config as C
 from .content import RoleDef
+from .db import hash_password
 
 if TYPE_CHECKING:
     from .entities import Player
@@ -25,6 +30,14 @@ if TYPE_CHECKING:
 log = logging.getLogger("admin")
 
 MAX_SANCTION_SECONDS = 365 * 24 * 3600
+BAN_KINDS = {"ban": "personagem", "account_ban": "conta", "ip_ban": "IP"}
+LOCAL_IPS = ("127.0.0.1", "::1", "")
+
+
+def temporary_password() -> str:
+    """Senha temporária fácil de ditar: 10 letras e números, sem os que se confundem (0/O, 1/l)."""
+    alphabet = "abcdefghjkmnpqrstuvwxyz23456789"
+    return "".join(secrets.choice(alphabet) for _ in range(10))
 FOREVER = 1e17  # o banco devolve "para sempre" como um número enorme em listagens
 
 
@@ -95,6 +108,7 @@ class AdminSystem:
             "give_gold": ("give", self._give_gold),
             "set_role": ("set_role", self._set_role),
             "reload": ("reload", self._reload),
+            "reset_password": ("account", self._reset_password),
         }
         if op not in ops:
             return
@@ -173,14 +187,18 @@ class AdminSystem:
                 "org": (f"{self.world.content.orgs[membership.org].name} · {self.world.orgs.title(membership)}"
                         if membership else ""),
                 "role": o.staff_role.id if o.staff_role else None,
+                "account": (self.db.account_by_id(o.account_id).name  # type: ignore[union-attr]
+                            if role.can("ban") and o.account_id is not None and self.db.account_by_id(o.account_id)
+                            else None),
                 "muted": bool(self.mute_message(o)),
             })
         payload: dict[str, Any] = {"t": "admin_data", "role": role.id, "players": players,
                                    "items": sorted(self.world.content.items),
                                    "roles": [r.id for r in self.roles.values() if r.level < role.level]}
         if role.can("ban"):
-            payload["bans"] = [{"name": n, "until": format_until(u), "reason": r, "by": b}
-                               for n, u, r, b in self.db.list_active("ban", now)]
+            payload["bans"] = [{"name": n, "kind": kind, "what": label, "until": format_until(u), "reason": r, "by": b}
+                               for kind, label in BAN_KINDS.items()
+                               for n, u, r, b in self.db.list_active(kind, now)]
         if role.can("log"):
             payload["log"] = [{"at": time.strftime("%d/%m %H:%M", time.localtime(at)), "actor": a, "action": act,
                                "target": t, "details": d} for at, a, act, t, d in self.db.recent_log(40)]
@@ -227,6 +245,10 @@ class AdminSystem:
         self._reply(p, True, f"{name} pode falar de novo.")
 
     def _ban(self, p: Player, data: dict) -> None:
+        """Bane o personagem; com scope "account", a conta toda; com "ip", a conta e o IP dela."""
+        scope = data.get("scope", "character")
+        if scope not in ("character", "account", "ip"):
+            raise ValueError("alcance inválido")
         found = self._target(p, data, online=False)
         if not found:
             return
@@ -234,19 +256,60 @@ class AdminSystem:
         seconds = self._duration(data, allow_forever=True)
         until = None if seconds is None else self.world.clock() + seconds
         reason = self._reason(data)
-        self.db.add_sanction(name, "ban", until, reason, p.name)
-        if target:
-            self._disconnect(target, f"Você foi banido {format_until(until)}." + (f" Motivo: {reason}" if reason else ""))
-        self._record(p, "baniu", name, format_until(until) + (f"; {reason}" if reason else ""))
-        self._reply(p, True, f"{name} banido {format_until(until)}.")
+        account = self.db.account_of(name)
+        ip = target.ip if target and target.ip else (account.last_ip if account else "")
+        if scope != "character" and account is None:
+            self._reply(p, False, f"{name} não tem conta (personagem antigo?).")
+            return
+        if scope == "ip" and ip in LOCAL_IPS:
+            self._reply(p, False, f"{name} está jogando deste computador (IP local): não dá para banir o IP.")
+            return
+        if scope == "character":
+            self.db.add_sanction(name, "ban", until, reason, p.name)
+            what, hit = name, [target] if target else []
+        else:
+            self.db.add_sanction(account.name, "account_ban", until, reason, p.name)  # type: ignore[union-attr]
+            hit = [o for o in self.world.players.values() if o.account_id == account.id]  # type: ignore[union-attr]
+            what = f"a conta de {name} ({account.name})"  # type: ignore[union-attr]
+            if scope == "ip":
+                self.db.add_sanction(ip, "ip_ban", until, reason, p.name)
+                hit += [o for o in self.world.players.values() if o.ip == ip and o not in hit]
+                what += " e o IP dela"
+        for o in hit:
+            self._disconnect(o, f"Você foi banido {format_until(until)}." + (f" Motivo: {reason}" if reason else ""))
+        self._record(p, "baniu", what, format_until(until) + (f"; {reason}" if reason else ""))
+        self._reply(p, True, f"Banido {format_until(until)}: {what}.")
 
     def _unban(self, p: Player, data: dict) -> None:
         name = str(data.get("target", "")).strip()
-        if not name or self.db.lift_sanctions(name, "ban") == 0:
-            self._reply(p, False, f"{name or 'Ninguém'} não está banido.")
+        kind = data.get("kind", "ban")
+        if kind not in BAN_KINDS:
+            raise ValueError("tipo de ban inválido")
+        if not name or self.db.lift_sanctions(name, kind) == 0:
+            self._reply(p, False, f"{name or 'Ninguém'} não está banido ({BAN_KINDS[kind]}).")
             return
-        self._record(p, "desbaniu", name)
-        self._reply(p, True, f"{name} foi desbanido.")
+        self._record(p, "desbaniu", name, BAN_KINDS[kind])
+        self._reply(p, True, f"{name} foi desbanido ({BAN_KINDS[kind]}).")
+
+    def _reset_password(self, p: Player, data: dict) -> None:
+        """Gera uma senha temporária para a conta do personagem (quem esqueceu a senha).
+
+        A pessoa entra com ela e troca na janela Conta. Bloqueia ~0,1 s (é raro).
+        """
+        found = self._target(p, data, online=False)
+        if not found:
+            return
+        name, _ = found
+        account = self.db.account_of(name)
+        if account is None:
+            self._reply(p, False, f"{name} não tem conta.")
+            return
+        password = temporary_password()
+        salt = os.urandom(16)
+        self.db.set_account_password(account.id, hash_password(password, salt), salt)
+        self._record(p, "gerou senha temporária para", account.name, f"conta de {name}")
+        self._reply(p, True, f"Senha temporária da conta {account.name}: {password} — passe só para a dona "
+                             "da conta; ela deve trocar a senha ao entrar (botão Conta).")
 
     def _announce(self, p: Player, data: dict) -> None:
         text = str(data.get("text", "")).strip()[: C.CHAT_MAX_LEN]

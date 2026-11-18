@@ -12,6 +12,7 @@ import { QuestLog } from "./quests.js";
 import { SkillsWindow, TrainerWindow, makeDraggable, makeDropTarget, skillMeta } from "./skills.js";
 import { CraftWindow } from "./crafting.js";
 import { PartyInvitePanel, PartyPanel, partyMenuItems } from "./party.js";
+import { AccountScreens, AccountWindow } from "./account.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -133,7 +134,7 @@ function handleMessage(msg) {
       pred = null;
       lastStatsKey = "";
       inGame = true;
-      $("overlay").classList.add("hidden");
+      accountScreens.hide();
       document.activeElement?.blur();
       break;
     case "map":
@@ -182,7 +183,14 @@ function handleMessage(msg) {
       kickText = msg.text;
       break;
     case "error":
-      $("login-error").textContent = msg.msg;
+      accountScreens.error(msg.msg);
+      break;
+    case "account":
+      if (inGame) leaveGame(); // saiu do personagem: volta para a lista
+      accountScreens.update(msg);
+      break;
+    case "account_result":
+      accountWindow.result(msg.ok, msg.text);
       break;
     case "snap":
       applySnapshot(msg);
@@ -244,19 +252,27 @@ function showAnnouncement(text, by) {
   addChatLine(`📢 ${text} (${by})`);
 }
 
-function handleClose() {
+// Sai do mundo (voltou para a lista de personagens ou a conexão caiu): fecha tudo do jogo
+function leaveGame() {
   inGame = false;
   clearInterval(tickTimer);
   adminUI.toggle(false);
-  orgWindow.toggle(false);
+  closeCornerWindows();
   hideNpcWindows();
-  skillsWindow.toggle(false);
   invitePanel.update(null);
   partyInvitePanel.update(null);
   partyPanel.update(null);
   state.partyIds = new Set();
-  $("overlay").classList.remove("hidden");
-  $("login-error").textContent = kickText ?? "Conexão perdida. Entre de novo.";
+  state.you = null;
+  state.ents.clear();
+  pred = null;
+  pending = [];
+}
+
+function handleClose() {
+  leaveGame();
+  accountScreens.showLogin(kickText ?? "Conexão perdida. Entre de novo.");
+  kickText = null;
   conn = null;
 }
 
@@ -599,35 +615,13 @@ function addChatLine(text, from = null, channel = null) {
 
 // ------------------------------------------------------------------ entrada
 
-// Raças disponíveis na criação de personagem (o servidor só usa se o nome for novo)
-async function loadRaces() {
-  try {
-    const races = await (await fetch("/api/races")).json();
-    $("race-options").replaceChildren(
-      ...races.map((race, i) => {
-        const label = document.createElement("label");
-        label.innerHTML = '<input type="radio" name="race"><span class="name"></span><span class="desc"></span>';
-        const radio = label.querySelector("input");
-        radio.value = race.id;
-        radio.checked = i === 0;
-        label.querySelector(".name").textContent = race.name;
-        label.querySelector(".desc").textContent = race.description;
-        return label;
-      }),
-    );
-  } catch {
-    $("login-error").textContent = "Não foi possível carregar as raças. O servidor está no ar?";
-  }
-}
-loadRaces();
-
-$("login").addEventListener("submit", (ev) => {
-  ev.preventDefault();
-  $("login-error").textContent = "";
+// Telas de conta e de personagens (antes de entrar no mundo) e a janela "Conta" no jogo
+function sendAccount(msg) {
   if (!conn || conn.closed) connect();
-  const race = document.querySelector('input[name="race"]:checked')?.value ?? null;
-  conn.send({ t: "login", name: $("login-name").value.trim(), password: $("login-password").value, race });
-});
+  conn.send(msg);
+}
+const accountScreens = new AccountScreens({ send: sendAccount });
+const accountWindow = new AccountWindow({ send: (msg) => conn?.send(msg) });
 
 const chatInput = $("chat-input");
 chatInput.addEventListener("keydown", (ev) => {
@@ -705,7 +699,7 @@ $("inv-open").addEventListener("click", (ev) => {
 
 const orgWindow = new OrgWindow({ getDefs: () => state.defs, send: (msg) => conn?.send(msg) });
 // Inventário, organização, diário, skills, loja e treinador ocupam o mesmo canto: abrir um fecha os outros
-const cornerWindows = () => [inventoryUI, orgWindow, questLog, skillsWindow];
+const cornerWindows = () => [inventoryUI, orgWindow, questLog, skillsWindow, accountWindow];
 function closeCornerWindows() {
   for (const win of cornerWindows()) win.toggle(false);
 }
@@ -721,6 +715,10 @@ const toggleQuests = () => openInCorner(questLog);
 const toggleSkills = (force) => openInCorner(skillsWindow, force);
 $("skills-open").addEventListener("click", (ev) => {
   toggleSkills();
+  ev.currentTarget.blur();
+});
+$("account-open").addEventListener("click", (ev) => {
+  openInCorner(accountWindow);
   ev.currentTarget.blur();
 });
 $("quests-open").addEventListener("click", (ev) => {

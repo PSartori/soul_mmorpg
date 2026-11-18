@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 import math
+import os
 import random
 import re
 import time
@@ -22,7 +23,7 @@ from typing import Any, Iterator
 from . import config as C
 from .content import EQUIP_SLOTS, ClassDef, Content, ContentError, EffectApplication, EnemyDef, ItemDef, SkillDef
 from .admin import AdminSystem
-from .db import Database
+from .db import Database, hash_password
 from .duels import DuelSystem
 from .npcs import NpcSystem
 from .orgs import OrgSystem, total_level
@@ -281,40 +282,72 @@ class World:
     # ================================================================ sessão
 
     def login(self, name: str, password: str, race: str | None = None) -> tuple[Player | None, str | None]:
-        """Entra com um personagem existente ou cria um novo. Devolve (jogador, erro).
+        """Atalho em um passo (testes e ferramentas): conta e personagem com o mesmo nome.
 
-        `race` só é usada para criar personagem (precisa ser uma raça selecionável).
+        Cria a conta e o personagem se não existirem. O jogo usa o caminho de contas
+        (server/accounts.py), que confere a senha fora do loop e depois chama enter().
         """
         name = name.strip()
         if not NAME_RE.fullmatch(name):
             return None, "O nome deve ter de 3 a 16 caracteres (letras, números ou _)."
-        if len(password) < 4:
-            return None, "A senha deve ter pelo menos 4 caracteres."
-        if any(p.name.lower() == name.lower() for p in self.players.values()):
-            return None, "Esse personagem já está online."
-
-        record = self.db.load_character(name)
-        if record is None:
+        account = self.db.load_account(name)
+        if account is None:
+            if self.db.load_character(name) is not None:
+                return None, "Esse nome já é usado por outro personagem."
             race_def = self.content.races.get(race) if isinstance(race, str) else None
             if race_def is None or not race_def.selectable:
                 return None, "Escolha uma raça para criar o personagem."
-            record = self.db.create_character(name, password)
-            data: dict = {"race": race_def.id, "class": race_def.start_class}
-            is_new = True
-        elif not self.db.verify_password(record, password):
+            salt = os.urandom(16)
+            account = self.db.create_account(name, hash_password(password, salt), salt)
+        elif not self.db.verify_password(account, password):
             return None, "Senha incorreta."
-        elif ban := self.admin.ban_message(record.name):
+        assert account is not None
+        if self.db.load_character(name) is None:
+            if (error := self.create_character(account.id, name, race)) is not None:
+                return None, error
+        return self.enter(account.id, name)
+
+    def create_character(self, account_id: int, name: str, race: str | None) -> str | None:
+        """Cria um personagem novo na conta. Devolve o erro, ou None se criou."""
+        name = name.strip()
+        if not NAME_RE.fullmatch(name):
+            return "O nome deve ter de 3 a 16 caracteres (letras, números ou _)."
+        if self.db.load_character(name) is not None:
+            return "Já existe um personagem com esse nome."
+        if len(self.db.list_characters(account_id)) >= C.MAX_CHARACTERS:
+            return f"Cada conta pode ter até {C.MAX_CHARACTERS} personagens."
+        race_def = self.content.races.get(race) if isinstance(race, str) else None
+        if race_def is None or not race_def.selectable:
+            return "Escolha uma raça para criar o personagem."
+        self.db.create_character(name, account_id=account_id,
+                                 data={"race": race_def.id, "class": race_def.start_class, "new": True})
+        return None
+
+    def enter(self, account_id: int, name: str, ip: str = "") -> tuple[Player | None, str | None]:
+        """Entra no mundo com um personagem da conta. Devolve (jogador, erro)."""
+        record = self.db.load_character(name.strip())
+        if record is None or record.account_id != account_id:
+            return None, "Personagem não encontrado nesta conta."
+        if any(p.name.lower() == record.name.lower() for p in self.players.values()):
+            return None, "Esse personagem já está online."
+        if any(p.account_id == account_id for p in self.players.values()):
+            return None, "Outro personagem desta conta já está no jogo."
+        if ban := self.admin.ban_message(record.name):
             return None, ban
+        is_new = bool(record.data.get("new")) and "v" not in record.data
+        if is_new:
+            data: dict = {"race": record.data.get("race"), "class": record.data.get("class")}
         else:
             try:
                 data = migrate(record.data)
             except SaveVersionError:
                 log.exception("save incompatível: %s", record.name)
                 return None, "Não foi possível carregar este personagem (save incompatível)."
-            is_new = False
 
         sx, sy = self.map.spawn
         player = Player(id=self._new_id(), name=record.name, x=sx, y=sy, map_id=self.start_map_id)
+        player.account_id = account_id
+        player.ip = ip
         # antes do load: a vida máxima depende da raça e do equipamento
         player.inventory = Inventory.from_dict(data.get("inventory") or {}, self.content.items)
         self.training.load(player, data.get("skills"))  # conferidas com a classe logo abaixo
@@ -337,6 +370,7 @@ class World:
         self.players[player.id] = player
         self._system(f"{player.name} entrou no jogo.")
         if is_new:
+            self._save(player)  # já fica no formato de save atual
             self._private(player, "Bem-vindo! Personagem criado. Treine meditando (M) e lutando.")
         return player, None
 
@@ -424,6 +458,8 @@ class World:
                 player.actions.append(("item", op, slot))
         elif kind == "chat":
             text = str(data.get("text", ""))[: C.CHAT_MAX_LEN].strip()
+            if text and not self._chat_allowed(player):
+                return
             if text and data.get("ch") == "org":
                 self.orgs.chat(player, text)
             elif text and data.get("ch") == "party":
@@ -444,6 +480,17 @@ class World:
             self.training.handle_op(player, data)
         elif kind == "party":
             self.parties.handle_op(player, data)
+
+    def _chat_allowed(self, p: Player) -> bool:
+        """No máximo C.CHAT_BURST mensagens de chat a cada C.CHAT_WINDOW segundos."""
+        times = p.chat_times
+        while times and times[0] <= self.time - C.CHAT_WINDOW:
+            times.popleft()
+        if len(times) >= C.CHAT_BURST:
+            self._private(p, "Calma: espere um pouco para mandar outra mensagem.")
+            return False
+        times.append(self.time)
+        return True
 
     def save_all(self) -> None:
         for player in self.players.values():

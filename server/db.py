@@ -1,4 +1,9 @@
-"""Persistência de personagens em SQLite."""
+"""Persistência em SQLite: contas, personagens, equipe, sanções e organizações.
+
+Uma conta (nome + senha) tem vários personagens. Bancos de antes das contas, em que
+cada personagem tinha a própria senha, são migrados ao abrir: cada personagem vira
+uma conta com o mesmo nome e a mesma senha.
+"""
 from __future__ import annotations
 
 import hashlib
@@ -16,9 +21,17 @@ PBKDF2_ITERATIONS = 200_000
 @dataclass
 class CharacterRecord:
     name: str
+    data: dict
+    account_id: int | None = None
+
+
+@dataclass
+class AccountRecord:
+    id: int
+    name: str
     pw_hash: bytes
     salt: bytes
-    data: dict
+    last_ip: str = ""
 
 
 def hash_password(password: str, salt: bytes) -> bytes:
@@ -42,6 +55,25 @@ class Database:
             )
             """
         )
+        # Contas: os personagens apontam para a conta dona (account_id)
+        self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS accounts (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                name       TEXT NOT NULL UNIQUE COLLATE NOCASE,
+                pw_hash    BLOB NOT NULL,
+                salt       BLOB NOT NULL,
+                created_at REAL NOT NULL,
+                last_login REAL,
+                last_ip    TEXT NOT NULL DEFAULT '',
+                created_ip TEXT NOT NULL DEFAULT ''
+            )
+            """
+        )
+        columns = {row[1] for row in self.conn.execute("PRAGMA table_info(characters)")}
+        if "account_id" not in columns:
+            self.conn.execute("ALTER TABLE characters ADD COLUMN account_id INTEGER")
+        self._migrate_to_accounts()
         # Equipe (papéis), sanções (ban/silêncio) e registro de ações da equipe
         self.conn.executescript(
             """
@@ -82,33 +114,108 @@ class Database:
         )
         self.conn.commit()
 
+    def _migrate_to_accounts(self) -> None:
+        """Personagens sem conta (de antes das contas) ganham uma, com o nome e a senha deles."""
+        rows = self.conn.execute(
+            "SELECT name, pw_hash, salt, created_at FROM characters WHERE account_id IS NULL"
+        ).fetchall()
+        for name, pw_hash, salt, created_at in rows:
+            account_name = name
+            n = 2
+            while self.conn.execute("SELECT 1 FROM accounts WHERE name = ?", (account_name,)).fetchone():
+                account_name = f"{name}{n}"  # não deveria acontecer, mas não pode travar a migração
+                n += 1
+            cursor = self.conn.execute(
+                "INSERT INTO accounts (name, pw_hash, salt, created_at) VALUES (?, ?, ?, ?)",
+                (account_name, pw_hash, salt, created_at),
+            )
+            self.conn.execute("UPDATE characters SET account_id = ? WHERE name = ?", (cursor.lastrowid, name))
+        if rows:
+            self.conn.commit()
+
+    # ------------------------------------------------------------ contas
+
+    def load_account(self, name: str) -> AccountRecord | None:
+        """Busca sem diferenciar maiúsculas/minúsculas."""
+        row = self.conn.execute(
+            "SELECT id, name, pw_hash, salt, last_ip FROM accounts WHERE name = ?", (name,)
+        ).fetchone()
+        return AccountRecord(*row) if row else None
+
+    def account_by_id(self, account_id: int) -> AccountRecord | None:
+        row = self.conn.execute(
+            "SELECT id, name, pw_hash, salt, last_ip FROM accounts WHERE id = ?", (account_id,)
+        ).fetchone()
+        return AccountRecord(*row) if row else None
+
+    def create_account(self, name: str, pw_hash: bytes, salt: bytes, ip: str = "") -> AccountRecord:
+        """Cria a conta com a senha já transformada (hash_password roda fora do loop do jogo)."""
+        cursor = self.conn.execute(
+            "INSERT INTO accounts (name, pw_hash, salt, created_at, created_ip) VALUES (?, ?, ?, ?, ?)",
+            (name, pw_hash, salt, time.time(), ip),
+        )
+        self.conn.commit()
+        return AccountRecord(id=cursor.lastrowid, name=name, pw_hash=pw_hash, salt=salt)  # type: ignore[arg-type]
+
+    def set_account_password(self, account_id: int, pw_hash: bytes, salt: bytes) -> None:
+        self.conn.execute("UPDATE accounts SET pw_hash = ?, salt = ? WHERE id = ?", (pw_hash, salt, account_id))
+        self.conn.commit()
+
+    def touch_account(self, account_id: int, ip: str) -> None:
+        self.conn.execute("UPDATE accounts SET last_login = ?, last_ip = ? WHERE id = ?",
+                          (time.time(), ip, account_id))
+        self.conn.commit()
+
+    def accounts_created_from(self, ip: str, since: float) -> int:
+        row = self.conn.execute(
+            "SELECT COUNT(*) FROM accounts WHERE created_ip = ? AND created_at >= ?", (ip, since)
+        ).fetchone()
+        return row[0]
+
+    def account_of(self, character: str) -> AccountRecord | None:
+        row = self.conn.execute("SELECT account_id FROM characters WHERE name = ?", (character,)).fetchone()
+        return self.account_by_id(row[0]) if row and row[0] is not None else None
+
+    def list_characters(self, account_id: int) -> list[CharacterRecord]:
+        rows = self.conn.execute(
+            "SELECT name, data FROM characters WHERE account_id = ? ORDER BY created_at", (account_id,)
+        ).fetchall()
+        return [CharacterRecord(name=name, data=_json(data), account_id=account_id) for name, data in rows]
+
+    @staticmethod
+    def verify_password(account: AccountRecord, password: str) -> bool:
+        """Confere a senha aqui mesmo (bloqueia ~0,1 s). O servidor usa hash_password numa thread."""
+        return hmac.compare_digest(hash_password(password, account.salt), account.pw_hash)
+
+    # ------------------------------------------------------------ personagens
+
     def load_character(self, name: str) -> CharacterRecord | None:
         """Busca sem diferenciar maiúsculas/minúsculas."""
         row = self.conn.execute(
-            "SELECT name, pw_hash, salt, data FROM characters WHERE name = ?", (name,)
+            "SELECT name, data, account_id FROM characters WHERE name = ?", (name,)
         ).fetchone()
         if row is None:
             return None
-        try:
-            data = json.loads(row[3])
-        except ValueError:
-            data = {}
-        return CharacterRecord(name=row[0], pw_hash=row[1], salt=row[2], data=data)
+        return CharacterRecord(name=row[0], data=_json(row[1]), account_id=row[2])
 
-    def create_character(self, name: str, password: str) -> CharacterRecord:
-        salt = os.urandom(16)
-        pw_hash = hash_password(password, salt)
+    def create_character(self, name: str, password: str | None = None, account_id: int | None = None,
+                         data: dict | None = None) -> CharacterRecord:
+        """Cria um personagem numa conta.
+
+        Sem account_id, cria também uma conta com o mesmo nome e a senha dada (atalho
+        usado pelos testes e ferramentas; o jogo cria a conta antes).
+        """
+        if account_id is None:
+            salt = os.urandom(16)
+            account_id = self.create_account(name, hash_password(password or "", salt), salt).id
         now = time.time()
         self.conn.execute(
-            "INSERT INTO characters (name, pw_hash, salt, data, created_at, updated_at) VALUES (?, ?, ?, '{}', ?, ?)",
-            (name, pw_hash, salt, now, now),
+            "INSERT INTO characters (name, pw_hash, salt, data, created_at, updated_at, account_id) "
+            "VALUES (?, x'', x'', ?, ?, ?, ?)",  # pw_hash/salt: colunas antigas, sem uso
+            (name, json.dumps(data or {}), now, now, account_id),
         )
         self.conn.commit()
-        return CharacterRecord(name=name, pw_hash=pw_hash, salt=salt, data={})
-
-    @staticmethod
-    def verify_password(record: CharacterRecord, password: str) -> bool:
-        return hmac.compare_digest(hash_password(password, record.salt), record.pw_hash)
+        return CharacterRecord(name=name, data=data or {}, account_id=account_id)
 
     def save_character(self, name: str, data: dict) -> None:
         self.conn.execute(
@@ -210,3 +317,11 @@ class Database:
 
     def close(self) -> None:
         self.conn.close()
+
+
+def _json(text: str) -> dict:
+    try:
+        data = json.loads(text)
+    except ValueError:
+        return {}
+    return data if isinstance(data, dict) else {}

@@ -31,7 +31,7 @@ ITEM_TYPES = ("equipment", "consumable", "material")
 EQUIP_SLOTS = ("weapon", "armor", "accessory")
 RARITIES = ("common", "uncommon", "rare", "epic")
 PROMOTIONS = ("default", "appointment", "challenge")
-PERMISSIONS = ("kick", "mute", "ban", "announce", "teleport", "give", "set_role", "log", "reload")
+PERMISSIONS = ("kick", "mute", "ban", "announce", "teleport", "give", "set_role", "log", "reload", "account")
 ID_RE = re.compile(r"[a-z0-9_]+")
 # Campos que as condições ("if") das opções de diálogo e das missões podem usar
 DIALOG_FIELDS = ("race", "class", "org", "rank", "gold", "total_level", "quest_done", "quest_active")

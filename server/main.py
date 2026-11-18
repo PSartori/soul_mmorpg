@@ -16,6 +16,7 @@ from pathlib import Path
 from aiohttp import WSMsgType, web
 
 from . import config as C
+from .accounts import AccountService, Session
 from .db import Database
 from .gamedata import load_game_data, watched_files_state
 from .world import World
@@ -25,6 +26,7 @@ log = logging.getLogger("server")
 DB = web.AppKey("db", Database)
 WORLD = web.AppKey("world", World)
 SESSIONS = web.AppKey("sessions", dict)  # id do jogador -> WebSocketResponse
+ACCOUNTS = web.AppKey("accounts", AccountService)
 LOOP_TASK = web.AppKey("loop_task", asyncio.Task)
 BACKUP_TASK = web.AppKey("backup_task", asyncio.Task)
 WATCH_TASK = web.AppKey("watch_task", asyncio.Task)
@@ -53,16 +55,33 @@ async def races_handler(request: web.Request) -> web.Response:
     return web.json_response(request.app[WORLD].content.selectable_races())
 
 
+def client_ip(request: web.Request) -> str:
+    """IP de quem conectou. Atrás de um proxy (Caddy na VPS), o IP real vem no X-Forwarded-For."""
+    if C.TRUST_PROXY:
+        forwarded = request.headers.get("X-Forwarded-For", "")
+        if forwarded:
+            return forwarded.split(",")[0].strip()
+    return request.remote or ""
+
+
 async def ws_handler(request: web.Request) -> web.WebSocketResponse:
     world = request.app[WORLD]
     sessions = request.app[SESSIONS]
+    accounts = request.app[ACCOUNTS]
     ws = web.WebSocketResponse(heartbeat=20, max_msg_size=4096)
     await ws.prepare(request)
 
-    player = None
+    session = Session(ip=client_ip(request))
     try:
         async for msg in ws:
             if msg.type != WSMsgType.TEXT:
+                continue
+            if not session.limiter.allow():  # mensagens demais: descarta; inundando, derruba
+                if session.limiter.flooding:
+                    log.warning("conexão derrubada por excesso de mensagens: %s (%s)", session.ip,
+                                session.player.name if session.player else "sem personagem")
+                    await ws.close()
+                    break
                 continue
             try:
                 data = json.loads(msg.data)
@@ -71,25 +90,26 @@ async def ws_handler(request: web.Request) -> web.WebSocketResponse:
             if not isinstance(data, dict):
                 continue
 
-            if player is None:
-                # Antes do login, a única mensagem aceita é "login"
-                if data.get("t") != "login":
-                    continue
-                race = data.get("race") if isinstance(data.get("race"), str) else None
-                player, error = world.login(str(data.get("name", "")), str(data.get("password", "")), race)
-                if error:
-                    await ws.send_str(dumps({"t": "error", "msg": error}))
-                    continue
-                sessions[player.id] = ws
-                await ws.send_str(dumps(world.welcome_payload(player)))
-                log.info("login: %s (id %s)", player.name, player.id)
-            else:
-                world.handle_message(player, data)
+            if session.player is not None and data.get("t") not in ("account", "char"):
+                world.handle_message(session.player, data)
+                continue
+            # telas de conta e personagem (e troca de senha / sair do personagem no jogo)
+            before = session.player
+            replies = await accounts.handle(session, data)
+            if before is None and session.player is not None:
+                sessions[session.player.id] = ws
+                log.info("entrou: %s (conta %s, id %s)", session.player.name, session.account.name,
+                         session.player.id)
+            elif before is not None and session.player is None:
+                sessions.pop(before.id, None)
+                log.info("voltou à lista de personagens: %s", before.name)
+            for reply in replies:
+                await ws.send_str(dumps(reply))
     finally:
-        if player is not None:
-            sessions.pop(player.id, None)
-            world.logout(player)
-            log.info("logout: %s", player.name)
+        if session.player is not None:
+            sessions.pop(session.player.id, None)
+            world.logout(session.player)
+            log.info("saiu: %s", session.player.name)
     return ws
 
 
@@ -170,6 +190,7 @@ def create_app(db_path: str | Path = C.DB_PATH, maps_dir: str | Path = C.MAPS_DI
     app[WORLD] = World(maps, app[DB], content, start_map=C.START_MAP)
     app[WORLD].reload_source = lambda: load_game_data(C.DATA_DIR, maps_dir)
     app[SESSIONS] = {}
+    app[ACCOUNTS] = AccountService(app[WORLD])
 
     app.router.add_get("/", index)
     app.router.add_get("/ws", ws_handler)

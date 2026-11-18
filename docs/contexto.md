@@ -1,6 +1,6 @@
 # Contexto geral do projeto
 
-Resumo de tudo o que foi conversado e construído até 18/11/2026 (atualizado com grupos): de onde o projeto
+Resumo de tudo o que foi conversado e construído até 18/11/2026 (atualizado com contas e proteções): de onde o projeto
 veio, como trabalhamos, o que foi decidido, o que existe hoje e o que vem a seguir.
 Para detalhes técnicos, veja o `README.md`; para a visão do jogo e as decisões em
 aberto, o `docs/design.md`; para números de balanceamento, o `docs/balanceamento.md`.
@@ -38,7 +38,7 @@ Desperto, Espectral, Vigília, Coro Sombrio, Espectro, Devorador...) são
 - **Conteúdo é dado, não código.** Skills, efeitos, itens, inimigos, raças, classes,
   regras, organizações, papéis da equipe, NPCs, lojas, treinadores, oficinas, missões e mapas ficam em `data/`, validados ao
   carregar (um erro de digitação aponta arquivo, item e campo).
-- **Cada etapa termina testada**: testes automáticos (hoje 426) e verificação no
+- **Cada etapa termina testada**: testes automáticos (hoje 443) e verificação no
   navegador, e só então commit.
 
 ---
@@ -84,7 +84,8 @@ Desperto, Espectral, Vigília, Coro Sombrio, Espectro, Devorador...) são
 | `e6ea339` | Treinadores e skills | Skills conhecidas + barra escolhida (janela K, arrastar), treinadores com requisitos, save v6 |
 | `a757a70` | Criação de itens | Oficinas nos NPCs, receitas com materiais, preço e requisitos, receitas secretas, evento `craft` |
 | `671f705` | Visão 3D (protótipo) | Mundo 3D com personagens 2D virados para a câmera (three.js), zoom, giro de 90°, troca com o 2D (V) |
-| — | Grupos | Convite pelo menu, painel com a vida dos membros, chat do grupo, abates/missões/moedas divididos, sem fogo amigo |
+| `526cfad` | Grupos | Convite pelo menu, painel com a vida dos membros, chat do grupo, abates/missões/moedas divididos, sem fogo amigo |
+| — | Contas e proteções | Conta com até 4 personagens, troca e senha temporária, bans por conta/IP, travas de senha, limites de mensagens e chat |
 
 ### Sistemas prontos
 
@@ -112,6 +113,10 @@ Desperto, Espectral, Vigília, Coro Sombrio, Espectro, Devorador...) são
   canal "Grupo" no chat. Membros perto dividem o bônus de abate (quem lutou ganha 50%), os
   abates contam para as missões de todos, o saque do grupo é de qualquer membro e as moedas
   são divididas; não se ferem em áreas PvP.
+- **Contas e proteções**: conta com até 4 personagens (tela de escolher/criar), troca de
+  senha no jogo e senha temporária pela equipe; bans por personagem, conta ou conta + IP;
+  senha conferida fora do loop do jogo; travas de tentativas de senha, limite de contas por
+  IP, de mensagens por conexão e de chat. Bancos antigos viram uma conta por personagem.
 - **Regras em YAML** (`data/rules.yaml`): "quando X, se Y, faça Z" para morte, abate,
   subida de nível, fim de duelo e mudança de cargo — penalidades, transformações,
   recompensas.
@@ -200,10 +205,8 @@ Do `docs/balanceamento.md` (lutas simuladas no próprio motor):
 
 ### Trabalho técnico ainda não feito
 
-- **Contas separadas de personagens** (hoje cada personagem é uma conta); ban por
-  conta/IP; recuperação de senha.
+- Recuperação de senha por e-mail (hoje só a equipe gera uma senha temporária).
 - **Hospedagem na VPS**: HTTPS, reinício automático, backup fora da máquina.
-- **Proteções**: limite de mensagens por segundo, tentativas de senha.
 - Lojas com estoque
   limitado ou preço variável; eventos iniciados pela equipe (ex.: invasões).
 - Skills que sobem de nível com o uso; mais skills e treinadores para os níveis altos.

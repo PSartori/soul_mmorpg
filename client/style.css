@@ -753,3 +753,67 @@ ul.party-list .hp { height: 5px; margin-top: 2px; background: var(--panel-2); bo
 ul.party-list .hp span { display: block; height: 100%; background: var(--hp); }
 ul.party-list .where { color: var(--muted); font-size: 11px; font-style: italic; }
 ul.party-list li.dead .name { color: var(--muted); text-decoration: line-through; }
+
+/* ---------------------------------------------------------------- contas */
+button.link {
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--accent);
+  font-size: 13px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+#login[hidden], #chars[hidden] { display: none; }
+#chars {
+  width: min(440px, calc(100% - 32px));
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 24px;
+  background: var(--panel);
+  border-radius: 10px;
+}
+#chars h1 { margin: 0; font-size: 22px; }
+#chars h3 { margin: 4px 0 0; font-size: 15px; }
+#chars .sub { margin: -6px 0 2px; color: var(--muted); }
+#chars .hint { margin: 0; font-size: 12px; color: var(--muted); }
+#chars .error { margin: 0; min-height: 1em; color: var(--error); font-size: 13px; }
+#chars-list { display: flex; flex-direction: column; gap: 6px; }
+.char-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--panel-2);
+  border: 1px solid #353946;
+  border-radius: 6px;
+}
+.char-card .info { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.char-card .meta { font-size: 12px; color: var(--muted); }
+.char-card button:disabled { opacity: .5; cursor: not-allowed; }
+#char-new { display: flex; flex-direction: column; gap: 8px; }
+#char-new[hidden] { display: none; }
+
+#account {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: min(300px, calc(100% - 24px));
+  padding: 10px 12px;
+  background: rgba(22, 24, 30, .97);
+  border: 1px solid #353946;
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, .5);
+  font-size: 13px;
+}
+#account[hidden] { display: none; }
+#account header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+#account h3 { margin: 0; flex: 1; font-size: 15px; }
+#account h4 { margin: 8px 0 4px; font-size: 13px; }
+#account-close { padding: 2px 8px; background: var(--panel-2); border-color: #353946; }
+#password-form { display: flex; flex-direction: column; gap: 6px; }
+#account-result { margin: 0; min-height: 1em; font-size: 12px; color: #7bd65a; }
+#account-result.error { color: var(--error); }

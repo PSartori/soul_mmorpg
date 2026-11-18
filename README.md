@@ -12,9 +12,10 @@ Requer [uv](https://docs.astral.sh/uv/) (já instalado nesta máquina).
 ./run.sh
 ```
 
-Abra http://127.0.0.1:8080, escolha um nome, uma senha e uma raça (o personagem é
-criado na primeira vez; para personagens existentes a raça é ignorada). Para testar
-multiplayer, abra outra aba e entre com outro nome.
+Abra http://127.0.0.1:8080, crie uma conta (nome e senha) ou entre na sua, e na
+tela de personagens escolha um para jogar ou crie um novo (nome e raça). Cada conta
+tem até 4 personagens, um no jogo por vez. Para testar multiplayer, abra outra aba
+e entre com outra conta.
 
 Testes do servidor:
 
@@ -63,9 +64,12 @@ formato só. `./mapas.sh verificar` confere todos.
 
 A equipe (moderadores, mestres do jogo e administradores) age pela janela
 **Administração** (tecla G ou botão no painel, só para quem tem papel): lista de
-jogadores online e, para o escolhido, expulsar, silenciar, banir (com tempo e
-motivo), ir até/trazer, dar item ou moedas e trocar o papel; mais anúncio para
-todos, lista de banidos (com desbanir) e o registro de tudo que a equipe fez.
+jogadores online (com a conta de cada um, para quem pode banir) e, para o escolhido,
+expulsar, silenciar, banir (com tempo, motivo e **alcance**: só o personagem, a conta
+toda ou a conta e o IP), ir até/trazer, dar item ou moedas, trocar o papel e gerar uma
+**senha temporária** para a conta (permissão `account`, para quem esqueceu a senha);
+mais anúncio para todos, lista de banidos (personagens, contas e IPs, com desbanir) e o
+registro de tudo que a equipe fez.
 Papéis e permissões ficam em `data/roles.yaml`; ninguém age sobre alguém da equipe
 de nível igual ou maior.
 
@@ -76,8 +80,30 @@ pelo terminal:
 ./admin.sh role SeuPersonagem admin
 ```
 
-Outros: `./admin.sh staff`, `./admin.sh bans`, `./admin.sh unban Nome`,
-`./admin.sh log`. Mudança de papel pelo terminal vale no próximo login.
+Outros: `./admin.sh staff`, `./admin.sh bans`, `./admin.sh unban Nome` (personagem e conta
+com esse nome), `./admin.sh unban-ip IP`, `./admin.sh conta Personagem` (de que conta é e
+os outros personagens dela), `./admin.sh senha Conta` (senha temporária) e
+`./admin.sh log`. Papéis são por personagem; mudança de papel pelo terminal vale no
+próximo login.
+
+## Contas e proteções
+
+- **Contas**: nome e senha (pelo menos 6 caracteres); até 4 personagens (`MAX_CHARACTERS`),
+  um no jogo por vez. A janela **Conta** (botão no painel) troca a senha e volta para a
+  lista de personagens. Esqueceu a senha: a equipe gera uma temporária (ainda não há
+  recuperação por e-mail, que precisa de envio de e-mail na VPS).
+- **Bancos antigos** (de antes das contas) são migrados ao abrir: cada personagem vira uma
+  conta com o mesmo nome e a mesma senha.
+- **Senha fora do loop**: a senha é conferida (PBKDF2, ~0,1 s) numa thread, sem parar o jogo.
+- **Tentativas de senha**: 5 erros (`LOGIN_MAX_FAILS`) travam o IP e a conta por 5 min. A
+  mensagem de erro é a mesma para conta inexistente e senha errada.
+- **Contas novas**: até 3 por IP por hora (`ACCOUNTS_PER_IP`); o próprio computador
+  (127.0.0.1) não tem limite.
+- **Mensagens**: cada conexão manda até 60 por segundo, com rajada de 120 (`MSG_RATE`,
+  `MSG_BURST`); o excesso é descartado e quem insiste (300 descartes) é desconectado.
+- **Chat**: até 5 mensagens a cada 6 s por jogador (`CHAT_BURST`, `CHAT_WINDOW`).
+- **Bans**: de personagem (ao entrar nele), de conta e de IP (ao entrar na conta ou criar uma).
+- **IP real atrás do Caddy**: com `TRUST_PROXY=1`, o IP vem do cabeçalho `X-Forwarded-For`.
 
 ## Balanceamento
 
@@ -208,6 +234,7 @@ server/              Python (aiohttp)
   training.py        skills conhecidas, barra de atalhos (trava em combate) e treinadores
   crafting.py        oficinas: receitas, criação de itens (tudo ou nada) e evento craft
   parties.py         grupos: convites, liderança, chat e quem divide abates, missões e moedas
+  accounts.py        contas: entrar/criar, personagens da conta, troca de senha, travas e limites
   requirements.py    requisitos de treinadores e receitas (atributos, skills, condições) em texto
   inventory.py       inventário: espaços que empilham, equipamento e moedas
   orgs.py            organizações, cargos e disputas (vínculos na tabela memberships)
@@ -218,7 +245,7 @@ server/              Python (aiohttp)
   entities.py        Player, Enemy, Projectile, efeitos ativos e atributos derivados
   stats.py           atributos treináveis (nível + XP)
   tilemap.py         mapas ASCII, zonas, portais e colisão de caixas com tiles
-  db.py              SQLite: personagens e senhas (PBKDF2)
+  db.py              SQLite: contas (senhas com PBKDF2), personagens, equipe, sanções; migra bancos antigos
   config.py          números de regra do motor (o resto está em data/)
 client/              JavaScript puro, sem build
   index.html, style.css
@@ -234,6 +261,7 @@ client/              JavaScript puro, sem build
   js/skills.js       janela de skills (K), arrastar para a barra e janela do treinador
   js/crafting.js     janela da oficina (receitas, materiais que tem, criar uma ou várias vezes)
   js/party.js        painel do grupo, aviso de convite e opções de grupo no menu do jogador
+  js/account.js      telas de conta e de personagens, janela Conta (trocar senha, trocar de personagem)
   js/input.js        teclado
   js/net.js          WebSocket
 data/                conteúdo do jogo (veja acima)
@@ -271,7 +299,12 @@ Para depurar no console do navegador: `__game.state`, `__game.pred`, `__game.pen
 
 HTTP: `GET /api/races` lista as raças da tela de criação.
 
-Cliente → servidor: `login {name, password, race}`, `move {seq, up, down, left, right}`,
+Antes de jogar: `account {op: login|register, name, password}`, `char {op: create, name, race}`,
+`char {op: enter, name}`, `account {op: logout}`; no jogo, `account {op: password, old, new}` e
+`char {op: leave}`. O servidor responde `account {name, chars, max, races}` (lista de personagens;
+name null = saiu da conta), `account_result {ok, text}` (troca de senha) ou `error {msg}`.
+
+Cliente → servidor (no jogo): `move {seq, up, down, left, right}`,
 `skill {id, f}`, `duel {op: challenge|accept|decline|forfeit, target}`,
 `org {op: info|join|leave|claim|dispute|promote|demote|expel, ...}`,
 `npc {op: talk|choose|buy|sell|learn|craft|close, id|i|item|slot|skill, qty|times}`, `quest {op: abandon, id}`,
@@ -454,5 +487,6 @@ barras de vida, marcas de missão e números são desenhados no canvas 2D por ci
 - A colisão confere todos os corpos do mapa perto de cada um (sem grade espacial); ok
   para dezenas de entidades por mapa.
 - Login sem HTTPS: na VPS, colocar atrás de um proxy com TLS (ex.: Caddy) antes de abrir ao público.
-- O hash de senha roda no loop do servidor (~0,1 s por login); ok para poucos jogadores.
+- Recuperação de senha só pela equipe (senha temporária); sem e-mail ainda.
+- Não dá para apagar personagem nem renomear conta pelo jogo.
 - Arte provisória (formas geométricas).

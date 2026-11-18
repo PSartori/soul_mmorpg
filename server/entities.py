@@ -118,6 +118,9 @@ class Player(Entity):
     skills_sent: str = ""  # últimas skills conhecidas enviadas ao cliente (só manda quando muda)
     combat_until: float = 0.0  # horário do mundo até quando conta como "em combate" (trava a barra)
     last_stat: str | None = None  # atributo principal da última skill usada (bônus de abate do grupo)
+    account_id: int | None = None  # conta dona do personagem
+    ip: str = ""  # de onde está conectado (bans por IP)
+    chat_times: deque[float] = field(default_factory=deque)  # horários das últimas mensagens de chat
     party_sent: str = ""  # último estado do grupo enviado ao cliente (só manda quando muda)
     actions: list[tuple] = field(default_factory=list)  # ações pedidas, executadas no próximo tick
     # Movimento: o cliente manda um comando numerado por tick; o servidor executa um por tick

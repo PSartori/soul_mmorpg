@@ -89,7 +89,8 @@ export class AdminUI {
       const tag = p.role ? defs.roles[p.role] : null;
       const name = el("span", "name", (tag ? `[${tag.tag}] ` : "") + p.name + (p.muted ? " 🔇" : ""));
       if (tag) name.style.color = tag.color;
-      row.append(name, el("span", "meta", [p.map, [p.race, p.class].filter(Boolean).join(" "), p.org].filter(Boolean).join(" · ")));
+      row.append(name, el("span", "meta", [p.map, [p.race, p.class].filter(Boolean).join(" "), p.org,
+        p.account ? `conta ${p.account}` : ""].filter(Boolean).join(" · ")));
       row.addEventListener("click", () => {
         this.selected = p.name;
         this.render();
@@ -138,10 +139,26 @@ export class AdminUI {
       ]);
     }
     if (this.can("ban")) {
+      // alcance: só o personagem, a conta toda (todos os personagens) ou a conta e o IP
+      const scope = el("select");
+      for (const [value, text] of [["character", "Só o personagem"], ["account", "A conta toda"],
+        ["ip", "Conta e IP"]]) {
+        const opt = el("option", "", text);
+        opt.value = value;
+        scope.append(opt);
+      }
+      row("Alcance", [scope]);
       row("Banir", BAN_OPTIONS.map(([text, seconds]) => button(text, confirmThen(
-        `Banir ${target} (${text.toLowerCase()})? A pessoa será desconectada.`,
-        () => this.op("ban", { target, seconds, reason: reason.value }),
+        `Banir ${target} (${text.toLowerCase()}, ${scope.selectedOptions[0].textContent.toLowerCase()})? ` +
+        "A pessoa será desconectada.",
+        () => this.op("ban", { target, seconds, reason: reason.value, scope: scope.value }),
       ), true)));
+    }
+    if (this.can("account")) {
+      row("Senha", [button("Gerar senha temporária", confirmThen(
+        `Gerar uma senha temporária para a conta de ${target}? A senha atual deixa de valer.`,
+        () => this.op("reset_password", { target }),
+      ))]);
     }
     if (this.can("teleport")) {
       row("Teleporte", [button("Ir até", () => this.op("goto", { target })), button("Trazer", () => this.op("bring", { target }))]);
@@ -219,8 +236,9 @@ export class AdminUI {
       const line = el("div", "adm-row");
       const b = el("button", "", "Desbanir");
       b.type = "button";
-      b.addEventListener("click", () => this.op("unban", { target: ban.name }));
-      line.append(el("span", "label wide", `${ban.name} — ${ban.until}, por ${ban.by}${ban.reason ? ` (${ban.reason})` : ""}`), b);
+      b.addEventListener("click", () => this.op("unban", { target: ban.name, kind: ban.kind }));
+      line.append(el("span", "label wide",
+        `[${ban.what}] ${ban.name} — ${ban.until}, por ${ban.by}${ban.reason ? ` (${ban.reason})` : ""}`), b);
       box.append(line);
     }
     return box;

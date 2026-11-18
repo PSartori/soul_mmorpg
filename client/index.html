@@ -39,6 +39,22 @@
         <section id="trainer" hidden aria-label="Treinador"></section>
         <section id="craft" hidden aria-label="Oficina"></section>
         <section id="skills" hidden aria-label="Skills"></section>
+        <section id="account" hidden aria-label="Conta">
+          <header>
+            <h3>Conta</h3>
+            <button type="button" id="account-close" aria-label="Fechar">✕</button>
+          </header>
+          <form id="password-form">
+            <h4>Trocar a senha</h4>
+            <input id="pw-old" type="password" placeholder="Senha atual" autocomplete="current-password" required>
+            <input id="pw-new" type="password" placeholder="Senha nova" autocomplete="new-password" required>
+            <input id="pw-new2" type="password" placeholder="Repita a senha nova" autocomplete="new-password" required>
+            <button type="submit">Trocar senha</button>
+            <p id="account-result"></p>
+          </form>
+          <h4>Personagem</h4>
+          <button type="button" id="char-leave">Trocar de personagem</button>
+        </section>
         <section id="quests" hidden aria-label="Diário de missões">
           <header>
             <h3>Missões</h3>
@@ -81,6 +97,7 @@
           <button type="button" id="quests-open">Missões (J)</button>
           <button type="button" id="skills-open">Skills (K)</button>
           <button type="button" id="view-toggle">Visão 3D (V)</button>
+          <button type="button" id="account-open">Conta</button>
           <button type="button" id="admin-open" hidden>Administração (G)</button>
         </div>
       </section>
@@ -123,16 +140,32 @@
     <form id="login">
       <h1>RPG Online</h1>
       <p class="sub">Protótipo</p>
-      <input id="login-name" placeholder="Nome do personagem" maxlength="16" autocomplete="username" required>
+      <input id="login-name" placeholder="Nome da conta" maxlength="16" autocomplete="username" required>
       <input id="login-password" type="password" placeholder="Senha" autocomplete="current-password" required>
-      <fieldset id="race-picker">
-        <legend>Raça <span class="hint">(só para personagem novo)</span></legend>
-        <div id="race-options"></div>
-      </fieldset>
-      <button type="submit">Entrar</button>
-      <p class="hint">Se o nome ainda não existir, o personagem é criado com a raça escolhida.</p>
+      <input id="login-password2" type="password" placeholder="Repita a senha" autocomplete="new-password" hidden>
+      <button type="submit" id="login-submit">Entrar</button>
+      <button type="button" id="login-mode" class="link">Não tem conta? Criar uma</button>
+      <p class="hint" id="login-hint">Entre com a sua conta para escolher o personagem.</p>
       <p id="login-error" class="error"></p>
     </form>
+
+    <section id="chars" hidden aria-label="Personagens">
+      <h1>Personagens</h1>
+      <p class="sub" id="chars-account"></p>
+      <div id="chars-list"></div>
+      <form id="char-new">
+        <h3>Novo personagem</h3>
+        <input id="char-name" placeholder="Nome do personagem" maxlength="16" autocomplete="off" required>
+        <fieldset id="race-picker">
+          <legend>Raça</legend>
+          <div id="race-options"></div>
+        </fieldset>
+        <button type="submit">Criar personagem</button>
+      </form>
+      <p class="hint" id="chars-full" hidden>A conta já tem o máximo de personagens.</p>
+      <p id="chars-error" class="error"></p>
+      <button type="button" id="chars-logout" class="link">Sair da conta</button>
+    </section>
   </div>
 
   <script type="module" src="/static/js/main.js"></script>

@@ -260,8 +260,9 @@ Combinado em 17/11/2026. A ordem pode mudar conforme as decisões em aberto.
 - ~~Grupos: chat, divisão de XP e saque, missões em grupo~~ (feito).
 
 **Fase 2 — alfa fechado**
-- Contas com vários personagens; ban por conta e IP; troca e recuperação de senha.
-- Proteções: limite de mensagens, de tentativas de senha, hash de senha fora do loop.
+- ~~Contas com vários personagens; ban por conta e IP; troca de senha~~ (feito; recuperação
+  só pela equipe, com senha temporária — por e-mail fica para quando houver envio na VPS).
+- ~~Proteções: limite de mensagens, de tentativas de senha, hash de senha fora do loop~~ (feito).
 - Hospedagem na VPS: HTTPS (Caddy), reinício automático, backup fora da máquina, logs.
 - Tutorial dos primeiros minutos (pode ser uma sequência de missões).
 - Botão de relatar bug, com mapa, posição e hora.

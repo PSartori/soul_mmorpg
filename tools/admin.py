@@ -4,8 +4,11 @@ Uso:
   ./admin.sh role Nome admin        dá um papel (admin, gm, moderador — veja data/roles.yaml)
   ./admin.sh role Nome nenhum       tira o papel
   ./admin.sh staff                  lista a equipe
-  ./admin.sh bans                   lista os banidos
-  ./admin.sh unban Nome             desbane
+  ./admin.sh bans                   lista os banidos (personagens, contas e IPs)
+  ./admin.sh unban Nome             desbane o personagem e a conta com esse nome
+  ./admin.sh unban-ip IP            desbane um endereço IP
+  ./admin.sh conta Nome             mostra a conta de um personagem e os personagens dela
+  ./admin.sh senha Conta            gera uma senha temporária para a conta (quem esqueceu a senha)
   ./admin.sh log [N]                últimas N ações da equipe (padrão 20)
 
 Serve para criar o primeiro administrador e para emergências (ex.: desbanir com o
@@ -14,14 +17,15 @@ servidor fora do ar). Mudança de papel vale a partir do próximo login da pesso
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import time
 from pathlib import Path
 
 from server import config as C
-from server.admin import format_until
+from server.admin import BAN_KINDS, format_until, temporary_password
 from server.content import Content
-from server.db import Database
+from server.db import Database, hash_password
 
 
 def main(argv: list[str] | None = None, db_path: Path = C.DB_PATH) -> int:
@@ -32,8 +36,14 @@ def main(argv: list[str] | None = None, db_path: Path = C.DB_PATH) -> int:
     role.add_argument("role", help="id do papel em data/roles.yaml, ou 'nenhum'")
     sub.add_parser("staff", help="lista a equipe")
     sub.add_parser("bans", help="lista os banidos")
-    unban = sub.add_parser("unban", help="desbane um personagem")
+    unban = sub.add_parser("unban", help="desbane um personagem (e a conta com esse nome)")
     unban.add_argument("name")
+    unban_ip = sub.add_parser("unban-ip", help="desbane um endereço IP")
+    unban_ip.add_argument("ip")
+    account = sub.add_parser("conta", help="mostra a conta de um personagem")
+    account.add_argument("name")
+    password = sub.add_parser("senha", help="gera uma senha temporária para a conta")
+    password.add_argument("account")
     log = sub.add_parser("log", help="últimas ações da equipe")
     log.add_argument("n", type=int, nargs="?", default=20)
     args = parser.parse_args(argv)
@@ -64,17 +74,46 @@ def main(argv: list[str] | None = None, db_path: Path = C.DB_PATH) -> int:
         if not rows:
             print("Ninguém na equipe.")
     elif args.cmd == "bans":
-        rows = db.list_active("ban", time.time())
-        for name, until, reason, by in rows:
-            print(f"{name}: {format_until(until)} — por {by}" + (f" — {reason}" if reason else ""))
-        if not rows:
+        found = False
+        for kind, label in BAN_KINDS.items():
+            for name, until, reason, by in db.list_active(kind, time.time()):
+                found = True
+                print(f"[{label}] {name}: {format_until(until)} — por {by}" + (f" — {reason}" if reason else ""))
+        if not found:
             print("Ninguém banido.")
     elif args.cmd == "unban":
-        if db.lift_sanctions(args.name, "ban") == 0:
+        lifted = db.lift_sanctions(args.name, "ban") + db.lift_sanctions(args.name, "account_ban")
+        if lifted == 0:
             print(f"{args.name} não está banido.", file=sys.stderr)
             return 1
         db.log_admin("terminal", "desbaniu", args.name)
         print(f"{args.name} foi desbanido.")
+    elif args.cmd == "unban-ip":
+        if db.lift_sanctions(args.ip, "ip_ban") == 0:
+            print(f"{args.ip} não está banido.", file=sys.stderr)
+            return 1
+        db.log_admin("terminal", "desbaniu", args.ip, "IP")
+        print(f"{args.ip} foi desbanido.")
+    elif args.cmd == "conta":
+        acc = db.account_of(args.name)
+        if acc is None:
+            print(f"Não existe personagem chamado {args.name} (ou ele não tem conta).", file=sys.stderr)
+            return 1
+        chars = ", ".join(c.name for c in db.list_characters(acc.id))
+        print(f"Conta {acc.name}: {chars}" + (f" — último IP {acc.last_ip}" if acc.last_ip else ""))
+    elif args.cmd == "senha":
+        acc = db.load_account(args.account)
+        if acc is None:
+            print(f"Não existe conta chamada {args.account}. (Use ./admin.sh conta Personagem para achar a conta.)",
+                  file=sys.stderr)
+            return 1
+        new_password = temporary_password()
+        salt = os.urandom(16)
+        db.set_account_password(acc.id, hash_password(new_password, salt), salt)
+        db.log_admin("terminal", "gerou senha temporária para", acc.name)
+        print(f"Senha temporária da conta {acc.name}: {new_password}")
+        print("Passe só para a dona da conta; ela deve trocar a senha ao entrar (botão Conta). "
+              "Se o servidor estiver rodando, já vale.")
     elif args.cmd == "log":
         for at, actor, action, target, details in db.recent_log(args.n):
             stamp = time.strftime("%d/%m %H:%M", time.localtime(at))

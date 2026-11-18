@@ -3,6 +3,7 @@
 Skills, efeitos e inimigos ficam em data/*.yaml; aqui fica só o que é regra
 do motor. Unidades: distâncias em pixels, tempos em segundos, taxas "por segundo".
 """
+import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -124,3 +125,17 @@ DISPUTE_COOLDOWN_SECONDS = 300.0  # quem perde uma disputa de cargo espera isto 
 
 # --- Chat -------------------------------------------------------------------
 CHAT_MAX_LEN = 200
+
+# Contas e proteções
+MAX_CHARACTERS = 4  # personagens por conta
+PASSWORD_MIN = 6  # caracteres mínimos da senha (contas antigas com senha menor continuam entrando)
+LOGIN_MAX_FAILS = 5  # erros de senha seguidos (por IP e por conta) antes de travar
+LOGIN_LOCK_SECONDS = 300.0  # quanto tempo trava depois disso
+ACCOUNTS_PER_IP = 3  # contas novas por IP...
+ACCOUNTS_PER_IP_WINDOW = 3600.0  # ...nesta janela (segundos)
+MSG_RATE = 60.0  # mensagens por segundo que uma conexão pode mandar (movimento são 20/s)
+MSG_BURST = 120.0  # rajada permitida acima disso
+MSG_FLOOD_KICK = 300  # mensagens descartadas por excesso antes de derrubar a conexão
+CHAT_BURST = 5  # mensagens de chat seguidas...
+CHAT_WINDOW = 6.0  # ...dentro desta janela (segundos); mais que isso espera
+TRUST_PROXY = os.environ.get("TRUST_PROXY") == "1"  # atrás do Caddy: o IP real vem em X-Forwarded-For
